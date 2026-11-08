@@ -83,7 +83,7 @@ export default class OrgState extends View {
     return h_flex().id(`ap-${a.id}`).items_stretch().gap(10).rounded(10).bg(t.raised).px(12).py(10)
       .child(div().w(3).flex_none().rounded(2).bg(t.blocked))
       .child(v_flex().flex_1().min_w(0).gap(4)
-        .child(div().text_size(13).font_medium().text_color(t.foreground).whitespace_normal().child(a.question ?? ""))
+        .child(div().text_size(13).font_medium().text_color(t.foreground).whitespace_normal().max_h(40).overflow_hidden().child(a.question ?? ""))
         .child(h_flex().gap(8).text_size(11).text_color(t.dim)
           .child(div().flex_1().min_w(0).truncate().child(a.task_id ?? ""))
           .child(div().flex_none().child(since(a.asked_at, now)))));
@@ -117,8 +117,9 @@ export default class OrgState extends View {
       const s = live.get(w.task_id);
       return { ...w, status: s === "error" ? "blocked" : s ?? "none" };
     }).sort((x, y) => (ORDER[x.status] ?? 2) - (ORDER[y.status] ?? 2) || Date.parse(x.since) - Date.parse(y.since));
-    // ponytail: fixed row budget for the 420 px dialog instead of scrolling; measure once it docks.
-    const maxRows = 10 - 2 * Math.max(cards.length, 1);
+    // ponytail: fixed row budget for the 420 px dialog instead of scrolling: a card (question clamped
+    // to two lines) costs three rows. Measure once it docks.
+    const maxRows = 10 - 3 * Math.max(cards.length, 1);
     const rows = work.slice(0, maxRows);
 
     return v_flex().gap(20)

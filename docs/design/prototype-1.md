@@ -37,7 +37,7 @@ Times are UTC in ISO 8601. The cap is 64 KiB. A task leaves `work` when it finis
 
 ## What the mod shows
 
-- **Waiting for you**: one card per approval, oldest first, at most three, then "and N more". A card shows the question, then the task and how long it has waited.
+- **Waiting for you**: one card per approval, oldest first, at most three, then "and N more". A card shows the question (at most two lines), then the task and how long it has waited.
 - **In progress**: one row per task: a status glyph, the title, and how long it has been running. Blocked tasks come first, then working ones, then the rest by start time. The status is the live status of the terminal labelled with that `task_id` (`terminals()`, as herdr-core reports it). A task with no live terminal shows a ring in the theme's `unknown` color.
 - When `org-state` has not been written: "The secretary has not written anything yet." When `hc` cannot be reached: "Can't reach hc." and the first line of the error.
 
@@ -59,7 +59,8 @@ The mod reads `org-state` every 5 seconds. `hc` has no CLI verb for documents an
 1. With `org-state` unwritten, open the mod and take `herdr-app shot`. It shows "The secretary has not written anything yet."
 2. Write a value like the example above with `doc.set` through `hc connect`, keeping its input open as described above (get the version with `doc.get` first). Start one or two terminals labelled with a `task_id` from `work` whose program reports an OSC 7501 status, for example `hc run --bg --no-parent --label task_id=demo-working -- <a program that prints ESC ] 7501 ; state=working:app=demo BEL and stays>`.
 3. Within 5 seconds the mod redraws. Take `herdr-app shot`. The approvals appear as cards above the list, and the list shows the working spinner, the "Needs you" pill for a blocked task, and the ring for a task with no terminal.
-4. `check` does not lay out the mod, so the shot is the check that the list and cards have height ([measurement](architecture.md#8-facts-this-design-relies-on)). `shot` returns the last frame the window drew: while the window is not being drawn (minimized or in the background), two shots are identical and miss the dialog. Bring the window to the front, or look at it.
+   The demo terminals do not appear in herdr-app's own Agents sidebar (it stays at "No agent status yet", the footer at 0 agents); the mod finds them through the `task_id` label in `terminals()`, so this does not affect it.
+4. `check` does not lay out the mod, so the shot is the check that the list and cards have height ([measurement](architecture.md#8-facts-this-design-relies-on)). `shot` returns the last frame the window drew: while the window is not being drawn (minimized or in the background), two shots are identical and miss the dialog. Check by looking at the window, or take the shot right after the window has redrawn.
 5. Clean up: close the dialog, `hc kill` and `hc rm` the demo terminals, and set `org-state` back to `null`.
 
 The prototype is done when `check` passes and the shot shows both the approvals and the work in progress.
