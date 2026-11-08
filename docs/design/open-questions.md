@@ -362,3 +362,35 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 **Options.** (a) The core is started only from a login shell or a service, never from inside an agent; (b) each template's command clears the variables it must not inherit (for example `env -u CLAUDE_CODE_CHILD_SESSION ... claude`); (c) every launch passes an explicit environment; (d) a mix.
 
 **Decides.** The owner.
+
+## Q18. How does anything reach an idle agent?
+
+**Question.** An agent reads its mailbox on its own turn ([decision 0002](../decisions/0002-org-mailbox-not-hc-send.md)). When the secretary is idle, or a worker has just been interrupted, what starts its next turn: a worker's report, a CI result, a Codex-cap denial, the secretary's redirecting instruction?
+
+**What we know.**
+
+- `events.subscribe` sends a snapshot, then changes in order; changes made while no subscriber was connected are not replayed. (Core docs, `hc.openrpc.json`)
+- hc types notes into a parent when a child is blocked, errs or exits, and `hc wait` ends when a message arrives for the caller; `notes = false` turns the notes off. Those notes are typed into the parent's prompt, which [decision 0002](../decisions/0002-org-mailbox-not-hc-send.md) otherwise avoids. (Core docs, `hc --skill`, `docs/commands.md`)
+- A Codex-cap denial comes from a hook inside a worker; no terminal exits, so no hc note is made. ([inventory](predecessor-inventory.md) REC-4)
+- After `hc interrupt` the worker is idle; a mailbox message alone does not start its next turn. ([inventory](predecessor-inventory.md) SK-4)
+- The predecessor relayed such events through its dispatcher's loop with an exactly-once delivery ledger, because a direct push could fail silently and leave the secretary idle. ([inventory](predecessor-inventory.md) REC-4)
+- The architecture's events bridge follows `hc events --json` in a kept terminal; whether it also wakes agents is not defined. ([architecture §4](architecture.md#4-where-each-part-goes))
+
+**Options.** (a) hc's own notes wake the parent ([Q2](#q2-how-much-of-a-childs-reporting-goes-through-the-mailbox) option C); (b) the `org` server or the events bridge sends a short wake-up with `hc send --if idle` to an idle agent, as a named exception to decision 0002; (c) the secretary never goes idle while work is in progress, waiting with `hc wait --children` and checking the mailbox each time it returns; (d) a person is notified and starts the turn.
+
+**Decides.** The owner.
+
+## Q19. Do workers outlive the secretary that started them?
+
+**Question.** Workers launched by the secretary are its children. Should they end with it, or be started with `--outlive-parent`?
+
+**What we know.**
+
+- "Terminals you start are your children. They end when you end, unless started with `--outlive-parent`." The parent is set at launch; no method changes it later. (Core docs, `hc --skill`, `hc.openrpc.json` `terminal.run`)
+- A parent gets notes when a child needs attention or ends, and `hc wait --children` waits for its own children only. (Core docs)
+- Renewing the secretary by ending its program ([Q16](#q16-how-is-the-secretarys-context-renewed) option c), or a crash, would end every worker it started.
+- Not measured: what a template-launched secretary's children do when it is killed. Probe: the secretary starts a worker; `hc kill` the secretary; `hc ls` shows whether the worker remains.
+
+**Options.** (a) Workers end with the secretary (simple; renewal must keep the same program); (b) workers outlive it, and a new secretary finds them by their `task_id` label and follows them through events instead of child notes; (c) a long-lived parent other than the secretary (for example the events bridge's terminal) starts workers on the secretary's behalf.
+
+**Decides.** The owner.
