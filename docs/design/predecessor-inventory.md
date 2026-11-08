@@ -1,0 +1,518 @@
+# Predecessor inventory
+
+Status: draft. This document lists what the predecessor, claude-org-ja, distributes to its agents, enforces on them and records about them, and sorts each item for paddock. It does not decide anything that is still open: those items become questions in [open questions](open-questions.md) (Q10 to Q19).
+
+## 1. How to read this
+
+### 1.1 Verdicts
+
+| Verdict | Meaning |
+| --- | --- |
+| **Keep** | paddock carries the line or the duty itself, usually rewritten (a template body, a skill, a Claude Code setting, a mod, a record). |
+| **herdr** | herdr-core or herdr-app already does it. Used only where a herdr primary source or a measurement shows it. |
+| **Retire** | Not carried. The reason is given: usually the predecessor part it served is gone (the dispatcher, renga, the broker, `state.db`'s SQLite, the separate dashboard). |
+| **Open** | The way to do it is a choice nobody has made. Each Open row points to a question in [open questions](open-questions.md). |
+
+"Open" never means "we do not know whether it can be done". That is a feasibility of **Unverified**.
+
+### 1.2 Feasibility
+
+Every row also says whether the verdict can be carried out on paddock's base:
+
+| Feasibility | Meaning |
+| --- | --- |
+| **Feasible** | A primary source or a measurement shows it works. |
+| **Not feasible** | A primary source or a measurement shows it does not work as stated. |
+| **Unverified** | Not shown either way. The row gives the probe (what to run, what output would settle it). |
+
+For Retire rows, "Feasible" means nothing paddock needs is lost by dropping it, and the basis says why.
+
+### 1.3 Sources
+
+| Tag | Source |
+| --- | --- |
+| [skill] | The `hc --skill` manual, hc 0.1.18. |
+| [cmd] | herdr-core `docs/commands.md`. |
+| [tpl] | herdr-core `docs/templates.md`. |
+| [sec] | herdr-core `docs/security.md`. |
+| [rpc] | herdr-core `schema/hc.openrpc.json` (its `info.version` is 0.1.19; method names below exist in it). |
+| [app] | herdr-app's mod guide `defaults/AGENTS.md`, 0.1.13. |
+| [cc] | Claude Code 2.1.319: `claude --help` and its CHANGELOG. |
+| [arch] | Measurements already recorded in [architecture §8](architecture.md#8-facts-this-design-relies-on). |
+| [P1] to [P7] | The probes run for this inventory ([section 2](#2-probes-run-for-this-inventory)). |
+| [0002], [0003], [0004] | paddock decisions [0002](../decisions/0002-org-mailbox-not-hc-send.md), [0003](../decisions/0003-screen-as-app-mods.md), [0004](../decisions/0004-records-documents-and-jsonl.md). |
+| [proto] | [Prototype 1](prototype-1.md). |
+
+Predecessor paths are relative to the root of the claude-org-ja repository.
+
+### 1.4 What was enumerated
+
+The list was built file by file, by area, with `ls`, `find` and `grep`, then by reading each file. The areas and what was read:
+
+- **Role instructions and briefs**: `CLAUDE.md`, `.dispatcher/CLAUDE.md`, `.curator/CLAUDE.md`, one rendered `CLAUDE.local.md` of a live worktree (the others are instances of the same template), `.claude/rules/`, `tools/templates/`, `tools/gen_delegate_payload.py`, `tools/gen_worker_brief.py`, `tools/gen_skill_prose.py`, `tools/skill_src/`, `docs/contracts/role-contract.md`, `role-pattern-sandbox-contract.md`, `delegation-lifecycle-contract.md`, `tools/ja_locale.json`.
+- **Permissions**: `tools/org_extension_schema.json` (read in full), every role's `settings.json` / `settings.local.json` / `settings.local.override.json`, `tools/check_role_configs.py`, `docs/worker-permissions-design.md`, `docs/contracts/sandbox-launcher-contract.md`, `worker-git-guardrails-design.md`, `docs/runbooks/linux-sandbox-verification.md`, `docs/sandbox-probe/`, and where the settings generator of the claude-org-runtime package is called.
+- **Hooks**: every file in `.hooks/` and `.hooks/lib/`, and their wiring in each role's settings and in the schema.
+- **Gates**: 19 tools under `tools/` (acceptance, merge, Codex, self-edit, spawn, retro, capability, notify, premise, rebase, version and drift checks, curate threshold, link audit) and the merge sections of the `org-pull-request` and `org-delegate` skills.
+- **Records**: `docs/journal-events.md`, `tools/journal_append.*`, `tools/state_db/`, `tools/state_migrate.py`, `docs/org-state-schema.md`, the state contracts, the classes of file under `.state/`, `registry/`, `knowledge/`, the metrics and defense reports.
+- **Skills**: all 26 `.claude/skills/*/SKILL.md` and their `references/` folders; `.claude/agents`, `.claude/commands` and `.claude/workflows`, which are empty.
+- **Monitoring, notification, suspend and handover**: `.dispatcher/CLAUDE.md` and every `.dispatcher/references/*.md`, the watcher, relay, cockpit and dashboard tools, `dashboard/`, `docs/operations/`, `.claude/rules/pr-ci-watch.md`, and the suspend, resume and handover skills.
+
+Not read: backups (`*.bak*`), tests other than to learn what a tool does, per-run logs (their classes are listed), the bodies of the worktree-creation helpers in `tools/gen_delegate_payload.py` (git plumbing), the bodies of the transport prose fragments in `tools/skill_src/fragments/`, and parts of `role-pattern-sandbox-contract.md` beyond its role and pattern sections. An adversarial review then looked for what the list missed ([section 16](#16-review-notes)).
+
+The enumeration found 338 mechanisms. Rows below group related mechanisms; [appendix A](#appendix-a-enumerated-mechanisms-per-row) lists which mechanisms each row covers. This is the range that was listed, not a claim that nothing was missed.
+
+## 2. Probes run for this inventory
+
+The worker that wrote this document runs in a sandbox where `hc` cannot reach or start a core (`hc ls` → `{"error":{"kind":"unavailable","message":"cannot start core: Read-only file system (os error 30)"}}`; with a scratch `HC_SESSION` and scratch XDG folders, `core did not start within 5 s` and `Operation not permitted` in `core.log`). The probes were therefore two shell scripts that the secretary ran on the host, on 2026-11-08 between 22:45 and 22:53 UTC. Each used its own core (`HC_SESSION=pinv` and `pinv2`) and its own template folder (`XDG_CONFIG_HOME` under `/tmp`), never the default core, and stopped only its own core at the end. hc 0.1.18, Claude Code 2.1.319 (`--model sonnet --permission-mode default`), WSL2. Each worktree was a fresh `git init` folder with no CLAUDE.md.
+
+| Probe | Question | Result |
+| --- | --- | --- |
+| P1 | Can delegation write `AGENTS.md` and `.claude/settings.local.json` into a fresh worktree with `hc file write`, when `.claude/` does not exist yet? | **Yes.** All three files (`AGENTS.md`, `.claude/settings.local.json`, a hook script) were written; the missing folder was created, as [rpc] `file.write` says ("making missing folders"). A new file gets mode 644, so hooks are called as `bash <path>`. |
+| P2 | Does a Claude Code launched from an `hc` template (`hc run --cwd <worktree> <template> "<task>"`) load that `settings.local.json` and read that `AGENTS.md`? | **Yes, once the folder is trusted** (see P6). It answered the codeword written only in `AGENTS.md`; `touch denied-probe.txt` was refused by `permissions.deny` ("2 actions not run · permission denied"); `touch hooked-probe.txt` was refused by the `PreToolUse` hook (exit 2, its stderr `PROBE_HOOK_DENY` quoted back by the agent); the `SessionStart` hook ran. Neither file was created. |
+| P3 | Can OSC 7501 `done` stand in for the `Stop` hook as "the turn has ended"? | **For observing, yes; for holding a turn open, no.** A `Stop` hook that blocked once (exit 2) ran at 22:46:47.744; the agent continued, and the second `Stop` (allowed) ran at 22:46:49.295. Core recorded exactly one `done` status (`status_ms` 22:46:49.320, 25 ms after the allowed `Stop`) and one `turn` event (`turn: 1`) for the whole task. No `done` was reported for the blocked stop. `done` marks the end of a turn after the `Stop` hooks have let it end; it cannot make an agent keep working. |
+| P4 | Does a `settings.local.json` with only `deny` and hooks (no `allow`) avoid the folder-trust dialog? | **No.** The dialog appeared and `first_message.sent` was `false`. After it was accepted, deny and hooks worked as in P2. |
+| P5 | Does passing the role's settings on the template's command line (`command: claude ... --settings <file outside the worktree>`) avoid the dialog, and do they apply? | **They apply; the dialog still appears.** After the dialog, the `deny` rule and the `PreToolUse` hook in the `--settings` file both refused their commands, and the `SessionStart` hook ran. |
+| P6 | Control: a worktree with only `AGENTS.md`. | **The dialog appears for every new folder**, settings or not. Each launch returned after about 58 s with `first_message: {sent: false, reason: "it never reported its status, so it may be showing a dialog ..."}`; the screen showed "Quick safety check: Is this a project you created or one you trust?". In batch 1 the dialog also listed "This folder pre-approves 1 tool permission in .claude/settings.local.json: Bash(ls:*)". The scripts accepted it with `hc keys <t> down enter`, as [skill] describes, and then sent the task with `hc send`. |
+| P7 | What environment does a program in an hc terminal get? | **The environment of whatever started the core.** The core was started by the script, which ran under the secretary's Claude Code session. A plain `sh -c 'env'` in an hc terminal saw the same 15 `CLAUDE*` variables as the script, including `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_MESSAGING_SOCKET` and `CLAUDE_CODE_MESSAGING_TOKEN`. Every probe Claude showed "Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker", and no session log was written. |
+
+What the probes did not cover: a Claude Code started by a person in the window, remote machines (`--on`), Windows, and whether a parent folder's trust covers a new worktree below it.
+
+## 3. Role instructions and briefs
+
+| # | Predecessor | Verdict | Feasibility | Basis |
+| --- | --- | --- | --- | --- |
+| INS-1 | Secretary rules in `CLAUDE.md` and `docs/contracts/role-contract.md`: does no real work and delegates everything; speaks in business terms and offers choices; keeps internal plumbing silent but never hides a real loss; brings every worker decision request to the person; one worker per task and scope; acks every worker message first; proposes next work after a merge; splits its duties over the delegate, escalation and pull-request skills. | Keep | Feasible | The secretary template body carries role rules today ([proto], `templates/secretary.md`). A template body is the agent's opening instructions [tpl]. Where rules live when they must outlast the first message is [Q12](open-questions.md#q12-where-do-a-workers-role-rules-and-task-brief-live). |
+| INS-2 | Citation-or-abstain: a sentence that tells the person something to act on carries its source; agreeing with the person's premise needs a look first (`CLAUDE.md`, `docs/contributing/citation-or-abstain.md`). | Keep | Feasible | A prose rule; same carrier as INS-1. Its hook half is HK-10. |
+| INS-3 | Markdown link convention (`[path](path)` display rule, `tools/audit_link_paths.py`). | Retire | Feasible | paddock checks relative links with its own `scripts/check-links.sh` in CI; the display convention served the predecessor's Japanese prose. |
+| INS-4 | Transport duality (renga or broker): tool-name substitution, `.md.in` sources rendered by `tools/gen_skill_prose.py`, the boilerplate repeated in skills, `tools/ja_locale.json` helper texts. | Retire | Feasible | paddock has one base. Peer messages go through the `org` mailbox [0002]; terminals are herdr-core's. Both transport stacks are retired in [architecture §4](architecture.md#4-where-each-part-goes). |
+| INS-5 | Light lane: a small single-file task may go to a background Agent subagent with an in-loop Codex review instead of a worker. | Keep | Feasible | The Agent tool is Claude Code's own; nothing in herdr is involved. HK-5 keeps subagents in the background. |
+| INS-6 | Dispatcher role (`.dispatcher/CLAUDE.md`): execute DELEGATE, spawn, verify, record, close; ignore the root CLAUDE.md; read the referenced procedures; the delegate-plan helper; spawn argument discipline; tell workers to report to the secretary; monitoring-file and role boundaries. | Retire | Feasible | No dispatcher ([architecture §3](architecture.md#3-roles)): `hc run --bg` launches with the task in the launch, and OSC 7501 status replaces screen watching [skill], [arch]. |
+| INS-7 | Two dispatcher lines that outlive it: never approve or deny a worker's permission prompt automatically; never run a credential operation on a worker's behalf. | Keep | Feasible | They move to the secretary. `blocked` arrives with `kind: permission` and `msg` [arch]; `hc send` refuses a blocked terminal without `--force`, and [skill] says not to use `--force` "to bypass a permission decision". `hc keys` is not documented to refuse a blocked terminal (`terminal.keys`: "Same quiet rule as send" [rpc]), so for keys the line is a rule only. |
+| INS-8 | Stable-name addressing (`secretary`, `dispatcher`, numeric ids only as fallback) and "decide what is an agent from `client_kind`, not pane decoration". | herdr | Feasible | Terminal names are unique among live terminals (`--name`) [cmd]; herdr-app lists as agents only terminals that report OSC 7501 status [app]. The mailbox addresses agents by name [0002]. |
+| INS-9 | Curator rules (`.curator/CLAUDE.md`): on demand, one cycle per start; parent-repo path discipline; proposals to the secretary first. | Keep | Feasible | The curator is a template started when a threshold is reached ([architecture §3](architecture.md#3-roles)); `hc wait <t>` waits for it [skill]. "Then CURATE_* to the dispatcher" becomes a report to the secretary. |
+| INS-10 | Worker model policy: Sonnet by default, Opus only on the secretary's decision; promotion typed into the worker as `/model`. | Keep | Feasible (choice at launch); Not feasible (in-place switch without typing into the prompt) | The model is part of the template's `command` [skill: "`command` (including model)"]; a second template, or a second launch, gives Opus. Switching a live worker means typing `/model`, which [0002] reserves to interrupts; paddock does not carry it. |
+| INS-11 | Delegation lifecycle contract (states T1 to T8 with owners; error classes E1 to E5). | Keep | Feasible | Rewritten onto herdr facts: a terminal is `live` or `finished`, with status words from OSC 7501 [skill]; the work in progress is `org-state.work` [proto]. |
+| INS-12 | Delegation packet and brief generation: `gen_delegate_payload.py` (preview and apply, dispatch assumptions with `path:line` checks, acceptance declaration, brief file name `CLAUDE.md` vs `CLAUDE.local.md`), `gen_worker_brief.py` and the TOML task briefs, the DELEGATE body format, "no hand-typed delegation when the generator fails", the worker-layout resolver. | Open | Feasible (the files can be written; P1) | The idea (a generated brief, not a hand-typed one) is kept. Who renders it and in what is [Q11](open-questions.md#q11-what-happens-to-the-predecessors-python-gates-and-generators); where it lands in a target repository is [Q12](open-questions.md#q12-where-do-a-workers-role-rules-and-task-brief-live). |
+| INS-13 | Worker brief sections that carry the task: working directory and `pwd` check, project and task block, optional blocks (implementation guidance, issue bodies, knowledge references), verification depth, permissions summary, completion report with the human-readable summary, keep the terminal after a PR until told to close, retro notes to `knowledge/raw/`. | Keep | Feasible | The task travels in the launch [skill]; a worker terminal stays until someone runs `hc kill` and `hc rm` [skill: "Once work is accepted: `hc kill <t>`, then `hc rm <t>`"]. Reports go through the mailbox [0002]. |
+| INS-14 | Worker brief sections that describe the predecessor's sandbox: prohibitions (`git stash`, `git add -A`, cloning the org), Windows notes, absolute paths in Bash, the preflight (write bounds, caches, `-i` aliases, hook denials, lockout), the Python `src`-layout rule. | Open | Unverified | Their content follows from paddock's own sandbox and settings, which [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when) decides. Probe once Q10 is settled: run a worker under paddock's settings and record which of these failures still occur (for example `git stash push` and an npm cache write). |
+| INS-15 | Background-tab report addressing (identity check before reporting from a background renga tab). | Retire | Feasible | No tabs in core; the mailbox addresses by name [0002]. |
+| INS-16 | Empty placeholders: `.claude/agents`, `commands`, `workflows`, `loop.md`, `output-styles`, `scheduled_tasks.json`, `.mcp.json`. | Retire | Feasible | Nothing is distributed through them. |
+| INS-17 | Non-goals register (`docs/non-goals.md`): no `--dangerously-skip-permissions` for workers by default, no fixed role pool, no `--add-dir` cross access by default, no PTY or multiplexer layer of its own, no `tools` frontmatter as the permission form, no HTTP MCP integration, and others. | Keep (rewritten) | Feasible | paddock's README states its own "What paddock is not". The permission non-goals carry over as worker settings ([section 6](#6-lines-the-predecessor-held-and-lines-paddock-must-hold)). "No terminal layer of its own" still holds: herdr-core is that layer, not paddock (README). |
+| INS-18 | Git and GitHub conventions put on workers: Conventional-Commits prefix inferred from the project slug, branch prefix by type, the PR template checklist (no secrets, no personal absolute paths), issue templates (`CONTRIBUTING.md`, `.github/`). | Keep | Feasible | Text for the worker template or `AGENTS.md`, and templates in each repository. Issues, PRs and docs are English. |
+| INS-19 | Release-class pre-fetch: before a release task the secretary fast-forwards the project's `main`, because workers may not `git pull` or `fetch` (`org-delegate` Step 0.6). | Keep (while workers may not fetch) | Feasible | Plain git. It follows from the worker git denies chosen under [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when). |
+
+## 4. Permissions and settings
+
+| # | Predecessor | Verdict | Feasibility | Basis |
+| --- | --- | --- | --- | --- |
+| PRM-1 | One reviewed source per role: `tools/org_extension_schema.json` declares each role's required allows, denies and hooks, globally forbidden allows (`Bash(git *)`, `Bash(gh:*)`, `^Bash(*)$`), closed-world audits, and the worker templates. | Keep (the idea) | Feasible | Claude Code reads settings from a project file in the worktree [P1], [P2] or from a file named on the command line [P5]. What paddock's source looks like is part of [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when). |
+| PRM-2 | Distribution: `claude-org-runtime settings generate` writes each worker's `.claude/settings.local.json` at delegation; a spawn-time `--settings` overlay adds what project files cannot carry (`strictAllowlist`, credential-file deny, docker push deny); `/org-setup` and `tools/org_setup_prune.py` maintain the org roles' files with a personal override file. | Open | Feasible (both channels) | [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when). Both channels work from a template launch [P1], [P2], [P5]. `defaultMode` `auto` or `bypassPermissions` in a project file is ignored [cc CHANGELOG: "Changed `defaultMode: "bypassPermissions"` in `.claude/settings.json` or `.claude/settings.local.json` to be ignored, like `"auto"`"], so the permission mode goes in the template's command (as the probes did with `--permission-mode default`). |
+| PRM-3 | Checkers: `tools/check_role_configs.py` (schema integrity, hook path anchoring, on-disk drift per role), `tools/check_runtime_schema_drift.py` (repo schema vs the runtime's bundled copy). | Open (config check); Retire (runtime copy) | Feasible | The runtime's bundled schema goes away with claude-org-runtime. A drift check of paddock's own settings is Python today: [Q11](open-questions.md#q11-what-happens-to-the-predecessors-python-gates-and-generators). |
+| PRM-4 | Allow sets per role: user-common renga allows; repo-shared allows; the secretary's (git, gh, python tools, codex); the dispatcher's (`bypassPermissions`, so allow and deny are inert); the curator's (empty); workers' (local git, docker build, the exact Codex gate forms); the read-only `doc-audit` worker. | Keep (re-selected) | Feasible | The roles that remain are the secretary, workers and the curator. Allows are chosen again for what those roles run on herdr; see [section 6](#6-lines-the-predecessor-held-and-lines-paddock-must-hold). renga allows retire with renga. |
+| PRM-5 | Deny groups: secrets (Layer 2 `Read()` and Layer 3 `denyRead`, with `.env.example` carve-outs); credential environment variables and `gh` tokens; `git push`; shared git metadata and history rewrites; repo-wide destructive git; recursive delete; worker `close_pane`; settings self-edit; dispatcher and curator write surfaces; docker push. | Keep (re-selected) | Feasible (Bash deny rules, hooks); Unverified (`Read()` denies, sandbox entries) | `Bash(...)` deny rules and `PreToolUse` hooks both took effect in template-launched workers [P2], [P5]; `Read()` denies and sandbox entries were not probed (L-K1, L-K7). Which lines remain is [section 6](#6-lines-the-predecessor-held-and-lines-paddock-must-hold). |
+| PRM-6 | Sandbox: per-pattern write surfaces, network allowlists, `failIfUnavailable`, exact `excludedCommands`, symlink-escape suppression of deny entries on WSL, the launcher contract (`sandbox_deny_skipped` events), the Linux and WSL2 verification runbook. | Keep (Claude Code's sandbox); Open (who renders it) | Feasible (sandbox); Unverified (paddock's exact surfaces) | paddock is "not a sandbox"; sandboxing stays with Claude Code's settings (README, [sec]: core "is not a sandbox or a permission broker for agents"). The rendering steps (suppression, retry) were runtime features: [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when). Probe for the surfaces: launch a worker with the chosen settings and run the runbook's negative checks (write outside the worktree, `cat ~/.ssh/*`, a non-allowlisted host). |
+| PRM-7 | Hook false-positive protocol: a worker never edits its settings or rephrases a command to get past a hook; it reports the command, the intent and the hook's message, and waits. | Keep | Feasible | A worker rule; reports go through the mailbox [0002]. |
+| PRM-9 | Permission mode per role and how the first agent starts: the secretary with Claude Code's default prompts (`renga-layouts/ops.toml` deliberately passes no `--permission-mode`), the dispatcher in `bypassPermissions`, the curator and workers in `default_permission_mode` (`auto`); the secretary started by `claude-org-runtime org up` and the renga layout. | Keep (without the dispatcher) | Feasible | The mode goes in each template's `command` (`--permission-mode ...`), since project settings cannot set `auto` or `bypassPermissions` [cc CHANGELOG]; the probes ran that way. The secretary is started from its template with `--keep` [proto]; who starts it, and from what environment, is SK-2 and [Q17](open-questions.md#q17-what-environment-do-the-core-and-its-terminals-start-with). |
+| PRM-10 | Role environment contract: `CLAUDE_ORG_PATH` and `WORKER_DIR` from settings `env` blocks (hooks find the org root and the worktree through them), `ORG_TRANSPORT`, broker and renga socket variables, `ORG_NOTIFY_TO`, `ORG_WATCHER_GUARD`, `CLAUDE_ORG_HANDOVER_THRESHOLD_TOKENS`, re-exported by hand into watcher panes. | Keep (rewritten, smaller) | Feasible | Transport variables retire with the transports. An agent's own address is `$HC_TERMINAL_ID` [skill]. Values reach an agent through the settings `env` block (P2 shows the settings file loads), through `terminal.run`'s `env` parameter [rpc] (the `hc run` CLI has no `--env` option [cmd]), or through the template's `command`, which runs in `sh` [tpl]. |
+| PRM-11 | Broker bind tokens with an immutable permission tier: a worker's token structurally lacks pane-control tools, whatever its settings say (`docs/contracts/backend-interface-contract.md` §8.2, §8.3). | Open | Not feasible in herdr; Unverified in the `org` server | herdr-core has "no separate API password or per-client permission check" [sec]. If paddock wants this layer, the `org` mailbox server would carry it ([Q8](open-questions.md#q8-what-is-each-component-written-in), still open for that server). For `hc` itself the line is L-N2. |
+| PRM-8 | Non-permission settings: `CLAUDE_ORG_PATH`, the handover token threshold and `idleCompaction: false`, `claudeMdExcludes` of the root CLAUDE.md for the dispatcher. | Open (threshold); Retire (the rest) | Feasible | The threshold belongs to context renewal, [Q16](open-questions.md#q16-how-is-the-secretarys-context-renewed). `claudeMdExcludes` served the dispatcher's folder inside the secretary's repository. Environment for a launch can be set with `terminal.run`'s `env` parameter [rpc]. |
+
+## 5. Hooks
+
+| # | Predecessor | Verdict | Feasibility | Basis |
+| --- | --- | --- | --- | --- |
+| HK-1 | Fail-closed payload rule for every enforcing hook (deny on missing `jq`, empty or invalid JSON; issue #834: any exit other than 2 lets the call through). | Keep | Feasible | Claude Code blocks on exit 2 [P2]. A rule for every hook paddock ships. |
+| HK-2 | `block-no-verify.sh`, `block-dangerous-git.sh` (force push, `reset --hard`, `branch -D`, `clean -f`, `checkout --`, `restore --source`, mutating `git stash`, `add -A`). | Keep | Feasible | Same mechanism as P2. The quote-aware segment splitter they use (`.hooks/lib/segment-split.sh`) is Python: [Q11](open-questions.md#q11-what-happens-to-the-predecessors-python-gates-and-generators). |
+| HK-3 | `block-git-push.sh`: every `git push`, and every `gh` call outside a read-only list, denied for workers. | Keep | Feasible | Same mechanism as P2. |
+| HK-4 | `block-workers-delete.sh`: no recursive delete under the workers folder. | Keep | Feasible | Same mechanism as P2. |
+| HK-5 | `block-foreground-subagent.sh`: subagents only in the background, so the secretary keeps answering and workers keep reading messages. | Keep | Feasible | A `PreToolUse` hook on the Agent tool; same mechanism as P2. |
+| HK-6 | `check-worker-boundary.sh`: worker Edit and Write only inside its worktree, `~/.claude/plans/` and its retro file; its own settings files locked. | Keep | Feasible | Same mechanism as P2; the write targets that history and notes need are [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when). |
+| HK-7 | `block-org-structure.sh`: workers must not recreate `.claude/`, `.dispatcher/`, `.state/`, `registry/` and similar under their folder. | Keep (rewritten) | Feasible | paddock's trusted code is outside the worktree: templates in `~/.config/herdr-core/templates/` and mods in herdr-app's `mods/`. [architecture §4](architecture.md#4-where-each-part-goes) already adds writes there to the worker deny list. |
+| HK-8 | Dispatcher hooks: `block-dispatcher-out-of-scope.sh`, `check-loop-directive.sh`, `block-close-before-retro.sh`, `block-blind-spawn-keys.sh`, `check-worker-spawn-model.sh`. | Retire | Feasible | No dispatcher. Their lines move: close only after the report (MON-9), the model fixed by the template's command (INS-10), the folder-trust step ([Q13](open-questions.md#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog)). |
+| HK-9 | `block-relative-close-pane.sh` (no `focused` or bare-name target for `close_pane`, after a worker closed the secretary's pane). | Retire (selector rule); Keep (the line) | Feasible | `hc` has no "focused" selector: `<t>` is an id, a name or `machine/t7` [skill]. The line "a worker does not end another agent" stays, as L-N2 in [section 6](#6-lines-the-predecessor-held-and-lines-paddock-must-hold). |
+| HK-10 | `remind-verify-premise.sh` (`tools/premise_check.py`): on a person's message carrying a number with a unit, a setting or a claim word, inject a "verify before agreeing" line. | Open | Feasible (a `UserPromptSubmit` hook can run) | The checker is Python: [Q11](open-questions.md#q11-what-happens-to-the-predecessors-python-gates-and-generators). |
+| HK-11 | `mark-needs-decision.sh` / `clear-needs-decision.sh`: a tmux tab marker when the secretary waits on the person. | Keep (rewritten) | Feasible | The secretary writes the question into `org-state.approvals` and the `org-agents` mod shows it as a card [proto]. |
+| HK-12 | `check-dispatcher-loop.sh`: warn the secretary when the dispatcher's loop is not running. | Retire | Feasible | No loop to arm; status flows from core [arch]. |
+| HK-13 | `context-record.sh`: on `SessionStart`, `UserPromptSubmit`, `Stop`, `PreCompact` (and the secretary's idle notification), record the transcript path and turn state for the handover watcher. | Open | Feasible (the hook events fire in template launches: `SessionStart` and `Stop` in [P2], [P3]) | Part of context renewal, [Q16](open-questions.md#q16-how-is-the-secretarys-context-renewed). "Is the role between turns" is also visible as OSC 7501 `done` / `idle` and `turn` events [P3]. |
+| HK-14 | `block-codex-over-cap.sh` and `block-codex-rescue.sh`: Codex only through the gate script, with a round cap counted outside the worker. | Open | Feasible (the hook mechanism) | The counter is Python and SQLite: [Q11](open-questions.md#q11-what-happens-to-the-predecessors-python-gates-and-generators). |
+| HK-15 | `gate-acceptance-before-merge.sh`: the secretary may merge only with the single allowed `gh pr merge ... --match-head-commit <sha>` form, after the acceptance gate. | Open | Feasible (the hook mechanism) | See GT-1. |
+| HK-16 | `.hooks/lib/deny-record.sh`: every refusal writes a `hook_denied` event. | Open | Feasible (a hook can append a line) | Which events paddock keeps is open in [0004] ("which event kinds are kept at all"). `hook_denied` was 18% of the last 30 days' rows ([Q8](open-questions.md#q8-what-is-each-component-written-in), point 7). |
+| HK-18 | The hook events and matchers the predecessor relies on: `PreToolUse` on `Bash`, `Edit\|Write`, `Agent\|Task`, `Skill`, `Monitor`, MCP tool patterns (`mcp__.*__close_pane`, `send_keys`, `spawn_claude_pane`) and `CronCreate\|ScheduleWakeup`; `PostToolUse` on `Bash`; `UserPromptSubmit`; `SessionStart`; `Stop`; `PreCompact`; `Notification` (`idle_prompt`). | Keep (the events paddock's hooks need) | Feasible (`SessionStart`, `PreToolUse` on `Bash`, `Stop`); Unverified (the rest) | Observed firing in template launches [P2], [P3]. Probe for the rest: a settings file with marker-writing hooks on `UserPromptSubmit`, `PostToolUse`, `PreCompact` and `Notification`, a task that runs one Bash command, then `/compact` typed by a person; expect one marker per event. The MCP and scheduler matchers served renga and the dispatcher's loop and retire with them. |
+| HK-17 | Hook wiring tests and the `fixture-always-block.sh` smoke fixture. | Keep | Feasible | paddock's CI already runs bash tests (`tests/check-links.test.sh`); a hook that is a shell script can be tested the same way. |
+
+## 6. Lines the predecessor held, and lines paddock must hold
+
+The predecessor's denies and hooks are not copied. This section names the lines (what must not happen), then says which lines paddock holds on its own base and what holds them.
+
+### 6.1 Lines the predecessor held
+
+| Line | Held by |
+| --- | --- |
+| Secrets are not read by the Read tool or by Bash. | Layer 2 `Read()` denies plus Layer 3 `denyRead`, credential environment variables removed, `gh` token files denied. |
+| Only the secretary pushes and writes to GitHub. | Worker `git push` deny, `block-git-push.sh`, no `gh` credentials in the worker sandbox. |
+| No history destruction or skipped verification. | Repo-wide denies, `block-no-verify.sh`, `block-dangerous-git.sh`. |
+| A worker writes only its worktree, its own branch ref and shared objects. | Sandbox write surfaces per pattern, git metadata denies, `check-worker-boundary.sh`. |
+| No agent widens its own or another's permissions. | Settings-file denies, `check-worker-boundary.sh`, Claude Code's protected paths. Known gap: the secretary could still write through `python` or PowerShell. |
+| No recursive delete of worker folders. | Worker `rm -r` denies, `block-workers-delete.sh`. |
+| Sandboxed Bash reaches only allowlisted hosts and never falls back to unsandboxed. | Network allowlist (`strictAllowlist` in the spawn overlay), `failIfUnavailable`, exact `excludedCommands`. |
+| Images are not pushed to a registry. | Docker push denies in the spawn overlay. |
+| Only the dispatcher or secretary closes panes, never a relative target, never before the report. | `close_pane` deny for workers, `block-relative-close-pane.sh`, `block-close-before-retro.sh`. |
+| Subagents run in the background. | `block-foreground-subagent.sh`. |
+| Codex runs only through the gate, a bounded number of times. | `block-codex-over-cap.sh`, `block-codex-rescue.sh`. |
+| A merge needs CI on the exact head and the acceptance gate. | `gate-acceptance-before-merge.sh`. |
+| The dispatcher stays in scope, arms only the canonical loop, never presses Enter blind on a spawn prompt, and spawns only the intended model. | The four dispatcher hooks (HK-8). |
+| Workers do not recreate the organization's folders. | `block-org-structure.sh`. |
+| A hook that cannot read its input refuses. | The fail-closed payload rule (HK-1). |
+
+### 6.2 Lines paddock must hold
+
+"Kept" lines carry over. "New" lines exist because of what herdr is: a core that "runs commands with your account's access" and "is not a sandbox or a permission broker" [sec], and whose templates and mods are trusted code [sec], [app].
+
+| Line | Status | What holds it in paddock | Feasibility | Basis |
+| --- | --- | --- | --- | --- |
+| L-K1 Secrets are not read. | Kept | Claude Code `Read()` deny rules and sandbox `denyRead` in the worker's settings. | Unverified | The probes tested only a `Bash(...)` deny and a hook [P2], [P5], not `Read()` or `denyRead`. Probe: with the chosen settings, a worker's Read of `~/.ssh/<file>` and its `cat ~/.ssh/<file>` are both refused. |
+| L-K2 Only the secretary pushes and writes to GitHub. | Kept | Worker deny and hook (HK-3); no GitHub credentials in the worker's environment. | Feasible (deny); Unverified (environment) | [P2] for the hook. The environment part depends on L-N4: [P7] shows terminals inherit the core starter's environment. Probe: in a worker terminal, `env \| grep -E '^(GH_TOKEN\|GITHUB_TOKEN)='` prints nothing and `gh auth status` fails. |
+| L-K3 No history destruction or skipped verification. | Kept | HK-2 and deny rules. | Feasible | [P2]. |
+| L-K4 A worker writes only its worktree, plus the record and note files assigned to it. | Kept | Claude Code sandbox write surface and HK-6. | Unverified | The extra targets (its history file under `events/`, `knowledge/raw/`) are set by [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when). Probe: a worker with the chosen settings runs `touch <outside path>` (refused) and appends to its own history file (allowed). |
+| L-K5 No agent edits its own or another agent's settings. | Kept | The role's settings kept outside the worktree (`--settings` [P5], or managed settings) where the sandbox does not let the worker write; deny rules on the worktree's `.claude/settings*.json` and `~/.claude/settings.json`; Claude Code's protected paths. | Unverified | An `Edit(...)` deny stops only the Edit and Write tools; a file inside the worktree is inside the sandbox's write surface, so Bash can still rewrite it. Probe: a worker runs `sed -i` on its worktree's `.claude/settings.local.json` and on its `--settings` file; expect the second to be refused by the sandbox. |
+| L-K6 No recursive delete of worker folders. | Kept | HK-4 and deny rules. | Feasible | [P2]. |
+| L-K7 Sandboxed Bash reaches only allowlisted hosts and does not fall back. | Kept | Claude Code sandbox settings, by the channel [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when) picks. The predecessor found `strictAllowlist` effective only from `--settings` scope. | Unverified | [P5] shows that a `--settings` file's deny and hooks apply, not its sandbox. Probe as PRM-6: a non-allowlisted host is refused. |
+| L-K8 Subagents run in the background. | Kept | HK-5. | Feasible | Same mechanism as [P2]. |
+| L-K9 A merge needs CI on the exact head and the acceptance gate. | Kept (line); Open (gate) | GT-1. | Feasible (hook); Open (checker) | [Q11](open-questions.md#q11-what-happens-to-the-predecessors-python-gates-and-generators). |
+| L-K10 Codex runs only through its gate, a bounded number of times. | Kept (line); Open (gate) | GT-2. | Feasible (hook); Open (counter) | [Q11](open-questions.md#q11-what-happens-to-the-predecessors-python-gates-and-generators). |
+| L-K11 A hook that cannot read its input refuses. | Kept | HK-1. | Feasible | [P2]. |
+| L-K12 No secrets enter git history. | Kept | The git `pre-commit` secret scanner (GT-13), and HK-2 so that `--no-verify` cannot skip it. | Feasible | A git hook; who installs it is [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when). |
+| L-N1 No agent writes herdr's trusted code: templates (`~/.config/herdr-core/templates/`, shared by every session [sec]), herdr-core's `config.toml`, herdr-app's mods and settings. | New | The sandbox's write surface, which does not include those folders; `Edit` and `Write` denies on them ([architecture §4](architecture.md#4-where-each-part-goes)). A `Bash(...)` deny matches command text, not the written path, so it cannot hold this line. Writing through the core's API (`file.write`) bypasses the sandbox, hence L-N2. Whether the secretary may change mods is [Q5](open-questions.md#q5-does-the-secretary-write-mods). | Unverified | Templates are read fresh on each use [tpl], so a written template runs on the next launch. Probe as PRM-6: a worker's `cat > ~/.config/herdr-core/templates/x.md` is refused. |
+| L-N2 A worker cannot reach the core's API at all: no `hc kill`, `rm`, `send`, `keys`, `interrupt`, `run`, `attach`, `put`, `label`, `keep`, `server stop` or `restart`, `update`, `machine add`, and no API calls such as `machine.exec`, `file.write` or `doc.set`, which act outside its sandbox. | New | Workers report through the mailbox [0002] and need no `hc`. The sandbox denies the core's socket and state folders (`$XDG_RUNTIME_DIR/herdr-core/`, `~/.local/state/herdr-core/`), and the worker's environment carries no `HC_SOCKET` or `HC_SESSION`. A `Bash(hc:*)` deny is only a second layer: `/usr/bin/hc`, `curl --unix-socket` or a script would not match it. | Unverified | Anyone who can connect to the API "can run commands, read and change files, and control its terminals"; "a status of blocked ... is not an access boundary against another client" [sec]. In this worker's own sandbox `hc` could not reach a core (section 2), but that was the predecessor's sandbox. Probe: in a worker launched with paddock's settings, `hc ls` fails with `unavailable` and a `Bash(hc ls)` call is refused by the deny rule. |
+| L-N3 Nobody answers a worker's permission prompt by typing into it. | New | Secretary rule: never `hc send --force`, never `hc keys` on a blocked worker; the person answers in the worker's terminal (`hc attach`, or the terminal in herdr-app). | Feasible | [skill]: `send` "refuses unless `--force`; don't use it to bypass a permission decision"; "`hc attach <t>` lets a person interact directly". The folder-trust dialog at launch is a separate case: [Q13](open-questions.md#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog). |
+| L-N4 A worker's environment carries none of the secretary's session secrets (messaging token and socket, session ids) and does not inherit `CLAUDE_CODE_CHILD_SESSION`. | New | Start the core from a clean environment, or set each launch's environment. | Unverified | [P7]: every `CLAUDE*` variable of the core's starter reached the hc terminal, and transcript saving was off. [Q17](open-questions.md#q17-what-environment-do-the-core-and-its-terminals-start-with). |
+| L-N5 A worker ends only when the secretary has its report (or a person says so). | New (moved from the dispatcher) | Secretary rule before `hc kill`. | Feasible | Terminals stay until killed [skill]. |
+| L-N6 Workers survive a renewal or crash of the secretary, or the opposite is chosen and stated. | New | `hc run --outlive-parent` for workers, or not ([Q19](open-questions.md#q19-do-workers-outlive-the-secretary-that-started-them)). | Unverified | "Terminals you start are your children. They end when you end, unless started with `--outlive-parent`" [skill]; `parent` is set only at launch [rpc] `terminal.run`. Probe: a template-launched secretary starts a worker; `hc kill` the secretary; `hc ls` shows whether the worker remains. |
+| L-N7 paddock never stops or restarts the person's core on its own. | New | Skill rule: `hc server stop` and `restart` only when the person asks (SUS-3). | Feasible | [skill]: "Never `hc server stop` or restart the user's core unless asked." |
+| L-N8 Only the secretary writes `org-state` and the mailbox store. | New | L-N2 for the core document (any API client can `doc.set` it); the `org` server's own checks for the mailbox (PRM-11). | Unverified | `org-state` has one writer by convention only [proto]; core has "no separate API password or per-client permission check" [sec]. Probe as L-N2. |
+| L-N9 Workers do not read herdr's state or the window's files. | New | Sandbox `denyRead` on `~/.local/state/herdr-core/` and on herdr-app's folder. | Unverified | "Treat the whole directory as private: terminal output and saved screens may contain secrets" [sec]; the secretary's terminal output is saved there. Probe: a worker's `cat` of a file under `~/.local/state/herdr-core/` is refused. |
+
+Lines not carried: the dispatcher's own lines (no dispatcher), the pane-selector rule (no panes; replaced by L-N2), "workers do not recreate the org's folders" (replaced by L-N1), and the ad-hoc CI watcher ban (MON-12).
+
+## 7. Gates
+
+| # | Predecessor | Verdict | Feasibility | Basis |
+| --- | --- | --- | --- | --- |
+| GT-1 | Acceptance gate and merge gate: `tools/acceptance_gate.py` (the first commit declares `Acceptance-Test:` paths; test files and test infrastructure unchanged to head; CI failed on that commit and passed on head), `tools/acceptance_merge_hook.py` behind `gate-acceptance-before-merge.sh`, `merge_approval_mode` (`human` / `acceptance`, falling back to `human`), the seven stop lines before a self-merge, the test-commit-first push, the brief's test-first section. | Open | Feasible (hook); Open (checker) | The rule is kept (L-K9). The checker is Python with SQLite and `gh`: [Q11](open-questions.md#q11-what-happens-to-the-predecessors-python-gates-and-generators). Its CI evidence came from pr-watch's `ci_completed` rows (MON-12). |
+| GT-2 | Codex gate and round cap: `tools/codex_review_gate.sh` (refuses an "empty pass": a review that ran no command), `tools/codex_round_cap.py` (3 diff rounds and 1 design review by default, counted in SQLite outside the worker), the delegate skill's handling of `CODEX_ROUND_DENIED`. | Open | Feasible (the gate script is bash; the hook works); Open (the counter) | [Q11](open-questions.md#q11-what-happens-to-the-predecessors-python-gates-and-generators). The counter must live where the worker cannot write; where that is depends on L-K4. |
+| GT-3 | `tools/rebase_preflight.sh`: before a rebase, list paths the sandbox makes read-only. | Open | Unverified | Bash. Whether it is needed depends on which paths paddock's sandbox makes read-only ([Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when)). Probe: in a worker, rebase over an upstream change to a protected path and see whether it stops with `could not detach HEAD`. |
+| GT-4 | Self-edit approval: `tools/self_edit_approval.py` types the secretary's approval into a self-edit worker as a user message, so Claude Code's classifier lets `.claude/**` edits through, and records `self_edit_approval_sent` so that a skipped approval shows up in an audit. | herdr (typing); Keep (the record) | Feasible | The approval is the person's: they answer in the worker's terminal through `hc attach` or herdr-app [skill]. Typing it in for them is against [0002] and L-N3. The record becomes an `org-state.approvals` entry that the person resolves [proto]. |
+| GT-5 | Spawn gate: `tools/spawn_gate.py verify` checks the dispatcher's claim that a worker started and got its instruction: the worker joined the messaging, its folder matches the delegation, and a durable `worker_spawn_verified` event is written; the loop's step 0 audits unverified spawns. | herdr (delivery); Keep (the start record) | Feasible (delivery); Unverified (the mailbox half) | `hc run` returns `first_message: {sent, reason}`, kept in `hc get` even after a restart [skill]; observed in [P1] to [P6]. It says the task was pasted, not that the worker can reach the mailbox, and it goes away with `hc rm`. The worker's first mailbox message is the start record; the `org` server does not exist yet ([Q8](open-questions.md#q8-what-is-each-component-written-in)). |
+| GT-6 | Retro gate: `tools/dispatcher_retro_gate.py` and `block-close-before-retro.sh`: no close before the secretary confirmed the report. | Keep (line) | Feasible | L-N5. |
+| GT-7 | Capability gate (`tools/capability_gate.py`): renga 2.0 capability and pane-control canaries need a supervised first drive. | Retire | Feasible | renga is retired. |
+| GT-8 | Notify gate (`tools/notify_gate.py`): which dispatcher notices reach the secretary. | Retire | Feasible | No dispatcher. |
+| GT-9 | Version and compatibility checks: `check_runtime_version.py`, `check_renga_compat.py`, `check_runtime_schema_drift.py`, `check_group_b_selectors.py`. | Retire | Feasible | They check claude-org-runtime and renga, which paddock does not use. herdr updates itself with `hc update` [skill]. |
+| GT-10 | `tools/check_state_drift.py` (`state.db` vs `.state/workers/*.md`). | Retire | Feasible | One writer per document, no second copy [0004]. |
+| GT-11 | `tools/check_curate_threshold.py`: start the curator at 5 raw notes, 5 pending skill candidates or 20 work skills. | Keep | Feasible | Counting files is `ls` and `wc` in the shell; the curator is started from a template ([architecture §3](architecture.md#3-roles)). |
+| GT-13 | Git `pre-commit` hook (`.githooks/pre-commit`, installed with `git config core.hooksPath .githooks` by `scripts/install-hooks.sh`): a secret scanner over added lines (the only check against secrets entering history), and a guard that refuses a rendered `SKILL.md` committed without its `.in` source. | Keep (secret scan); Retire (skill-source guard) | Feasible | A git hook, independent of herdr. `.in` sources retire with INS-4. Who installs the hook in each project clone, and when, is [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when); linked worktrees share the clone's configuration, so one `core.hooksPath` per clone covers its workers. |
+| GT-14 | Repository CI as the gate's executor: the `tests.yml` jobs, `tests/run-all.sh` refusing to pass when a test-named file is not collected, and `tools/_hermetic_env.py` scrubbing transport variables so tests run inside a live organization cannot message the secretary. | Keep | Feasible | The acceptance gate reads CI results (GT-1), so "CI really ran the declared test" stays a line. Tests that touch herdr use their own core and config: "Tests need their own `HC_SESSION` and scratch XDG paths" [skill]; "Tests should also use scratch XDG directories" [sec]. The probes in section 2 did this. |
+| GT-12 | The five "awaiting the person" gates (`notify_sent kind=awaiting_user`: worker completed, CI green before merge, escalation, escalation reply, CI on a different head). | Keep (rewritten) | Feasible | Each becomes an entry in `org-state.approvals`, shown as a card by the mod [proto]. Whether completion also raises a notification is [Q2](open-questions.md#q2-how-much-of-a-childs-reporting-goes-through-the-mailbox). |
+
+## 8. Records
+
+| # | Predecessor | Verdict | Feasibility | Basis |
+| --- | --- | --- | --- | --- |
+| REC-1 | The journal: append-only `events` table in `.state/state.db`, written through `journal_append.sh`; corrections are new rows with `_correction`; new kinds need a catalog row in `docs/journal-events.md`. | Keep (as history) | Feasible | Per-writer monthly JSON lines, `events/<YYYY-MM>/<writer-id>.jsonl` [0004]. A file has one writer, so appending with the shell is enough. |
+| REC-2 | Who writes: "workers never write the journal"; the secretary, the dispatcher, a few hooks and tools write. | Keep (rewritten) | Unverified | [0004] says the party that causes an event writes its own line, which lets a worker write its own file. The worker's sandbox must allow that one path (L-K4, [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when)). Probe as L-K4. |
+| REC-3 | Event families in the catalog: worker lifecycle, delegate flow, plan and design, PR and push, Codex rounds and model, acceptance gate, history and issues, observability (`anomaly_observed`, `notify_sent`, `sandbox_deny_skipped`), CI, session lifecycle, and kinds emitted but not catalogued (`hook_denied`, `pr_watch_started`, `pr_merge_watch_timeout` and others). | Open | Feasible (any kept kind can be written as a line) | Which kinds are kept is open in [0004]. Kinds that copy herdr facts (`worker_spawned`, pane exits) are available from `hc get` and `hc events` instead [rpc]. |
+| REC-4 | `event_deliveries` outbox and `tools/relay_scan.py`: terminal events (CI done, PR merged, Codex cap) relayed to the secretary by the dispatcher's loop, exactly once per recipient (`UNIQUE (source_event_id, recipient)`), because the direct push could silently fail and leave the secretary idle. | Open | Unverified | Waking an idle secretary is [Q18](open-questions.md#q18-how-does-anything-reach-an-idle-agent). herdr has no delivery ledger, and a Codex-cap denial comes from a hook inside a worker, not from a terminal exit, so no hc note exists for it. For exits: The secretary learns that a helper terminal ended from hc's note to its parent [skill: "background server; exit comes as a note"], and the mailbox carries the rest [0002]. Whether such notes are typed into the parent is [Q2](open-questions.md#q2-how-much-of-a-childs-reporting-goes-through-the-mailbox). Probe: from an hc-launched Claude, `hc run --bg --name ci -- sh -c 'sleep 5; exit 3'`, then `hc wait --children any` returns with that child and exit code 3. |
+| REC-5 | `state.db` as the single store: SQLite with WAL, the `runs` table and its status vocabulary, `org_sessions`, `projects` / `workstreams` / tags, schema migrations, the legacy importer, the writer API, the resume-briefing queries, the generated `org-state.md` and `org-state.json`, the JSON migration framework, the write rules (temp file and rename, UTF-8, LF). | Retire (SQLite); Keep (what it held) | Feasible | No SQLite [0004]. Work in progress and approvals are `org-state` [proto]; finished work is history (REC-1). Atomic writes of the documents come from herdr: `doc.set` "Persists atomically", at most 1 MiB per value [rpc] (`org-state` is capped at 64 KiB [0004]). History is appended with the shell's `>>` by the file's only writer (REC-1); `file.write` replaces a whole file [rpc] and is not used for it. |
+| REC-6 | Run-status predicates and invariants (active, reserved, user-visible, terminal; I1 to I8). | Keep (rewritten) | Feasible | A task is in `org-state.work` until it finishes or is dropped [0004]; its terminal's state and status come from core [rpc] `terminal.get`. |
+| REC-7 | `worker_dirs` inventory and the curator's 90-day archive of worker folders. | Keep (as a delegation step) | Feasible | Removing a worktree after the work is merged or dropped is git (`git worktree remove`); no inventory table. |
+| REC-8 | Fixture scrub policy for turning `.state/` into test fixtures. | Retire | Feasible | No `state.db` fixtures. |
+| REC-9 | `.state/` is local and ignored by git. | Keep | Feasible | Records live on the primary host outside the repository; their folder is still open in [0004]. |
+| REC-10 | Metrics and defense reports: `tools/org_metrics_report.py`, `tools/defense_report.py`, `docs/operations/defense-register.md` (each defense, and how often it stopped something). | Open | Feasible (reading JSON lines is a text scan) | Depends on which kinds are kept ([0004], REC-3), and on [Q15](open-questions.md#q15-which-of-the-predecessors-optional-organization-features-carry-over). |
+
+## 9. State files
+
+| # | Predecessor | Verdict | Feasibility | Basis |
+| --- | --- | --- | --- | --- |
+| ST-1 | Dispatcher files: `.state/workers/worker-<task>.md` seeds and archive, `dispatcher/inbox/` and `outbox/`, the event cursor, `panes*.json` snapshots, `worker-idle-state.json`, `spinner-age-seen/`, the relay heartbeat, `inspect-cache/`, `curate-inflight.json`, `spawn-prompt/`. | Retire | Feasible | They serve screen watching and the dispatcher. Status, labels and terminal lifecycle come from core [rpc] `events.subscribe` ("then every fact change in order ... `missed` + fresh snapshot for a subscriber that fell behind"). The task text travels in `hc run` [skill]. |
+| ST-2 | `.state/pending_decisions.json` (worker questions: pending, escalated, resolved) and the escalation progress log. | Keep | Feasible | `org-state.approvals` [proto]. |
+| ST-3 | `.state/attention.json`, `attention_notified.json`, `attention-watch.log`. | Keep (rewritten) | Feasible | See NTF-1. A mod keeps per-copy state in `localStorage` or `shared()` [app]. |
+| ST-4 | `.state/context/<role>.json`, `<role>.idle.json`, `handover-op.json`, `handover-backoff.json`, late-input files. | Open | Feasible | [Q16](open-questions.md#q16-how-is-the-secretarys-context-renewed). |
+| ST-5 | Handover documents: `.state/secretary-handover.md` (with `.prev.md`) and `dispatcher-handover.md`. | Keep (secretary); Retire (dispatcher) | Feasible | A handover document is a plain file. |
+| ST-6 | Broker files: `.state/broker/` (daemon, admin token, `queue.jsonl`) and the secretary queue watcher's pid file. | Retire | Feasible | The broker is replaced by the `org` mailbox [0002]; its storage is [Q8](open-questions.md#q8-what-is-each-component-written-in). |
+| ST-7 | Dashboard runtime files (`dashboard.json`, pid, log). | Retire | Feasible | The separate dashboard is retired ([architecture §4](architecture.md#4-where-each-part-goes)). |
+| ST-8 | `.state/conveyor/scope-contract.md`, `.state/work_discovery/` (judge cache, spend log, put-aside list). | Open | Feasible | [Q15](open-questions.md#q15-which-of-the-predecessors-optional-organization-features-carry-over). |
+| ST-9 | `.state/worker_briefs/*.toml`. | Open | Feasible | With INS-12. |
+| ST-10 | PR-watch logs (`pr-watch-<n>.log`) and ad-hoc scratch under `.state/` (PR body drafts, lap logs, captures). | Retire | Feasible | Watch output stays readable in its hc terminal until removed (`hc read`) [skill]; scratch is not a mechanism. |
+
+## 10. Registries
+
+| # | Predecessor | Verdict | Feasibility | Basis |
+| --- | --- | --- | --- | --- |
+| REG-1 | `registry/projects.md`: nickname, project, path or URL, description, common tasks, triage flag, base branch; created from `projects.example.md` by `tools/ensure_projects_registry.py`; parsed by `tools/registry_parser.py`. | Keep | Feasible | A Markdown table the secretary reads needs no parser. Where it lives is [Q14](open-questions.md#q14-where-do-organization-settings-and-registries-live). |
+| REG-2 | `registry/org-config.md`: `default_permission_mode`, `workers_dir`, `max_concurrent_workers`, `triage_home`, `integration_branch`, `merge_approval_mode`. | Keep (rewritten) | Feasible | [Q14](open-questions.md#q14-where-do-organization-settings-and-registries-live). The permission mode moves into the template's command (PRM-2). The worker cap can be checked by counting live terminals with the `task_id` label (`hc ls`, [cmd] `--label`). |
+| REG-3 | `registry/goals/<owner>/<repo>.md` goal ledgers used by work discovery. | Open | Feasible | [Q15](open-questions.md#q15-which-of-the-predecessors-optional-organization-features-carry-over). |
+| REG-4 | Knowledge: `knowledge/raw/<date>-<topic>.md` (four headings), `raw/archive/`, `knowledge/curated/<topic>.md`, the private/public split (`*.local.md`). | Keep | Unverified (the worker's write path) | Plain files the curator reads and writes ([architecture §3](architecture.md#3-roles)). A worker writing its raw note outside its worktree needs that path in its sandbox: L-K4. |
+| REG-5 | Skill candidates: `knowledge/skill-candidates.md` (format) and `.local.md` (entries). | Keep | Feasible | Plain files; see SK-8. |
+
+## 11. Skills
+
+| # | Predecessor | Verdict | Feasibility | Basis |
+| --- | --- | --- | --- | --- |
+| SK-1 | Skill packaging: one folder per skill with `SKILL.md` (name, trigger description, effort, owner, `allowed-tools`) and `references/`. | Keep | Feasible | "Skills are Markdown that Claude Code reads" ([architecture §5](architecture.md#5-components-and-what-they-are-written-in)). Where the skills are installed for template-launched agents is part of [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when). |
+| SK-2 | `org-start`: transport, identity, registry, workers list, runtime check, dispatcher start, watchers, cockpit. | Keep (rewritten) | Unverified | It becomes: start the core with a clean environment ([Q17](open-questions.md#q17-what-environment-do-the-core-and-its-terminals-start-with)), start the secretary template with `--keep` [proto], install mods. Probe: run the rewritten skill from a login shell and check `hc get secretary` reports a status and `env` inside it has no `CLAUDE_CODE_CHILD_SESSION`. |
+| SK-3 | `org-delegate`: resolve the project, look up work skills, create the worktree and brief, launch, then handle every worker message (ack, record, report, wait). | Keep (rewritten) | Feasible (launch and settings); Not feasible as is (first message to a new worktree) | [P1], [P2]. In a new folder the launch's task is not sent until the folder-trust dialog is answered [P6]: [Q13](open-questions.md#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog). |
+| SK-4 | Secretary intervention: look at a worker that has been on one phase too long or silent for an hour; send Escape and a tighter instruction. | herdr (look, stop); Open (redirect) | Feasible (look, stop); Not feasible as written (redirect) | `hc read` to look, `hc interrupt` to stop a turn ("Press the stop key ... Never escalates") [skill], [rpc]. An interrupted worker is idle and reads its mailbox only on its own turn [0002], so a mailbox message does not start it. Whether the redirecting instruction may follow the interrupt as an `hc send` is [Q18](open-questions.md#q18-how-does-anything-reach-an-idle-agent). |
+| SK-5 | `org-escalation`: ack, record in three places, present options, wait for the person, forward the answer. | Keep | Feasible | The record is `org-state.approvals` [proto]; the answer goes to the worker through the mailbox [0002]. |
+| SK-6 | `org-pull-request`: the secretary pushes, opens the PR, records it, watches CI, handles review, merges by `merge_approval_mode`, closes the worker. | Keep (rewritten) | Feasible (push, PR); Open (merge gate) | CI waiting is MON-12; the merge gate is GT-1. |
+| SK-7 | `org-curate`, `org-retro`. | Keep | Feasible | Plain files and the curator template. |
+| SK-8 | Growth through skills: the work-skill idea (any non-`org-` skill is a reusable task pattern), `skill-eligibility-check` (five signals), the candidate queue, `skill-audit`. | Keep | Feasible | This is one of paddock's three ideas (README). No herdr part is involved. |
+| SK-9 | `org-setup` (merge role permissions into settings files). | Open | Feasible | [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when). |
+| SK-10 | `org-dashboard` (local web dashboard over `state.db`). | Retire | Feasible | The window is herdr-app mods [0003]. |
+| SK-11 | `org-attach` (print tmux attach commands). | herdr | Feasible | `hc attach <t>` [skill]; herdr-app shows terminals [app]. |
+| SK-12 | `org-attention-start` / `org-attention-stop`. | Keep (rewritten) | Feasible (while the window is open) | See NTF-1. |
+| SK-13 | `org-conveyor`, `work-discovery`, `goal-setup`. | Open | Feasible | [Q15](open-questions.md#q15-which-of-the-predecessors-optional-organization-features-carry-over). |
+| SK-14 | `secretary-handover`, `secretary-resume`. | Keep (rewritten) | Feasible (the document) | Writing and reading a handover document needs nothing from herdr. How the new session starts is [Q16](open-questions.md#q16-how-is-the-secretarys-context-renewed); whether the workers survive it is [Q19](open-questions.md#q19-do-workers-outlive-the-secretary-that-started-them). |
+| SK-15 | `dispatcher-handover`, `dispatcher-resume`. | Retire | Feasible | No dispatcher. |
+| SK-16 | `runtime-release-with-paired-ja-sync` (claude-org-runtime release checklist). | Retire | Feasible | paddock does not use claude-org-runtime. |
+| SK-17 | `wsl-windows-chrome-screenshot` (a worker's screenshot recipe). | Keep | Feasible | A work skill with no organization dependency. |
+| SK-18 | The `list_peers` capability gate reference read before every `list_peers` flow. | Retire | Feasible | renga-specific (GT-7). |
+
+## 12. Monitoring
+
+| # | Predecessor | Verdict | Feasibility | Basis |
+| --- | --- | --- | --- | --- |
+| MON-1 | The dispatcher's `/loop 3m` cycle (spawn audit, `poll_events`, `check_messages`, `list_panes` reconcile, screen inspection, stall, relay-gap and pane-output checks, relay), its canonical-directive hook, the secretary-side "loop not armed" watcher, the halt mark, and the loop's own state files. | herdr (the facts); Open (who consumes them, and when) | Feasible (the facts, and waiting by the secretary that launched the workers) | Who acts on a change while the secretary is idle or busy is [Q18](open-questions.md#q18-how-does-anything-reach-an-idle-agent); after a renewal the new secretary has no children to wait for ([Q19](open-questions.md#q19-do-workers-outlive-the-secretary-that-started-them)). Facts: Status and lifecycle arrive as events [rpc] `events.subscribe`; the secretary waits with `hc wait --children any` or `all` [skill]. Measured: `working`, `blocked`, `done` reached `hc get` and `hc events` [arch]. |
+| MON-2 | Observation principle: "cannot see" is a state of the observer; two independent observations before declaring an anomaly. | herdr | Feasible | "Status comes from the program's OSC 7501 reports ... Do not guess status from screen text"; a program that never reported has no status [skill], [architecture §2](architecture.md#2-design-principles) principle 4. |
+| MON-3 | Lifecycle polling with a session-bound cursor, and `tools/cursor_reset.py` for a cursor from another session. | herdr (current state); Open (changes while nobody listens) | Feasible (current state); Not feasible (replay) | `events.subscribe` gives a snapshot, then changes in order, and "`missed` + fresh snapshot for a subscriber that fell behind" [rpc]; `seq` restarts with each core ([Q8](open-questions.md#q8-what-is-each-component-written-in)). A change that happened while no subscriber was connected (a `blocked` that cleared, a `turn`) is not replayed; the snapshot shows only the state now. Who keeps a subscription is [Q18](open-questions.md#q18-how-does-anything-reach-an-idle-agent). |
+| MON-4 | `pane_exited` attribution by recorded numeric ids, and `list_panes` reconcile for vanished panes; background-tab liveness checks. | herdr (the facts); Open (who consumes them) | Feasible (the facts) | Consumer: [Q18](open-questions.md#q18-how-does-anything-reach-an-idle-agent). Facts: Lifecycle events `created`, `lost`, `finished`, `removed` per terminal [rpc]; the `task_id` label ties a terminal to its task [proto]. |
+| MON-5 | Approval-blocked detection by regex on the last screen line, and worker self-reports of `APPROVAL_BLOCKED`. | herdr (permission prompts) | Feasible (permission prompts); Not feasible (startup dialogs); Unverified (other prompts) | `blocked` with `kind: "permission"` and `msg: "approve Bash: ..."` [arch]. A Claude Code at its folder-trust dialog reports no status at all [P6], and the predecessor also met a "Load development channel?" startup prompt. Probe for other prompts: a task that makes the agent ask the person a question with its question tool; expect `hc get` to show `blocked` (record the `kind`). |
+| MON-6 | Error detection by screen substring (`API Error`, rate limit). | herdr | Unverified | OSC 7501 has an `error` word [skill], but no measurement shows Claude Code reporting it. Probe: launch `claude --model no-such-model` from a template with a task; expect `hc get` to show `status.state: "error"` (if it shows `idle` or `done`, error detection stays a screen read and needs its own row). |
+| MON-7 | Stall detection: the same screen hash for three cycles (about 9 minutes), checked against worker messages before notifying. | Keep (rewritten) | Feasible | `hc get` gives `status_ms`, the time of the last status change ([P3] output). An unchanged `status_ms` alone cannot tell a long `working` turn from a frozen one, so the rule pairs it with a change in the screen (`hc read --lines 0` [skill]) or in the `turn` count. Who applies it ties to [Q3](open-questions.md#q3-incident-threshold-when-the-secretary-does-not-move). |
+| MON-8 | Relay-gap detection (a person's answer not forwarded to a worker for 15 minutes) and pane output with no peer message (a worker that answered on its screen instead of the mailbox). | Keep (rewritten) | Feasible | A worker's `done` with no mailbox report since its last turn is visible from the `turn` event [P3] plus the mailbox. The secretary-not-moving case is [Q3](open-questions.md#q3-incident-threshold-when-the-secretary-does-not-move). |
+| MON-9 | Close flow: completion-report gate, retro, `PANE_CLOSED`, curate check, triage scan. | Keep (rewritten) | Feasible | L-N5; then `hc kill` and `hc rm` [skill]; then GT-11. The triage scan is SK-13. |
+| MON-10 | Curator in-flight watch (`CURATE_DONE` / timeout). | herdr | Feasible (for the secretary that started the curator) | `hc wait <curator>` returns when it stops working or exits [skill]; its result comes as a report. |
+| MON-11 | `completion_reported_at` control messages (`WORKER_COMPLETION_NOTED`, `WORKER_REOPENED`). | Retire | Feasible | They tuned the dispatcher's noise filter. |
+| MON-12 | PR CI watching: the `/pr-watch-pane` skill, `tools/pr_watch.py` and wrappers (30 s polls, `ci_completed` and merge records), `tools/peer_notify.py`, the "only through `/pr-watch-pane`" rule and hook, `watcher_restart_guard.py`, the PR-state helpers. | herdr (waiting); Keep (records) | Unverified | [skill] shows the pattern: `hc run --bg --rm --no-notify --name ci -- gh run watch 123 --exit-status`, then `hc wait`, so the watcher is a child the secretary can see and wait for. Not measured here. Probe: in an hc-launched Claude, `hc run --bg --name ci -- gh run watch <run id> --exit-status`, then `hc wait ci`; expect it to return with `gh`'s exit code when the run ends. The `ci_completed` evidence the merge gate needs is then written by the secretary (GT-1). |
+| MON-13 | `tools/secretary_queue_watcher.py` (broker messages to the secretary undelivered for 120 s). | Retire | Feasible | Broker-specific. Mailbox delivery is the `org` server's job ([Q8](open-questions.md#q8-what-is-each-component-written-in)). |
+| MON-14 | Stale-worker sweep and state-drift runbook. | Retire | Feasible | No second copy of run state [0004]. |
+
+## 13. Notifications
+
+| # | Predecessor | Verdict | Feasibility | Basis |
+| --- | --- | --- | --- | --- |
+| NTF-1 | Attention watcher (`claude-org-runtime attention watch`, started by `/org-attention-start`): desktop toast, sound and bell by severity (approval blocked, CI failed, pending decision, answer not forwarded, crashed pane, secretary awaiting the person), cooldown, an already-notified ledger, the example config. | Keep (as a mod) | Feasible while herdr-app is open; Not feasible with the window closed | `notify({ title, body, level, icon, timeout })` and `playSound("done" \| "blocked" \| file)` [app]. Mods run only while herdr-app is open ([Q8](open-questions.md#q8-what-is-each-component-written-in)). With the window closed, nothing in herdr notifies a person; that ties to [Q3](open-questions.md#q3-incident-threshold-when-the-secretary-does-not-move). |
+| NTF-2 | Cockpit "needs decision" marker and the cockpit / dispatcher view (tmux). | Keep (as a mod) | Feasible | `org-state.approvals` as cards [proto]; the screen is mods [0003]. |
+| NTF-3 | Dispatcher-to-secretary notices (`WORKER_PANE_EXITED`, `STALL_SUSPECTED`, `SECRETARY_RELAY_GAP_SUSPECTED` and others). | herdr (blocked, error, exit of direct children); Keep (stall and relay gap, MON-7 and MON-8) | Feasible (direct children only) | hc notifies a parent "when a child cannot report (blocked, error, exited)" [skill]; it has nothing for a stall or a relay gap. Whether those notes are typed into the parent, or turned off with `notes = false` [cmd], is [Q2](open-questions.md#q2-how-much-of-a-childs-reporting-goes-through-the-mailbox). |
+
+## 14. Suspend, resume, interrupt and handover
+
+| # | Predecessor | Verdict | Feasibility | Basis |
+| --- | --- | --- | --- | --- |
+| SUS-1 | `/org-suspend`: a ledger of who to ask; `SUSPEND:` to workers asking for done, changed files, next step and blockers; screen and git checks for non-responders; session marked SUSPENDED. The worker side: stop and report the four items; a later `SHUTDOWN:` ends it. | Keep (rewritten) | Feasible | `SUSPEND:` goes through the mailbox [0002]; `hc read` and git cover non-responders [skill]. Terminals keep running with no window open [sec], so suspending is a choice, not a need, when the person closes the window. |
+| SUS-2 | `/org-resume`: brief the person from the store, compare with each worktree's git state, propose a plan, wait for approval. | Keep (rewritten) | Feasible (secretary); Open (workers) | After a full core stop, `hc run ... claude --continue` resumed the same session [arch]. Not when transcripts are off: [P7] showed "Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker", and no session log was written ([Q17](open-questions.md#q17-what-environment-do-the-core-and-its-terminals-start-with)). Workers: [Q4](open-questions.md#q4-worker-recovery-after-a-core-restart). |
+| SUS-3 | `/org-down`: suspend, then stop only the organization's own processes (dashboard, watchers, broker daemon). | Keep (rewritten) | Feasible | Suspend, then `hc kill` and `hc rm` the terminals paddock started (found by the `task_id` label, [cmd] `--label`), then stop the `org` server. Not `hc server stop`: it stops "the core and its programs" [rpc], and [skill] says "Never `hc server stop` or restart the user's core unless asked. It affects every terminal" and "Only clean up terminals you started". L-N7. |
+| SUS-4 | Interrupting a worker's turn (Escape typed by the secretary). | herdr | Feasible | `hc interrupt` [skill], [rpc] `terminal.interrupt`. [0002] keeps `hc send` for interrupts. |
+| HND-1 | Secretary handover: `secretary-handover` writes the handover document; a person (or the watcher) types `/clear`; `secretary-resume` reads it back. | Keep (document); Open (how the new session starts) | Feasible (the document); Open (keeping the workers) | [Q16](open-questions.md#q16-how-is-the-secretarys-context-renewed). If renewal ends the secretary's program, its workers end too unless they were started with `--outlive-parent`, and a new secretary is not their parent: [Q19](open-questions.md#q19-do-workers-outlive-the-secretary-that-started-them). |
+| HND-2 | Automatic handover: `tools/context_handover_watch.py` reads the context records and the transcript's token usage every 30 s, and at `CLAUDE_ORG_HANDOVER_THRESHOLD_TOKENS` types the handover commands into the role's pane. | Open | Feasible (reading the transcript); Not feasible within [0002] as is (typing `/clear` into the secretary) | [0002] limits `hc send` to the first task and interrupts. [Q16](open-questions.md#q16-how-is-the-secretarys-context-renewed). |
+| HND-3 | Dispatcher handover and resume, and the secretary driving it. | Retire | Feasible | No dispatcher. |
+
+## 15. Retired infrastructure
+
+| # | Predecessor | Verdict | Feasibility | Basis |
+| --- | --- | --- | --- | --- |
+| RET-1 | The transport seam (`tools/transport.py`, `ORG_TRANSPORT`), renga and its pane conventions, the broker daemon and its runbook, `claude-org-runtime` (spawn runner, settings renderer, attention watcher, broker, updater `tools/update_runtime.py`). | Retire | Feasible | [architecture §4](architecture.md#4-where-each-part-goes) "Retired"; terminals are herdr-core's [skill]. The runtime's settings rendering is the one piece whose duty remains: [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when). |
+| RET-2 | The local web dashboard (`dashboard/`, `tools/stop_dashboard.py`) and the tmux cockpit (`tools/org_cockpit.py`, `tools/org-dispatcher-view.sh`). | Retire | Feasible | The window is herdr-app mods [0003]. |
+| RET-3 | One-off migration runbooks (moving worker folders, making the projects registry local). | Retire | Feasible | One-time steps of the predecessor's history. |
+| RET-4 | Docker distribution (`docker/`): an image with `managed-settings.json` forcing the sandbox on with `failIfUnavailable`, a start-time sandbox canary, a `--setup` ritual (Claude, `gh` and Codex logins, settings prune), and a list of private files never baked into the image. | Retire (the image); Open (managed settings as a channel) | Feasible | Container setup is retired ([architecture §4](architecture.md#4-where-each-part-goes)). Managed settings, which no agent can edit, are one of the channels in [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when). |
+| RET-5 | Installers (`scripts/install.sh`, `install.ps1`, their CI): check `git`, `claude`, `gh`, `jq`; clone; `pip install -e .`; register the renga MCP server; and the dependency pin window in `pyproject.toml`. | Retire | Feasible | paddock installs nothing beyond herdr (README). Its own setup (templates, mods, skills, the `org` server) is the "when" of [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when). |
+| RET-6 | Paired English and Japanese repositories: `docs/sync-policy.md` and the `notify-en-changes.yml` workflow that dispatches merges to the English repository. | Retire | Feasible | paddock is one English repository ([decision 0001](../decisions/0001-separate-repository.md)). |
+| RET-7 | herdr material already in the predecessor: the `experiments/herdr-app-mods/org-agents` mod and the herdr-core and herdr-app measurement records. | Keep (already moved) | Feasible | The mod is paddock's `mods/org-agents/` [proto]; the measurements are [arch]. |
+
+## 16. Review notes
+
+Two adversarial reviews were run: one over the enumeration (what the predecessor has that the rows do not), one over the verdicts (what "herdr" cannot really replace, and what "Retire" should keep). Findings that were taken are folded into the rows; findings that were not taken are listed with the reason.
+
+### 16.1 Review of the enumeration
+
+The reviewer was given the root `CLAUDE.md`, the skill list and the enumerated list, and searched the rest of the repository (`docs/`, `scripts/`, `.github/`, `.githooks/`, `renga-layouts/`, `docker/`, `experiments/`, environment variables, MCP tool names). Each finding was checked against the repository before it was taken.
+
+| # | Finding | Taken as |
+| --- | --- | --- |
+| 1 | The git `pre-commit` secret scanner and skill-source guard (`.githooks/pre-commit`). | GT-13, L-K12 |
+| 2 | The per-role permission-mode matrix and how the secretary is first started (`renga-layouts/ops.toml`, `claude-org-runtime org up`). | PRM-9 |
+| 3 | The Docker distribution, with managed settings as an enforcement layer above project settings. | RET-4 |
+| 4 | Installers and the dependency pin window. | RET-5 |
+| 5 | The role environment-variable contract. | PRM-10 |
+| 6 | The hook events and matchers relied on, beyond `PreToolUse` on `Bash`. | HK-18 |
+| 7 | The non-goals register. | INS-17 |
+| 8 | The paired English and Japanese repositories and their sync workflow. | RET-6 |
+| 9 | Repository CI as the gate's executor, the test-collection guard, hermetic test environments. | GT-14 |
+| 10 | The herdr-app mod and herdr measurements already in the predecessor. | RET-7 |
+| 11 | The secretary's release-class pre-fetch, caused by the worker git denies. | INS-19 |
+| 12 | Commit, branch, PR and issue conventions. | INS-18 |
+| 13 | Broker bind tokens with an immutable permission tier. | PRM-11 |
+
+None was rejected.
+
+### 16.2 Review of the verdicts
+
+The reviewer was given this document, paddock's design documents, the herdr sources and the probe outputs, and asked which "herdr" rows herdr does not fully cover, which "Retire" rows still carry a needed line, which "Feasible" bases do not show feasibility, and which lines section 6.2 lacks.
+
+| # | Finding | Taken as |
+| --- | --- | --- |
+| 1 | Workers started by the secretary end when it ends, unless started with `--outlive-parent`; a renewed secretary is not their parent and gets no child notes for them. | L-N6, [Q19](open-questions.md#q19-do-workers-outlive-the-secretary-that-started-them); HND-1, SK-14, MON-1, MON-10 narrowed |
+| 2 | Events are live only, and nothing in paddock listens while the secretary is idle; the predecessor's relay existed because direct pushes could fail silently. | MON-1, MON-3, MON-4, REC-4, NTF-3 changed; [Q18](open-questions.md#q18-how-does-anything-reach-an-idle-agent) |
+| 3 | After `hc interrupt` a worker is idle, so an instruction in the mailbox does not start it. | SK-4 changed; Q18 |
+| 4 | `hc server stop` stops the person's whole core; it does not replace `/org-down`. | SUS-3 changed; L-N7 |
+| 5 | Several "Feasible" lines rested on probes that tested only a `Bash(...)` deny and a hook. | L-K1, L-K5, L-K7, L-N1, PRM-5 changed to Unverified with probes |
+| 6 | L-N2's holder was too weak and its list incomplete; `org-state` is writable by any API client; herdr's state folder holds terminal output. | L-N2 rewritten; L-N8, L-N9 |
+| 7 | `first_message.sent` is narrower than the spawn gate (no mailbox contact, no durable record). | GT-5 changed |
+| 8 | The self-edit approval also left a record that an audit checked. | GT-4 changed |
+| 9 | `blocked` is measured for permission prompts only. | MON-5 changed |
+| 10 | An unchanged `status_ms` cannot tell long work from a stall. | MON-7 basis changed |
+| 11 | The atomicity basis cited `file.write`, which history does not use; the document cap was missing. | REC-5 basis changed |
+| 12 | `hc keys` is not documented to refuse a blocked terminal. | INS-7 basis changed |
+
+None was rejected.
+
+## Appendix A. Enumerated mechanisms per row
+
+Each row's mechanisms, by the short names the enumeration used. A name can appear under two rows when it has two parts.
+
+| Row | Mechanisms |
+| --- | --- |
+| INS-1 | `secretary-role-boundary-no-real-work`, `secretary-business-language`, `secretary-silent-plumbing`, `secretary-escalate-to-human`, `secretary-one-worker-one-scope`, `secretary-ack-worker-messages`, `secretary-post-merge-next-dispatch`, `secretary-three-skill-split`, `secretary-startup-org-start`, `role-contract-set-a` |
+| INS-2 | `secretary-citation-or-abstain` |
+| INS-3 | `secretary-markdown-link-convention`, `link-path-audit` |
+| INS-4 | `transport-duality-notes`, `gen-skill-prose`, `skill-prose-generator`, `transport-duality-boilerplate`, `ja-locale-instruction-template` |
+| INS-5 | `secretary-two-lane-routing`, `org-delegate-lane-selection` |
+| INS-6 | `dispatcher-role-definition`, `dispatcher-ignore-root-claude-md`, `dispatcher-skill-references`, `dispatcher-delegate-plan-helper`, `dispatcher-spawn-args-discipline`, `dispatcher-report-target-reminder`, `dispatcher-untouchable-state-files`, `dispatcher-role-boundary-monitoring` |
+| INS-7 | `dispatcher-no-auto-approval`, `dispatcher-no-credential-proxy` |
+| INS-8 | `stable-name-addressing`, `renga-pane-convention` |
+| INS-9 | `curator-on-demand-model`, `curator-path-discipline`, `curator-communication-order` |
+| INS-10 | `worker-model-policy`, `org-delegate-model-promotion` |
+| INS-11 | `lifecycle-contract-set-b`, `lifecycle-error-classes` |
+| INS-12 | `gen-delegate-payload`, `gen-worker-brief`, `delegate-body-format`, `brief-filename-selection`, `rendered-self-edit-briefs`, `no-manual-delegation-fallback`, `dispatch-assumptions`, `acceptance-declaration`, `worker-layout-resolver`, `worker-directory-patterns` |
+| INS-13 | `brief-workdir-pwd`, `brief-project-task-info`, `brief-optional-blocks`, `verification-depth`, `brief-permissions`, `brief-human-summary`, `brief-completion-report`, `brief-pane-retention`, `brief-retro-record` |
+| INS-14 | `brief-prohibitions`, `brief-windows-notes`, `brief-absolute-paths`, `brief-preflight`, `brief-python-src-layout` |
+| INS-15 | `brief-background-tab-report` |
+| INS-16 | `claude-dir-placeholders`, `empty-agents-commands-workflows`, `empty-loop-and-schedule-files` |
+| INS-17 | review finding 7 ([section 16](#16-review-notes)) |
+| INS-18 | review finding 12 ([section 16](#16-review-notes)) |
+| INS-19 | review finding 11 ([section 16](#16-review-notes)) |
+| PRM-1 | `schema-sot`, `global-forbidden-allow`, `hook-attachment-manifest`, `hook-wiring-per-role` |
+| PRM-2 | `worker-settings-generator`, `worker-spawn-overlay`, `org-role-settings-distribution`, `runtime-and-settings-maintenance` |
+| PRM-3 | `role-config-drift-checker`, `runtime-schema-drift-checker`, `hook-path-anchoring-check`, `runtime-schema-drift` |
+| PRM-4 | `allow-user-common`, `allow-repo-shared`, `allow-secretary`, `allow-dispatcher`, `allow-curator`, `allow-worker-default`, `allow-worker-doc-audit` |
+| PRM-5 | `deny-secrets-read`, `env-template-carveout`, `deny-credential-env-and-gh`, `deny-git-push`, `deny-git-metadata`, `deny-repo-shared-dangerous-git`, `deny-recursive-delete`, `deny-worker-close-pane`, `deny-settings-self-edit`, `deny-org-role-write-surfaces`, `deny-docker-push` |
+| PRM-6 | `sandbox-contract-layers`, `sandbox-worker-filesystem`, `sandbox-network`, `sandbox-strict-mode`, `sandbox-excluded-commands`, `sandbox-case-e-suppression`, `sandbox-launcher-contract`, `sandbox-verification-runbook` |
+| PRM-7 | `hook-false-positive-protocol` |
+| PRM-9 | review finding 2 ([section 16](#16-review-notes)) |
+| PRM-10 | review finding 5 ([section 16](#16-review-notes)) |
+| PRM-11 | review finding 13 ([section 16](#16-review-notes)) |
+| PRM-8 | `org-role-session-env` |
+| HK-1 | `payload-fail-closed-invariant` |
+| HK-2 | `block-no-verify`, `block-dangerous-git`, `segment-split-shim` |
+| HK-3 | `block-git-push` |
+| HK-4 | `block-workers-delete` |
+| HK-5 | `block-foreground-subagent` |
+| HK-6 | `check-worker-boundary` |
+| HK-7 | `block-org-structure` |
+| HK-8 | `block-dispatcher-out-of-scope`, `check-loop-directive`, `block-close-before-retro`, `block-blind-spawn-keys`, `check-worker-spawn-model`, `loop-directive-canonical-hook` |
+| HK-9 | `block-relative-close-pane`, `group-b-selector-check` |
+| HK-10 | `remind-verify-premise`, `premise-check` |
+| HK-11 | `mark-clear-needs-decision`, `cockpit-needs-decision-marker` |
+| HK-12 | `check-dispatcher-loop`, `dispatcher-loop-unarmed-watch` |
+| HK-13 | `context-record`, `context-record-hook` |
+| HK-14 | `block-codex-over-cap`, `block-codex-rescue` |
+| HK-15 | `gate-acceptance-before-merge`, `pre-merge-hook` |
+| HK-16 | `deny-record-lib`, `hook-deny-record` |
+| HK-18 | review finding 6 ([section 16](#16-review-notes)) |
+| HK-17 | `fixture-always-block`, `hook-test-suite` |
+| GT-1 | `acceptance-gate`, `merge-approval-mode`, `acceptance-stop-lines`, `acceptance-test-first-push`, `brief-acceptance-test-first`, `org-pull-request-merge-gate`, `cfg-merge-approval-mode`, `events-acceptance-gate` |
+| GT-2 | `codex-review-gate`, `codex-round-cap`, `org-delegate-codex-cap-handling`, `brief-codex-gate`, `events-codex-model` |
+| GT-3 | `rebase-preflight`, `brief-rebase-before-report` |
+| GT-4 | `self-edit-approval`, `org-delegate-self-edit-approval`, `brief-self-edit-claude-dir-approval`, `self-edit-instruction-precedence` |
+| GT-5 | `spawn-gate`, `spawn-gate-audit-step0` |
+| GT-6 | `retro-gate`, `secretary-retro-gate-ack-target` |
+| GT-7 | `capability-gate` |
+| GT-8 | `notify-gate` |
+| GT-9 | `runtime-version-check`, `renga-compat-check` |
+| GT-10 | `state-drift-check` |
+| GT-11 | `curate-threshold` |
+| GT-13 | review finding 1 ([section 16](#16-review-notes)) |
+| GT-14 | review finding 9 ([section 16](#16-review-notes)) |
+| GT-12 | `awaiting-user-gates`, `secretary-awaiting-user-emit` |
+| REC-1 | `journal-events-table`, `journal-append-helper`, `journal-append-only-correction`, `event-add-procedure` |
+| REC-2 | `journal-writers-rule` |
+| REC-3 | `events-worker-lifecycle`, `events-delegate-flow`, `events-plan-design`, `events-pr-push`, `events-history-issues`, `events-observability`, `events-ci`, `events-session-lifecycle`, `events-uncatalogued` |
+| REC-4 | `event-deliveries-outbox`, `relay-scan-outbox` |
+| REC-5 | `state-db-core`, `db-projects-workstreams-tags`, `db-runs`, `db-org-sessions`, `db-schema-migrations`, `db-unparsed-legacy-importer`, `state-writer-api`, `queries-resume-briefing`, `org-state-md-derived`, `org-state-json-derived`, `extract-freetext-notes`, `state-migrate-json`, `set-c-write-rules`, `migrate-workers-layout` |
+| REC-6 | `run-status-predicates` |
+| REC-7 | `db-worker-dirs` |
+| REC-8 | `fixture-scrub-policy` |
+| REC-9 | `state-gitignored` |
+| REC-10 | `org-metrics-report`, `defense-report`, `defense-register` |
+| ST-1 | `worker-seed-files`, `dispatcher-inbox`, `dispatcher-outbox`, `dispatcher-event-cursor`, `dispatcher-scratch-snapshots`, `worker-idle-state`, `spinner-age-seen`, `relay-scan-heartbeat`, `inspect-cache`, `curate-inflight`, `spawn-prompt-dir`, `dispatcher-internal-state-files` |
+| ST-2 | `pending-decisions-register`, `secretary-pending-decisions-register`, `secretary-escalation-state-save` |
+| ST-3 | `attention-config`, `attention-notified-ledger`, `attention-config-template` |
+| ST-4 | `context-record-files`, `context-handover-watch-state` |
+| ST-5 | `secretary-handover-file`, `dispatcher-handover-file` |
+| ST-6 | `broker-state-dir`, `secretary-queue-watcher-state` |
+| ST-7 | `dashboard-runtime-files` |
+| ST-8 | `conveyor-scope-contract`, `work-discovery-state` |
+| ST-9 | `worker-briefs-toml` |
+| ST-10 | `pr-watch-logs`, `state-adhoc-scratch` |
+| REG-1 | `projects-registry`, `projects-template-ensure`, `registry-parser` |
+| REG-2 | `cfg-default-permission-mode`, `cfg-workers-dir`, `cfg-max-concurrent-workers`, `cfg-triage-home`, `cfg-integration-branch` |
+| REG-3 | `goals-ledger` |
+| REG-4 | `knowledge-raw`, `knowledge-raw-archive`, `knowledge-curated`, `knowledge-privacy-split` |
+| REG-5 | `skill-candidates-queue` |
+| SK-1 | `skills-layout-and-frontmatter`, `skills-owner-field-gap` |
+| SK-2 | `org-start` |
+| SK-3 | `org-delegate-core`, `org-delegate-worker-message-handling` |
+| SK-4 | `org-delegate-intervention` |
+| SK-5 | `org-escalation` |
+| SK-6 | `org-pull-request-core`, `run-pr-state-helpers` |
+| SK-7 | `org-curate`, `org-retro` |
+| SK-8 | `work-skill-concept`, `skill-eligibility-check`, `skill-audit` |
+| SK-9 | `org-setup` |
+| SK-10 | `org-dashboard` |
+| SK-11 | `org-attach` |
+| SK-12 | `org-attention-start`, `org-attention-stop` |
+| SK-13 | `org-conveyor`, `work-discovery`, `goal-setup`, `work-discovery-triage` |
+| SK-14 | `secretary-handover`, `secretary-resume`, `secretary-handover-resume` |
+| SK-15 | `dispatcher-handover`, `dispatcher-resume`, `dispatcher-handover-resume`, `secretary-drives-dispatcher-handover` |
+| SK-16 | `runtime-release-with-paired-ja-sync` |
+| SK-17 | `wsl-windows-chrome-screenshot` |
+| SK-18 | `capability-first-drive-gate-reference` |
+| MON-1 | `dispatcher-monitor-loop`, `dispatcher-monitoring-loop`, `monitoring-stop-halt-mark` |
+| MON-2 | `observation-principle` |
+| MON-3 | `poll-events-lifecycle`, `cursor-reset-tool` |
+| MON-4 | `pane-exited-attribution`, `list-panes-reconcile`, `background-tab-worker-liveness` |
+| MON-5 | `self-report-relay`, `inspect-pane-anomaly` |
+| MON-6 | `inspect-pane-anomaly` |
+| MON-7 | `stall-detection` |
+| MON-8 | `relay-gap-detection`, `pane-output-without-peer-msg` |
+| MON-9 | `close-pane-retro-gate`, `dispatcher-close-pane-flow` |
+| MON-10 | `curate-inflight-watch` |
+| MON-11 | `completion-noted-control` |
+| MON-12 | `pr-watch-pane`, `pr-watch-pane-skill`, `pr-watch-core`, `peer-notify-bridge`, `pr-ci-watch-rule`, `rule-pr-ci-watch`, `secretary-pr-ci-watch`, `block-adhoc-pr-watch`, `watcher-restart-guard` |
+| MON-13 | `secretary-queue-watcher` |
+| MON-14 | `stale-worker-sweep` |
+| NTF-1 | `attention-watcher` |
+| NTF-2 | `cockpit-and-dispatcher-view` |
+| NTF-3 | `pane-exited-attribution` |
+| SUS-1 | `org-suspend`, `worker-suspend-response`, `suspend-contract`, `brief-suspend-section` |
+| SUS-2 | `org-resume` |
+| SUS-3 | `org-down` |
+| SUS-4 | `org-delegate-intervention` |
+| HND-1 | `secretary-handover` |
+| HND-2 | `context-handover-watcher` |
+| HND-3 | `dispatcher-handover`, `dispatcher-resume` |
+| RET-1 | `transport-seam`, `broker-dogfood-runbook` |
+| RET-2 | `dashboard-server` |
+| RET-3 | `one-off-migration-runbooks` |
+| RET-4 | review finding 3 ([section 16](#16-review-notes)) |
+| RET-5 | review finding 4 ([section 16](#16-review-notes)) |
+| RET-6 | review finding 8 ([section 16](#16-review-notes)) |
+| RET-7 | review finding 10 ([section 16](#16-review-notes)) |
