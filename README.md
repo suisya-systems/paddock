@@ -8,7 +8,7 @@ paddock rebuilds these ideas from its predecessor, claude-org-ja, on a new base:
 
 ## Status
 
-Design only. There is no code yet. Start with:
+A first prototype: the secretary template and a mod that shows approvals and work in progress ([prototype 1](docs/design/prototype-1.md)). Start with:
 
 - [Architecture](docs/design/architecture.md): where each part lives, and the rules that hold it together.
 - [Open questions](docs/design/open-questions.md): decisions the owner has not made yet, with what we know so far.
