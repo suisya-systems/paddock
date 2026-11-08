@@ -59,7 +59,7 @@ The mod reads `org-state` every 5 seconds. `hc` has no CLI verb for documents an
 1. With `org-state` unwritten, open the mod and take `herdr-app shot`. It shows "The secretary has not written anything yet."
 2. Write a value like the example above with `doc.set` through `hc connect`, keeping its input open as described above (get the version with `doc.get` first). Start one or two terminals labelled with a `task_id` from `work` whose program reports an OSC 7501 status, for example `hc run --bg --no-parent --label task_id=demo-working -- <a program that prints ESC ] 7501 ; state=working:app=demo BEL and stays>`.
 3. Within 5 seconds the mod redraws. Take `herdr-app shot`. The approvals appear as cards above the list, and the list shows the working spinner, the "Needs you" pill for a blocked task, and the ring for a task with no terminal.
-4. `check` does not lay out the mod, so the shot is the check that the list and cards have height ([measurement](architecture.md#8-facts-this-design-relies-on)).
+4. `check` does not lay out the mod, so the shot is the check that the list and cards have height ([measurement](architecture.md#8-facts-this-design-relies-on)). `shot` returns the last frame the window drew: while the window is not being drawn (minimized or in the background), two shots are identical and miss the dialog. Bring the window to the front, or look at it.
 5. Clean up: close the dialog, `hc kill` and `hc rm` the demo terminals, and set `org-state` back to `null`.
 
 The prototype is done when `check` passes and the shot shows both the approvals and the work in progress.
