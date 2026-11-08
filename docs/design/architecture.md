@@ -40,8 +40,8 @@ paddock keeps the predecessor's three ideas: you talk to a secretary, the organi
 | Delegation (create a worktree, open a pane, send the instruction) | A delegation skill creates the worktree, then runs `hc run --bg --name w-<task> --cwd <worktree> --label task_id=<task> worker "<task>"`. The task travels in the launch, not in a later send. |
 | Peer messaging (`send_message`, `check_messages`, `set_summary`) | The `org` MCP server: `send_message`, `check_messages`, `set_summary`, `report`, `list_runs`. The mailbox is the messages record in `state.db`. |
 | Monitoring (screen hashes, spinner detection, the dispatcher's polling loop) | OSC 7501 status held by herdr-core. A small non-LLM bridge follows `hc events --json` and writes runs and events into `state.db`; it runs as a kept herdr-core terminal (`hc run --bg --keep`). |
-| Attention watcher, cockpit, dashboard | herdr-app mods (start by duplicating the shipped `agents` mod), or our own client. Undecided: [Q1](open-questions.md#q1-app-mod-or-our-own-client). |
-| `state.db` (runs, events) | The records are kept and a record of messages is added. Whether that is SQLite, files or core documents is open, with sizes in [Q8](open-questions.md#q8-what-is-each-component-written-in). |
+| Attention watcher, cockpit, dashboard | herdr-app mods, started by duplicating the shipped `agents` mod ([decision 0003](../decisions/0003-screen-as-app-mods.md)). |
+| `state.db` (runs, events) | The records are kept and a record of messages is added. In-progress state goes in fixed-name core documents and history in per-writer monthly JSON lines, with no SQLite ([decision 0004](../decisions/0004-records-documents-and-jsonl.md)). |
 | Permissions, hooks, sandbox | Kept as Claude Code settings. Writes to `~/.config/herdr-core` and `~/.config/herdr-app` are added to the worker deny list, because templates and mods there are trusted code. |
 | Suspend and resume | herdr-core keeps terminals alive while no window is open. After a full core stop, kept terminals return as plain shells, so bringing the secretary back (`claude --continue`) is a skill's job. Worker recovery: [Q4](open-questions.md#q4-worker-recovery-after-a-core-restart). |
 | Other machines | `hc machine add`, then `hc run --on <machine>`. Remote terminals join the same list and event stream. |
@@ -59,8 +59,8 @@ paddock adds the components below. Each must be written in an environment herdr 
 | --- | --- | --- |
 | `org` MCP server | Give every agent the mailbox tools (`send_message`, `check_messages`, `set_summary`, `report`, `list_runs`) and run whether or not a window is open. | Open (Q8) |
 | Events bridge | Follow `hc events --json` and append runs and events to `state.db`, as a kept herdr-core terminal. | Open (Q8) |
-| `state.db` | Hold runs, events and messages durably. The name is kept for the record store whatever its format. | Open (Q8): storage format and the tool that reads and writes it; [sizing](open-questions.md#q8-what-is-each-component-written-in) is there |
-| Window | Draw the screen in [section 7](#7-the-screen). | A herdr-app mod (JavaScript), or our own client ([Q1](open-questions.md#q1-app-mod-or-our-own-client)) |
+| `state.db` | Hold runs, events and messages durably. The name is kept for the record store whatever its format. | Core documents and JSON-lines files ([decision 0004](../decisions/0004-records-documents-and-jsonl.md)), reached through `hc connect` and the shell |
+| Window | Draw the screen in [section 7](#7-the-screen). | herdr-app mods (JavaScript) ([decision 0003](../decisions/0003-screen-as-app-mods.md)) |
 
 ## 6. Flows
 
@@ -87,7 +87,7 @@ Same order as the predecessor:
 
 ## 7. The screen
 
-The screen is not an admin console. It follows these rules whichever UI is chosen ([Q1](open-questions.md#q1-app-mod-or-our-own-client)):
+The screen is not an admin console. It is drawn by herdr-app mods ([decision 0003](../decisions/0003-screen-as-app-mods.md)) and follows these rules:
 
 - Dark theme. No borders.
 - **Left**: one tile per worker, a live view of its terminal showing its last one or two lines and a status color.

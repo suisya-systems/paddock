@@ -33,7 +33,7 @@ Sources used below:
 
 Either way the organization layer (templates, `org` tools, `state.db`, skills) stays the same ([architecture §2](architecture.md#2-design-principles)).
 
-**Decides.** The owner.
+**Decided** (2026-11-09): option A, herdr-app mods ([decision 0003](../decisions/0003-screen-as-app-mods.md)).
 
 ## Q2. How much of a child's reporting goes through the mailbox?
 
@@ -211,7 +211,7 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 - **Events bridge**: (a) a shell pipeline on `hc events --json` in a kept terminal; (b) a mod, accepting gaps while no window is open; (c) part of the same program as the `org` server.
 - **`state.db`** (sizes above): (a) SQLite, which needs a SQLite tool that herdr does not ship and is out of reach of a mod's own code; (b) append-only files (for example JSON lines) written from the shell or a mod; (c) core documents, reached through a JSON-RPC client, limited by the layouts in the table above; (d) a mix, for example core documents for in-progress state and JSON-lines files for the log and history.
 
-**Decides.** The owner.
+**Decided for `state.db`** (2026-11-09): option (d), core documents for in-progress state and per-writer monthly JSON lines for history, no SQLite ([decision 0004](../decisions/0004-records-documents-and-jsonl.md)). The `org` server and the events bridge are still open.
 
 ## Q9. Where does the conversation language setting live?
 
