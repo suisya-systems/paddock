@@ -8,7 +8,7 @@ paddock keeps the predecessor's three ideas: you talk to a secretary, the organi
 
 ## 2. Design principles
 
-1. **Write it in what herdr already runs.** Implementation leans on the environments herdr provides: herdr-app mods (JavaScript), `hc` templates and the `hc` CLI, and the shell. paddock avoids languages and runtimes that need a separate install. The components stay as designed; what each one is written in is listed in [section 5](#components) and left open in [Q8](open-questions.md#q8-what-is-each-component-written-in).
+1. **Write it in what herdr already runs.** Implementation leans on the environments herdr provides: herdr-app mods (JavaScript), `hc` templates and the `hc` CLI, and the shell. paddock avoids languages and runtimes that need a separate install. The components stay as designed; what each one is written in is listed in [section 5](#5-components-and-what-they-are-written-in) and left open in [Q8](open-questions.md#q8-what-is-each-component-written-in).
 2. **Three channels, never mixed.**
    - **Status**: each agent reports `working` / `blocked` / `done` / `error` through OSC 7501; herdr-core stores it. Nothing infers status from screen text.
    - **Messages**: agents talk to each other through the organization's mailbox (the `org` MCP tools), stored in `state.db`. Messages are queued and read asynchronously.

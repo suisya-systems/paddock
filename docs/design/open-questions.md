@@ -139,7 +139,7 @@ Either way the organization layer (templates, `org` tools, `state.db`, skills) s
 
 ## Q8. What is each component written in?
 
-**Question.** paddock should run on what herdr already brings: the JavaScript that runs herdr-app mods, `hc` templates and its CLI, and the shell, without assuming a separately installed language or runtime such as Python or Node. For each component in the [architecture](architecture.md#components) (the `org` MCP server, the events bridge, `state.db`), which of these is it written in, or does it truly need another runtime?
+**Question.** paddock should run on what herdr already brings: the JavaScript that runs herdr-app mods, `hc` templates and its CLI, and the shell, without assuming a separately installed language or runtime such as Python or Node. For each component in the [architecture](architecture.md#5-components-and-what-they-are-written-in) (the `org` MCP server, the events bridge, `state.db`), which of these is it written in, or does it truly need another runtime?
 
 **What we know.**
 
