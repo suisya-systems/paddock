@@ -41,7 +41,7 @@ function duration(ms) {
 const since = (iso, now) => duration(now - Date.parse(iso));
 
 const ORDER = { blocked: 0, working: 1 };
-const MAX_CARDS = 3;
+const MAX_CARDS = 2; // three two-line cards leave no room for the list in the 420 px dialog
 
 export default class OrgState extends View {
   init(_props, cx) {
@@ -117,9 +117,11 @@ export default class OrgState extends View {
       const s = live.get(w.task_id);
       return { ...w, status: s === "error" ? "blocked" : s ?? "none" };
     }).sort((x, y) => (ORDER[x.status] ?? 2) - (ORDER[y.status] ?? 2) || Date.parse(x.since) - Date.parse(y.since));
-    // ponytail: fixed row budget for the 420 px dialog instead of scrolling: a card (question clamped
-    // to two lines) costs three rows. Measure once it docks.
-    const maxRows = 10 - 3 * Math.max(cards.length, 1);
+    // ponytail: pixel budget for the 420 px dialog instead of scrolling, measured from a shot at 1x:
+    // 382 px inside the padding; headers, section gap and one "and N more" line take 92; a two-line
+    // card with its gap 90, the approvals' "and N more" 26, "Nothing waiting" 28, a row 32. Measure again once it docks.
+    const used = cards.length ? 90 * cards.length + (approvals.length > cards.length ? 26 : 0) : 28;
+    const maxRows = Math.max(0, Math.floor((382 - 92 - used) / 32));
     const rows = work.slice(0, maxRows);
 
     return v_flex().gap(20)

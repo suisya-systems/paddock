@@ -37,7 +37,7 @@ Times are UTC in ISO 8601. The cap is 64 KiB. A task leaves `work` when it finis
 
 ## What the mod shows
 
-- **Waiting for you**: one card per approval, oldest first, at most three, then "and N more". A card shows the question (at most two lines), then the task and how long it has waited.
+- **Waiting for you**: one card per approval, oldest first, at most two, then "and N more". A card shows the question (at most two lines), then the task and how long it has waited.
 - **In progress**: one row per task: a status glyph, the title, and how long it has been running. Blocked tasks come first, then working ones, then the rest by start time. The status is the live status of the terminal labelled with that `task_id` (`terminals()`, as herdr-core reports it). A task with no live terminal shows a ring in the theme's `unknown` color.
 - When `org-state` has not been written: "The secretary has not written anything yet." When `hc` cannot be reached: "Can't reach hc." and the first line of the error.
 
