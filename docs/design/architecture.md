@@ -19,6 +19,7 @@ paddock keeps the predecessor's three ideas: you talk to a secretary, the organi
 4. **Status is what the program says.** A terminal that has not reported has no status. herdr-core and herdr-app both follow this rule; paddock does too.
 5. **The organization does not depend on the window.** Templates, skills, the `org` tools and `state.db` are the same whether the window is a herdr-app mod or our own client.
 6. **People are interrupted by escalation, not by `blocked`.** A blocked worker goes to the secretary first. A person is notified when the secretary escalates, or when the secretary itself is not moving (an incident).
+7. **Rules are English; the conversation language is a setting.** Role instructions (template bodies), CLAUDE.md-style files, skills and contract documents are written in English. The language the secretary uses with people is a setting value, defaulting to the environment's, and the instructions tell the agent to follow it. Where the setting lives is [Q9](open-questions.md#q9-where-does-the-conversation-language-setting-live).
 
 ## 3. Roles
 

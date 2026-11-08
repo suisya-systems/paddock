@@ -23,6 +23,7 @@ Portability. The predecessor carried its own terminal transports, pane launcher,
 - **herdr-core** (`hc`, 0.1 series, Apache-2.0) runs every agent terminal. It draws nothing, keeps terminals alive when no window is open, and exposes an OpenRPC API.
 - **herdr-app** (0.1 series, Apache-2.0) is the default window. Its panels are JavaScript mods.
 - **Claude Code** is the agent. It reports its own status to herdr-core through OSC 7501 (the Program Status Protocol), so nothing reads the screen to guess what an agent is doing.
+- **Rules in English, conversation in your language.** Everything that governs agents (role instructions in `hc` template bodies, CLAUDE.md-style files, skills, contract documents) is written in English. The language the secretary speaks with people is a setting, defaulting to the environment's; instructions enforce it. Where that setting lives is [an open question](docs/design/open-questions.md#q9-where-does-the-conversation-language-setting-live).
 - **Nothing to install beyond herdr.** paddock is written for the environments herdr already brings: the JavaScript runtime that runs herdr-app mods, `hc` templates and its CLI, and the shell. It does not assume a language or runtime that needs a separate install, such as Python or Node. What each component is written in is [an open question](docs/design/open-questions.md#q8-what-is-each-component-written-in).
 
 ## What paddock is not

@@ -154,3 +154,16 @@ Either way the organization layer (templates, `org` tools, `state.db`, skills) s
 - **`state.db`**: (a) SQLite, which needs a SQLite tool that herdr does not ship; (b) append-only files (for example JSON lines) written from the shell or a mod; (c) core documents, reached through a JSON-RPC client.
 
 **Decides.** The owner.
+
+## Q9. Where does the conversation language setting live?
+
+**Question.** The rules are written in English and the language the secretary speaks with people is a setting ([architecture §2](architecture.md#2-design-principles), principle 7). Where is that setting kept, and how does it reach the agent?
+
+**What we know.**
+
+- A template's body is the agent's opening instructions, and core appends the task after a blank line. Templates are read fresh on each use. (Core docs)
+- Unknown template header fields are ignored, so the header cannot carry the setting on its own. (Core docs)
+
+**Options.** A line in the secretary's template body; a value in paddock's own configuration that a skill reads at start; an environment variable passed at launch; detection from the environment only, with no stored value.
+
+**Decides.** The owner.
