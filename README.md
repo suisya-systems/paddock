@@ -35,6 +35,10 @@ Portability. The predecessor carried its own terminal transports, pane launcher,
 - **Not a sandbox.** herdr-core runs commands with your account's access and is not a permission broker. Permissions, hooks and sandboxing stay with Claude Code's own settings.
 - **Not a general multi-stack framework.** Only herdr-core, herdr-app and Claude Code are in scope.
 
+## CI
+
+CI: relative Markdown links are checked by `scripts/check-links.sh`.
+
 ## License
 
 Not decided yet. The repository is private.
