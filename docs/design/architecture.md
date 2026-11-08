@@ -19,7 +19,8 @@ paddock keeps the predecessor's three ideas: you talk to a secretary, the organi
 4. **Status is what the program says.** A terminal that has not reported has no status. herdr-core and herdr-app both follow this rule; paddock does too.
 5. **The organization does not depend on the window.** Templates, skills, the `org` tools and `state.db` are the same whether the window is a herdr-app mod or our own client.
 6. **People are interrupted by escalation, not by `blocked`.** A blocked worker goes to the secretary first. A person is notified when the secretary escalates, or when the secretary itself is not moving (an incident).
-7. **Rules are English; the conversation language is a setting.** Role instructions (template bodies), CLAUDE.md-style files, skills and contract documents are written in English. The language the secretary uses with people is a setting value, defaulting to the environment's, and the instructions tell the agent to follow it. Where the setting lives is [Q9](open-questions.md#q9-where-does-the-conversation-language-setting-live).
+7. **Rules are English; the conversation language is a setting.** Role instructions (template bodies), `AGENTS.md` (Claude Code reads it when there is no CLAUDE.md), skills and contract documents are written in English. The language the secretary uses with people is a setting value, defaulting to the environment's, and the instructions tell the agent to follow it. Where the setting lives is [Q9](open-questions.md#q9-where-does-the-conversation-language-setting-live).
+8. **`AGENTS.md` is the shared instruction file, not CLAUDE.md.** Instructions meant for every agent go in `AGENTS.md`. Claude Code reads `AGENTS.md` in a project that has no CLAUDE.md, and other agents read the same file, so one file serves them all. paddock does not ship a CLAUDE.md beside it, because by default Claude Code would then read the CLAUDE.md instead.
 
 ## 3. Roles
 
@@ -35,7 +36,7 @@ paddock keeps the predecessor's three ideas: you talk to a secretary, the organi
 
 | Part of the predecessor | In paddock |
 | --- | --- |
-| Role contracts (each role's CLAUDE.md) | herdr-core templates (`~/.config/herdr-core/templates/<name>.md`: header with `command`, body with the role's instructions) plus the worker's CLAUDE.md. `hc run <template> "<task>"` starts a role by name. |
+| Role contracts (each role's CLAUDE.md) | herdr-core templates (`~/.config/herdr-core/templates/<name>.md`: header with `command`, body with the role's instructions) plus the worktree's `AGENTS.md` ([principle 8](#2-design-principles)). `hc run <template> "<task>"` starts a role by name. |
 | Delegation (create a worktree, open a pane, send the instruction) | A delegation skill creates the worktree, then runs `hc run --bg --name w-<task> --cwd <worktree> --label task_id=<task> worker "<task>"`. The task travels in the launch, not in a later send. |
 | Peer messaging (`send_message`, `check_messages`, `set_summary`) | The `org` MCP server: `send_message`, `check_messages`, `set_summary`, `report`, `list_runs`. The mailbox is a `messages` table in `state.db`. |
 | Monitoring (screen hashes, spinner detection, the dispatcher's polling loop) | OSC 7501 status held by herdr-core. A small non-LLM bridge follows `hc events --json` and writes runs and events into `state.db`; it runs as a kept herdr-core terminal (`hc run --bg --keep`). |
@@ -107,6 +108,7 @@ From the upstream documentation (herdr-core README, `docs/commands.md`, `docs/te
 - Core "is not a sandbox or a permission broker for agents."
 - herdr-app mods are JavaScript describing native GPUI elements; there is no HTML, CSS, DOM, Node API or `setTimeout`. Mods can read live `spaces()`, `agents()`, `terminals()`, `focused()`, run `exec` (also on other machines), `fetch`, read and write files, open overlays (dialog, popup, window, which can hold a terminal), post notifications and share state. Mods are trusted code and not sandboxed. Shipped mods are rewritten on every start, so changes go into copies. herdr-app on Linux needs a working Vulkan driver.
 - herdr-app lists as agents only terminals whose program reports OSC 7501 status.
+- Since Claude Code 2.1.277, a project with no CLAUDE.md has its `AGENTS.md` read instead; the choice can be changed under "Project instructions" in `/config` (Claude Code CHANGELOG). herdr-app also gives agents its own guidance as an `AGENTS.md` (its mod guide `defaults/AGENTS.md`).
 
 Measured on 2026-11-08 (hc 0.1.18, Claude Code 2.1.319 on WSL2; herdr-app 0.1.13):
 
