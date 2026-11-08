@@ -1,0 +1,11 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test the link checker
+        run: bash tests/check-links.test.sh
+      - name: Check relative Markdown links
+        run: bash scripts/check-links.sh
