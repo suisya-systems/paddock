@@ -34,18 +34,20 @@ paddock keeps the predecessor's three ideas: you talk to a secretary, the organi
 
 ## 4. Where each part goes
 
+The full list of what the predecessor distributes, enforces and records, with a verdict for each, is the [predecessor inventory](predecessor-inventory.md).
+
 | Part of the predecessor | In paddock |
 | --- | --- |
 | Role contracts (each role's CLAUDE.md) | herdr-core templates (`~/.config/herdr-core/templates/<name>.md`: header with `command`, body with the role's instructions) plus the worktree's `AGENTS.md` ([principle 8](#2-design-principles)). `hc run <template> "<task>"` starts a role by name. |
-| Delegation (create a worktree, open a pane, send the instruction) | A delegation skill creates the worktree, then runs `hc run --bg --name w-<task> --cwd <worktree> --label task_id=<task> worker "<task>"`. The task travels in the launch, not in a later send. |
+| Delegation (create a worktree, open a pane, send the instruction) | A delegation skill creates the worktree, then runs `hc run --bg --name w-<task> --cwd <worktree> --label task_id=<task> worker "<task>"`. The task travels in the launch, not in a later send. In a new worktree it is not delivered until Claude Code's folder-trust dialog is answered ([Q13](open-questions.md#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog)). |
 | Peer messaging (`send_message`, `check_messages`, `set_summary`) | The `org` MCP server: `send_message`, `check_messages`, `set_summary`, `report`, `list_runs`. The mailbox is the messages record in `state.db`. |
 | Monitoring (screen hashes, spinner detection, the dispatcher's polling loop) | OSC 7501 status held by herdr-core. A small non-LLM bridge follows `hc events --json` and writes runs and events into `state.db`; it runs as a kept herdr-core terminal (`hc run --bg --keep`). |
 | Attention watcher, cockpit, dashboard | herdr-app mods, started by duplicating the shipped `agents` mod ([decision 0003](../decisions/0003-screen-as-app-mods.md)). |
 | `state.db` (runs, events) | The records are kept and a record of messages is added. In-progress state goes in fixed-name core documents and history in per-writer monthly JSON lines, with no SQLite ([decision 0004](../decisions/0004-records-documents-and-jsonl.md)). |
-| Permissions, hooks, sandbox | Kept as Claude Code settings. Writes to `~/.config/herdr-core` and `~/.config/herdr-app` are added to the worker deny list, because templates and mods there are trusted code. |
-| Suspend and resume | herdr-core keeps terminals alive while no window is open. After a full core stop, kept terminals return as plain shells, so bringing the secretary back (`claude --continue`) is a skill's job. Worker recovery: [Q4](open-questions.md#q4-worker-recovery-after-a-core-restart). |
+| Permissions, hooks, sandbox | Kept as Claude Code settings. Writes to `~/.config/herdr-core` and `~/.config/herdr-app` are added to the worker deny list, because templates and mods there are trusted code. Which lines are kept is in the [inventory](predecessor-inventory.md#6-lines-the-predecessor-held-and-lines-paddock-must-hold); who distributes the settings, and when, is [Q10](open-questions.md#q10-who-distributes-permissions-hooks-and-skills-and-when). |
+| Suspend and resume | herdr-core keeps terminals alive while no window is open. After a full core stop, kept terminals return as plain shells, so bringing the secretary back (`claude --continue`) is a skill's job. That needs Claude Code's transcripts, which are off when the core inherits `CLAUDE_CODE_CHILD_SESSION` from the process that started it ([Q17](open-questions.md#q17-what-environment-do-the-core-and-its-terminals-start-with)). Worker recovery: [Q4](open-questions.md#q4-worker-recovery-after-a-core-restart). |
 | Other machines | `hc machine add`, then `hc run --on <machine>`. Remote terminals join the same list and event stream. |
-| Retired | Both transport stacks and their terminal adapters (tmux, WezTerm, the older Herdr TUI), the dispatcher runner, the pane-spawn prompt step, the separate dashboard, container setup, pane layout files, and the runtime version pin. |
+| Retired | Both transport stacks and their terminal adapters (tmux, WezTerm, the older Herdr TUI), the dispatcher runner, the separate dashboard, container setup, pane layout files, and the runtime version pin. |
 
 <a id="components"></a>
 
@@ -68,7 +70,7 @@ paddock adds the components below. Each must be written in an environment herdr 
 
 1. You tell the secretary what you want.
 2. The secretary's delegation skill creates a worktree and launches a worker from the `worker` template with `hc run --bg`, putting the task in the launch and `task_id` in a label.
-3. herdr-core waits for the worker's first status report before sending the opening message, and reports whether it was sent.
+3. herdr-core waits for the worker's first status report before sending the opening message, and reports whether it was sent. In a new worktree the report does not come until Claude Code's folder-trust dialog is answered, so the message is not sent ([Q13](open-questions.md#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog)).
 4. The worker works. Its status flows through OSC 7501 into herdr-core, and from there to the window and the events bridge.
 5. The worker reports with the `org` tool `report` (or `send_message`). The secretary reads it at the end of its turn with `check_messages`.
 

@@ -11,6 +11,9 @@ Sources used below:
 - **Record measurement**: the predecessor's `state.db`, measured on 2026-11-08 (used in Q8 only).
 - **Store observation**: the `doc.set` definition in `hc schema`, and `doc.set` / `doc.get` run through `hc connect`, hc 0.1.18, 2026-11-08 (used in Q8 only).
 - **App type definitions**: herdr-app's `AGENTS.md`, `herdr.d.ts` and `gpui-kit.d.ts` (used in Q8 only).
+- **Inventory probes**: probes P1 to P7 in the [predecessor inventory](predecessor-inventory.md#2-probes-run-for-this-inventory), hc 0.1.18 with Claude Code 2.1.319 on WSL2, 2026-11-08 (used from Q10 on).
+- **Claude Code docs**: `claude --help` and the CHANGELOG of Claude Code 2.1.319 (used from Q10 on).
+- **Predecessor**: files of claude-org-ja, as listed in the [predecessor inventory](predecessor-inventory.md) (used from Q10 on).
 
 ## Q1. App mod or our own client?
 
@@ -223,5 +226,139 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 - Unknown template header fields are ignored, so the header cannot carry the setting on its own. (Core docs)
 
 **Options.** A line in the secretary's template body; a value in paddock's own configuration that a skill reads at start; an environment variable passed at launch; detection from the environment only, with no stored value.
+
+**Decides.** The owner.
+
+## Q10. Who distributes permissions, hooks and skills, and when?
+
+**Question.** Each role needs its Claude Code settings (allow and deny rules, sandbox, hooks) and its skills. Who puts them in place, through which channel, and at what moment: once at setup, per role, or per delegation?
+
+**What we know.**
+
+- The predecessor generated each worker's `.claude/settings.local.json` from one schema at delegation (`claude-org-runtime settings generate`), added a `--settings` overlay at spawn for what project files cannot carry (`strictAllowlist`, credential-file denies), and kept the org roles' files with `/org-setup` and a prune tool. Its Docker image put the sandbox in managed settings instead. ([inventory](predecessor-inventory.md) PRM-1, PRM-2, RET-4)
+- `hc file write` writes `AGENTS.md`, `.claude/settings.local.json` and a hook script into a new worktree, creating the missing folder; a new file gets mode 644. (Inventory probes, P1)
+- A template-launched Claude Code applies a worktree's `settings.local.json` (deny rule, `PreToolUse` hook, `SessionStart` hook) and reads its `AGENTS.md`. Settings given on the template's command line (`claude --settings <file outside the worktree>`) apply the same way. Both only after the folder-trust dialog is accepted ([Q13](#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog)). (Inventory probes, P2, P5)
+- `defaultMode` `auto` or `bypassPermissions` in a project settings file is ignored; the mode must come from user or managed settings or `--permission-mode`. (Claude Code docs, CHANGELOG)
+- Core is "not a sandbox or a permission broker"; templates are "shell commands and opening instructions, not isolation rules"; config and templates are shared by every session in a config home. (Core docs, `docs/security.md`)
+- Templates are read fresh on each use, so a change to a template's command line applies to the next launch. (Core docs, `docs/templates.md`)
+- A worker needs write access outside its worktree for some records: its history file under `events/` ([decision 0004](../decisions/0004-records-documents-and-jsonl.md)) and its `knowledge/raw/` note. ([inventory](predecessor-inventory.md) L-K4)
+
+**Options.**
+
+- **Channel.** (a) A settings file written into each worktree at delegation; (b) one settings file per role outside the worktrees, named in the role's template command (`--settings`); (c) user settings, written once at setup; (d) managed settings; or a mix (for example (b) for the sandbox and denies, (a) for per-task paths).
+- **When.** At setup by a person; at each delegation by the secretary's skill; when templates are installed.
+- **Source.** Hand-written files per role, reviewed as code; or one schema rendered per role, which brings back a renderer ([Q11](#q11-what-happens-to-the-predecessors-python-gates-and-generators)).
+- **Skills.** In the user's skill folder for every agent; or per role, next to the role's settings.
+
+**Decides.** The owner.
+
+## Q11. What happens to the predecessor's Python gates and generators?
+
+**Question.** Several of the predecessor's checks are Python programs, often with SQLite: the acceptance gate and merge hook, the Codex round cap, the premise reminder, the delegation packet and brief generators, the settings renderer and drift checker, the quote-aware command splitter used by the git hooks, and the defense report. paddock is written in what herdr already brings ([architecture §2](architecture.md#2-design-principles), principle 1). What becomes of each?
+
+**What we know.**
+
+- Claude Code hooks run any command; a bash hook that exits 2 blocked a tool call in a template-launched worker. (Inventory probes, P2)
+- Mods run only while herdr-app is open, so a mod cannot be the one party that enforces a gate. (App docs; [Q8](#q8-what-is-each-component-written-in))
+- The acceptance gate's evidence is CI results; the predecessor recorded them as `ci_completed` rows written by its PR watcher. ([inventory](predecessor-inventory.md) GT-1, MON-12)
+- The Codex round counter must sit where the worker cannot write, or the worker could reset it. ([inventory](predecessor-inventory.md) GT-2)
+- paddock records are JSON lines and core documents, with no SQLite ([decision 0004](../decisions/0004-records-documents-and-jsonl.md)).
+
+**Options, per tool.** (a) Rewrite in shell, reading JSON lines and core documents; (b) keep it in Python as a declared exception to principle 1; (c) drop the mechanical check and keep the rule as an instruction only; (d) leave it to the repository's CI (for example a required status check) instead of a local hook.
+
+**Decides.** The owner.
+
+## Q12. Where do a worker's role rules and task brief live?
+
+**Question.** A worker's rules (role instructions, prohibitions, report format) and its task brief must reach it in a target repository that is not paddock's. Where are they put?
+
+**What we know.**
+
+- A template body is sent as the first message, with the task appended after a blank line. (Core docs, `docs/templates.md`)
+- Claude Code reads `AGENTS.md` only when the project has no CLAUDE.md. (Claude Code docs, CHANGELOG)
+- A target repository may carry its own CLAUDE.md or `AGENTS.md`. The predecessor wrote its brief as `CLAUDE.local.md` when the target already had a CLAUDE.md, and kept its files out of the target's git. ([inventory](predecessor-inventory.md) INS-12)
+- Claude Code has `--append-system-prompt` and `--append-system-prompt-file`, which a template's command can pass. (Claude Code docs, `claude --help` and CHANGELOG)
+- A template-launched Claude read a codeword written only in the worktree's `AGENTS.md`. (Inventory probes, P2)
+- Whether a rule given only in the first message is still followed after the conversation is compacted was not measured. Probe: give a rule only in a template body, run a long task, `/compact`, then ask the agent to state the rule.
+- The predecessor's directory patterns (own clone, worktree of a shared clone, new folder) are one input: [architecture §3](architecture.md#3-roles) names only the worktree.
+
+**Options.** (a) The template body only; (b) `AGENTS.md` written into the worktree, falling back to something else when the target has a CLAUDE.md; (c) `CLAUDE.local.md`, as the predecessor did; (d) a file outside the worktree passed with `--append-system-prompt-file` in the template command; or a split, for example role rules in (d) and the task in the template body.
+
+**Decides.** The owner.
+
+## Q13. How does a new worktree get past Claude Code's folder-trust dialog?
+
+**Question.** Every new worktree stops a template-launched Claude Code at the folder-trust dialog, so the launch's task is not delivered. How is the folder trusted?
+
+**What we know.**
+
+- In each of the three probe folders, Claude Code showed "Quick safety check: Is this a project you created or one you trust?" and did not report status. `hc run` returned after about 58 s with `first_message: {sent: false, reason: "it never reported its status, so it may be showing a dialog ..."}`. With a `settings.local.json` holding an allow rule, the dialog also listed it ("This folder pre-approves 1 tool permission"). (Inventory probes, P4 to P6)
+- The earlier core measurement did not see the dialog in its folders under `/tmp`; why is not known. ([architecture §8](architecture.md#8-facts-this-design-relies-on))
+- `hc --skill` documents the recovery: "resolve readiness first (a trust dialog may need `hc keys <t> down enter`), then send the task". The probes did that and it worked. (Core docs; Inventory probes)
+- The dialog's default choice is "No, exit": a blind Enter ends the worker. The predecessor answered it only after reading the screen, behind a hook that refused keys without a fresh screen-judgment record. ([inventory](predecessor-inventory.md) HK-8)
+- A Claude Code stopped at this dialog reports no status, so herdr-app does not list it. (Mod measurement)
+- Not measured: whether trusting a parent folder covers new worktrees below it, and whether trust can be recorded before launch. Probe: accept the dialog once in a folder, create a new subfolder in it, launch a template there, and check `first_message.sent`.
+
+**Options.** (a) The delegation skill answers the dialog with `hc keys` after `hc read` shows it, as `hc --skill` describes; (b) worktrees are created under one folder that is trusted once, if the probe shows trust carries down; (c) trust is recorded for the worktree before launch, if Claude Code offers a supported way; (d) a person accepts it in the window.
+
+**Decides.** The owner.
+
+## Q14. Where do organization settings and registries live?
+
+**Question.** The predecessor kept its projects registry (`registry/projects.md`) and organization settings (`registry/org-config.md`: worker folder, worker cap, base branch rules, merge approval mode) as Markdown in its repository. Where does paddock keep them?
+
+**What we know.**
+
+- The secretary reads Markdown without a parser; the predecessor's parser existed for its dashboard and tools. ([inventory](predecessor-inventory.md) REG-1)
+- Core documents are versioned JSON up to 1 MiB, kept across restarts, reachable through `hc connect`; [decision 0004](../decisions/0004-records-documents-and-jsonl.md) lists the only allowed names. (Core docs)
+- The permission mode no longer fits there: it goes in each template's command. ([inventory](predecessor-inventory.md) PRM-9)
+- The conversation language setting has the same question ([Q9](#q9-where-does-the-conversation-language-setting-live)).
+
+**Options.** (a) Markdown files in a fixed folder on the primary host, read by skills; (b) a core document (needs a new name in decision 0004); (c) lines in the secretary's template body; (d) paddock's repository, for settings that are not personal.
+
+**Decides.** The owner.
+
+## Q15. Which of the predecessor's optional organization features carry over?
+
+**Question.** Beyond delegation, the predecessor ran features that act on their own or report on the organization: the conveyor (an approved scope worked through without asking), work discovery with goal ledgers and an LLM judge, next-work proposals after a merge, and the metrics and defense reports. Which does paddock carry?
+
+**What we know.**
+
+- Work discovery runs a `claude -p` judge per scan and keeps a judge cache and a spend log; it reads goal ledgers per repository. ([inventory](predecessor-inventory.md) SK-13, ST-8, REG-3)
+- The defense report counts `hook_denied` events, which were 18% of the last 30 days' rows; whether paddock keeps that event kind is open in [decision 0004](../decisions/0004-records-documents-and-jsonl.md). ([Q8](#q8-what-is-each-component-written-in), point 7)
+- None of them depends on herdr. ([inventory](predecessor-inventory.md) SK-13, REC-10)
+
+**Options.** Per feature: carry it as a skill; leave it out for now; or carry it later once its records exist.
+
+**Decides.** The owner.
+
+## Q16. How is the secretary's context renewed?
+
+**Question.** A long-running secretary fills its context. The predecessor wrote a handover document, then typed `/clear` and a resume command into the secretary, by a person or by a watcher that read the transcript's token count. How does paddock renew the secretary?
+
+**What we know.**
+
+- `hc send` is for the first task and interrupts only ([decision 0002](../decisions/0002-org-mailbox-not-hc-send.md)); typing `/clear` into the secretary is neither.
+- A template launch can carry a task, so a new secretary can be started with "resume from the handover document" as its first message; core waits for the agent's status before sending it. (Core docs, `docs/templates.md`)
+- Claude Code's hook events `SessionStart` and `Stop` fire in template launches; `done` and `turn` events show when a turn has ended. (Inventory probes, P2, P3)
+- After a full core stop, `claude --continue` in the same folder resumed the same session, but not when transcript saving is off ([Q17](#q17-what-environment-do-the-core-and-its-terminals-start-with)). ([architecture §8](architecture.md#8-facts-this-design-relies-on); Inventory probes, P7)
+
+**Options.** (a) A person types `/clear` and the resume command; (b) a named exception to decision 0002 for this one control command; (c) end the secretary's terminal and launch a fresh secretary from its template with the handover as the task; (d) rely on Claude Code's own compaction and write no handover.
+
+**Decides.** The owner.
+
+## Q17. What environment do the core and its terminals start with?
+
+**Question.** Programs in hc terminals get the environment of whatever started the core. Who starts the core, and with what environment?
+
+**What we know.**
+
+- A core started by a script under a Claude Code session passed all 15 of that session's `CLAUDE*` variables to a program in an hc terminal, including `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_MESSAGING_SOCKET` and `CLAUDE_CODE_MESSAGING_TOKEN`. Every Claude Code launched there showed "Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker", and no session log was written. (Inventory probes, P7)
+- "The CLI starts a background core when it needs one", so the first `hc` command run decides the environment. (Core docs, `docs/security.md`)
+- `terminal.run` takes an `env` parameter; the `hc run` CLI has no `--env` option. A template's `command` runs through `sh`, so it can set or remove variables before starting the agent. (Core docs, `hc.openrpc.json`, `docs/commands.md`, `docs/templates.md`)
+- Without transcripts, `claude --continue` cannot resume a session ([Q4](#q4-worker-recovery-after-a-core-restart), [Q16](#q16-how-is-the-secretarys-context-renewed)).
+- Not measured: whether `terminal.run`'s `env` can remove an inherited variable, or only add and override.
+
+**Options.** (a) The core is started only from a login shell or a service, never from inside an agent; (b) each template's command clears the variables it must not inherit (for example `env -u CLAUDE_CODE_CHILD_SESSION ... claude`); (c) every launch passes an explicit environment; (d) a mix.
 
 **Decides.** The owner.
