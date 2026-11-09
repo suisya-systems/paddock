@@ -91,7 +91,7 @@ Same order as the predecessor:
 
 1. The worker goes `blocked` (for example `kind: permission`). The secretary sees it first and answers what it can.
 2. What the secretary cannot decide goes to a person through an escalation skill. The escalation, not the `blocked` status, makes the notification.
-3. If the secretary itself does not move, that is an incident and a person is notified after a threshold ([Q3](open-questions.md#q3-incident-threshold-when-the-secretary-does-not-move)).
+3. If the secretary itself does not move, that is an incident and a person is notified when a worker is blocked and the secretary's own status has not changed for 10 minutes, a starting value ([Q3](open-questions.md#q3-incident-threshold-when-the-secretary-does-not-move)).
 
 ### 6.3 After a core restart
 

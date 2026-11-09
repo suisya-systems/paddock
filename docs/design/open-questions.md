@@ -76,6 +76,15 @@ Either way the organization layer (templates, `org` tools, `state.db`, skills) s
 
 **Decides.** The owner.
 
+**Decided (2026-11-10, owner): the third option, with N = 10 minutes.** A person is notified as an incident when a worker is `blocked` and the secretary's own status has not changed for N minutes. N starts at 10 and is tuned from use.
+
+- **Why:** people are interrupted by escalation, not by `blocked`; an incident is the secretary itself not moving ([architecture §2 principle 6 and §6.2](architecture.md#6-flows)). So the condition watches the secretary, and a blocked worker only makes the wait matter. The check follows the stall rule in [MON-7](predecessor-inventory.md): an unchanged `status_ms` alone cannot tell a long `working` turn from a frozen one, so it is paired with a change in the screen or in the `turn` count.
+- **Fixed time rejected:** it ignores that some blocked states are legitimate waits, for example a worker waiting on a person the secretary has already escalated to.
+- **Time per `kind` rejected:** it needs a table of times per `kind` that nobody has measured, and `blocked` is measured for two prompts only, `permission` and `question` ([MON-5](predecessor-inventory.md)); other prompts are Unverified.
+- **How it is evaluated:** the check reads `hc get` for the secretary and for each blocked worker. It fires when a worker is `blocked` and the secretary's `status_ms` is at least N minutes old, and then confirms the secretary is frozen, not in a long turn, by an unchanged `turn` count and an unchanged screen (`hc read --lines 0`) across the same N minutes ([MON-7](predecessor-inventory.md)). A fresh secretary status, screen or `turn` change resets it.
+- **Still open:** who runs this check. The secretary cannot, because it is the one not moving; it needs a watcher outside it (a script or a mod), and a mod runs only while herdr-app is open ([NTF-1](predecessor-inventory.md)). The separate rule for terminals that never reported status after launch is also open.
+- **Not measured:** no run of the rule end to end, and no measurement of how long a healthy secretary keeps one status. N = 10 is a starting value, not a measured one.
+
 ## Q4. Worker recovery after a core restart
 
 **Question.** After a full core stop and start, are workers rebuilt per run, or resumed with `claude --continue`?
