@@ -19,8 +19,10 @@ term_label() { term_json "$1" | grep -o '"labels": *{[^{}]*}' | grep -o '"task_i
 # term_status <name>: the status state, "none" when it reports no status. Fails when not found.
 term_status() {
   local j s; j=$(term_json "$1") || return 1
-  s=$(printf '%s' "$j" | grep -o '"status": *{[^{}]*}' | grep -o '"state": *"[^"]*"' | sed 's/.*: *"//; s/"$//')
-  echo "${s:-none}"
+  # none only when the status is null or absent; a status object whose text has braces still counts as present.
+  printf '%s' "$j" | grep -Eq '"status": *\{' || { echo none; return 0; }
+  s=$(printf '%s' "$j" | grep -o '"status": *{[^{}]*"state": *"[^"]*"' | grep -o '"state": *"[^"]*"' | tail -1 | sed 's/.*: *"//; s/"$//')
+  echo "${s:-present}"
 }
 # paddock_terminals: "name<TAB>task_id" for every terminal that carries a task_id label.
 # Nothing without that label is listed, whatever its name. Fails when the core is unreachable.

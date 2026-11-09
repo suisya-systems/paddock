@@ -26,4 +26,10 @@ run_script "$resume" --apply >/dev/null; rc=$?
 reset; term w-t1 t1; term w-t2 t2; run_script "$suspend" >/dev/null
 rm "$tmp/stub/term-w-t2"; term w-t2 other-task; : > "$calls"
 out=$(run_script "$resume"); grep -Eq 't2.*gone' <<<"$out"; check "a terminal with another label under the old name does not count as alive" $?
+# A live worker whose status text has braces is alive, never killed by resume.
+reset; term w-t1 t1; term w-t2 t2; run_script "$suspend" >/dev/null
+printf '{"name":"w-t2","state":"live","labels":{"task_id":"t2"},"status":{"state":"working","msg":"Implement {foo}"}}' > "$tmp/stub/hc-raw"
+sed -i 's/^  get) /  get) [ "$name" != w-t2 ] || [ ! -f "$STUB\/hc-raw" ] || { cat "$STUB\/hc-raw"; exit 0; }; /' "$stubdir/hc"
+: > "$calls"; out=$(run_script "$resume" --apply); rc=$?
+[ "$rc" -eq 0 ] && ! grep -Eq '^(run|kill|rm) ' "$calls" && grep -q 't2.*alive' <<<"$out"; check "a status with braces in its text still counts as alive" $?
 exit $fail

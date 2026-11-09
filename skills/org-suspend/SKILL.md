@@ -29,6 +29,8 @@ It ends nothing, starts nothing, sends nothing into any agent ([decision 0002](.
 - `work` entries in `org-state` carry two optional fields beyond [prototype 1](../../docs/design/prototype-1.md#the-org-state-document): `worktree` (path) and `task` (the original task text). [Q4](../../docs/design/open-questions.md#q4-worker-recovery-after-a-core-restart) says the records must hold them; where the secretary writes them is for the secretary template to settle. Without them `org-resume` cannot relaunch that worker.
 - The shape of `hc ls --json` and of the `labels` and `status` objects in `hc get --json` is taken from the `org-agents` mod's code and the other skills, not measured here.
 
+- Known limit: `org-state` is read with grep and sed, not a JSON parser. Quotes and backslashes in `task` survive; Unicode (`\uXXXX`), newline and tab escapes are kept as written and are not decoded, and a work entry that cannot be read makes the suspend fail rather than be dropped.
+
 ## Exit codes
 
 0 recorded, 2 bad argument, 3 `hc` not found, 4 run inside an agent, 5 core unreachable or the record could not be written.
