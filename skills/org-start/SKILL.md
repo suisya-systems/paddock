@@ -44,3 +44,5 @@ Probe #52 (the SK-2 row of the [predecessor inventory](../../docs/design/predece
 The script places the mod but does not open it: `mod.json` has `"place": "none"`, and opening the dialog is a separate herdr-app step that can toggle, so it is not scripted until an idempotent form is measured. Open it as described in [prototype 1](../../docs/design/prototype-1.md).
 
 The deny and sandbox paths in `templates/worker-settings.json` are the default folders (`~/.config/herdr-core`, `~/.config/herdr-app`, `~/.local/state/herdr-core`, `~/.config/gh/hosts.yml`). A JSON settings file cannot expand `XDG_CONFIG_HOME` or `APPDATA`, so with those set to another place the paths do not follow. Not solved here.
+
+The `PADDOCK_*` overrides reach a worker only through the environment of the core. Set them in the login shell that starts the core; setting them for an org-start run against a core that is already running changes only org-start's own check and placement.
