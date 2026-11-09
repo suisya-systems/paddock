@@ -14,6 +14,7 @@ Sources used below:
 - **Inventory probes**: probes P1 to P7 in the [predecessor inventory](predecessor-inventory.md#2-probes-run-for-this-inventory), hc 0.1.18 with Claude Code 2.1.319 on WSL2, 2026-11-08 (used from Q10 on).
 - **Claude Code docs**: `claude --help` and the CHANGELOG of Claude Code 2.1.319 (used from Q10 on).
 - **Env probe**: [`scripts/probes/env-remove-var.sh`](../../scripts/probes/env-remove-var.sh), hc 0.1.18 on a running core, 2026-11-09 (used in Q17 only).
+- **Continue probe**: [`scripts/probes/continue-multi-conv.sh`](../../scripts/probes/continue-multi-conv.sh), hc 0.1.18 with Claude Code 2.1.319 on WSL2, core started from a login shell, 2026-11-10 (used in Q4 only).
 - **Predecessor**: files of claude-org-ja, as listed in the [predecessor inventory](predecessor-inventory.md) (used from Q10 on).
 
 ## Q1. App mod or our own client?
@@ -83,7 +84,10 @@ Either way the organization layer (templates, `org` tools, `state.db`, skills) s
 
 - `hc server restart` keeps programs running; `hc server stop` then `start` ends them, and `--keep` terminals come back as shells in their last folder. Core never reruns the original command. (Core docs; Core measurement)
 - `hc run ... claude --continue` in the same folder resumed the same session and answered a codeword set before the stop. (Core measurement)
-- That measurement had only one conversation in the folder. Behavior with several conversations in one folder was not measured. (Core measurement)
+- That measurement had only one conversation in the folder. (Core measurement)
+- Measured on 2026-11-10 (hc 0.1.18, Claude Code 2.1.319; [`scripts/probes/continue-multi-conv.sh`](../../scripts/probes/continue-multi-conv.sh), Issue #57; core from a login shell, template `command` with the `env -u` prefix, transcripts on): **`claude --continue` resumed the conversation whose transcript was written most recently, not the first or the last created.** Two separate conversations were run in one folder, each told its own codeword (A, then B started after A was stopped with `hc kill`). `claude --continue` from a template answered B's codeword (A first, B last: also the most recently created). Then A was resumed by id (`claude --resume <id>`) and stopped, so A was the last active and B the later created; `claude --continue` now answered A's codeword. A's transcript file time moved on resume and B's did not, and the two cases match the file times. Whether the pick is by file time or by an internal last-activity record was not told apart; the files agree in this run.
+- The same probe's first launch in a fresh folder stopped at the folder-trust dialog (`first_message.sent: false`, [Q13](#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog)); `hc read` showed it and `hc keys <t> down enter` passed it. A later launch in the same folder did not show it.
+- Consequence for option B: in a worktree that holds one worker's conversation, `--continue` resumes that one; if the folder also holds another conversation that was active later (for example a person opened Claude Code there), `--continue` resumes that one instead. Measured with two conversations only; each launch answered a codeword, so the resumed conversation was identified by content, not by id.
 - A launch's `first_message: {sent: false, reason}` survives a core restart in `hc get`. (Core docs)
 
 **Options.**
