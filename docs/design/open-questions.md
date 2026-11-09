@@ -374,7 +374,12 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 **Options.** (a) The core is started only from a login shell or a service, never from inside an agent; (b) each template's command clears the variables it must not inherit (for example `env -u CLAUDE_CODE_CHILD_SESSION ... claude`); (c) every launch passes an explicit environment (it can add and override but not remove a variable, so it clears `CLAUDE_CODE_CHILD_SESSION` only if an empty value counts as unset); (d) a mix.
 
-**Decides.** The owner.
+**Decided (2026-11-10, owner): (d) = (a) + (b).**
+
+- **Start rule (a):** the core is started only from the person's login shell or a service, never from inside an agent, so no agent's `CLAUDE*` variables become the core's environment.
+- **Template command (b):** as a second line, each template's `command` clears the session-bound variables it must not inherit before launching `claude`, for example `env -u CLAUDE_CODE_CHILD_SESSION ... claude`. The names known from [P7](predecessor-inventory.md) are `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_MESSAGING_SOCKET` and `CLAUDE_CODE_MESSAGING_TOKEN`; P7 counted 15 `CLAUDE*` variables but named only these four, so each template's list must be extended to the rest of the session-bound ones. [templates/secretary.md](../../templates/secretary.md) carries the prefix now; every other template must carry it too.
+- **(c) alone rejected:** `terminal.run`'s `env` cannot remove an inherited variable (empty string sets it to empty, `null` is rejected; measured 2026-11-10, see above).
+- **Consequence for `org-start`:** the rewritten skill starts no core itself. It should refuse to run if the core it finds was started from an agent. Whether that is detectable is not established: no probe has read the core's own environment or recorded who started it. Until one does, the rule is enforced by the start rule and (b) only.
 
 ## Q18. How does anything reach an idle agent?
 
