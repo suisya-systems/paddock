@@ -17,6 +17,11 @@
 #   C  request read from a file (hc connect < file): EOF at once, no pipe.
 #      Same reading as A.
 #   D  stdin held open for 0.2 s: how short the hold can be (informational).
+#   E  case A repeated 20 times against a real document (default org-state,
+#      or the name in $1; pick a large one) with 20 repeats of B for contrast.
+#      "answered" counts runs that printed a JSON line. Anything below 20/20
+#      for A while B is 20/20 is the race the first measurement may have hit.
+# Windows (where the first measurement was made): see hc-connect-stdin-eof.ps1.
 # Expected by a reader of the docs: A and C answer like B (exit=0, one JSON
 # line with "result" or a JSON-RPC "error"). The docs do not say what happens
 # at EOF. Exit codes are those of hc itself, not of the pipeline's first stage.
@@ -50,3 +55,14 @@ hc connect < "$TMP.req" > "$TMP" 2>&1; show C $?
 
 echo "== D. request, stdin held open 0.2 s"
 { printf '%s\n' "$REQ"; sleep 0.2; } | hc connect > "$TMP" 2>&1; show D $?
+
+echo "== E. repeat against a real document: ${1:-org-state}"
+RDOC="${1:-org-state}"
+RREQ='{"jsonrpc":"2.0","id":1,"method":"doc.get","params":{"name":"'"$RDOC"'"}}'
+a=0; b=0; i=0
+while [ $i -lt 20 ]; do
+  printf '%s\n' "$RREQ" | hc connect 2>&1 | grep -q '^{' && a=$((a+1))
+  { printf '%s\n' "$RREQ"; sleep 1; } | hc connect 2>&1 | grep -q '^{' && b=$((b+1))
+  i=$((i+1))
+done
+echo "-- E: EOF at once answered $a/20; held 1 s answered $b/20"
