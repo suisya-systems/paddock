@@ -1,0 +1,214 @@
+#!/usr/bin/env bash
+# org: the organization's mailbox and run records as shell commands (Issue #60, Q8 (b),
+# decisions 0002 and 0004). Needs only bash, coreutils, sed and awk; `hc` only for `doc`.
+# No resident process: every call reads and appends files, so it works with no window open.
+set -u
+export LC_ALL=C
+
+usage() {
+  cat <<'USAGE'
+Usage: org [--as <id>] <command> [args]
+
+  send_message <to> <text>                      put a message in <to>'s box
+  check_messages [--peek]                       print unread messages for you, mark them read
+  set_summary <text>                            say what you are doing (shown by list_runs)
+  report <start|done|blocked> --task <task_id> [--to <id>] <text>
+                                                write a run record and tell <to> (default: secretary)
+  list_runs                                     latest state per task, and each agent's summary
+  doc get <name>                                print a core document's value
+  doc set <name>                                set it from stdin (secretary only)
+  doc update <name> -- <command...>             re-read, run command (old value on stdin, new
+                                                value on stdout), set; on a version conflict
+                                                re-read and reapply (secretary only)
+
+Your id comes from --as or $PADDOCK_ORG_ID (lowercase letters, digits, _ and -).
+History is JSON lines, events/<YYYY-MM>/<id>.jsonl under $PADDOCK_STATE_DIR
+(default ${XDG_STATE_HOME:-~/.local/state}/paddock); each id appends only to its own file.
+Readers look at this month and the last. $PADDOCK_NOW (UTC ISO 8601) fixes the clock for tests.
+Documents are the names of decision 0004: org-state (64 KiB), secretary-handover (32 KiB);
+the writer is $PADDOCK_SECRETARY_NAME (default secretary). $PADDOCK_HC_HOLD seconds (default 1)
+is how long hc connect's input stays open after a request.
+
+Exit codes: 0 ok, 2 bad usage, 3 hc not found (doc), 5 store or core error, 6 document name
+not allowed, 7 not the document's writer, 8 value over the cap, 9 version conflict that did
+not clear after 5 tries, 10 the update command failed.
+USAGE
+}
+
+die() { code=$1; shift; echo "org: $*" >&2; exit "$code"; }
+tab=$(printf '\t')
+
+id=${PADDOCK_ORG_ID:-}
+case "${1:-}" in -h|--help|help) usage; exit 0 ;; esac
+if [ "${1:-}" = --as ]; then [ $# -ge 2 ] || die 2 "--as needs an id"; id=$2; shift 2; fi
+cmd=${1:-}; [ $# -eq 0 ] || shift
+[ -n "$cmd" ] || { usage >&2; exit 2; }
+
+valid_id() { case "$1" in ''|-*|*[!a-z0-9_-]*) return 1 ;; esac; }
+case "$cmd" in
+  send_message|check_messages|set_summary|report|list_runs|doc) ;;
+  *) echo "org: unknown command: $cmd" >&2; usage >&2; exit 2 ;;
+esac
+valid_id "$id" || die 2 "no valid id: give --as <id> or set PADDOCK_ORG_ID (lowercase letters, digits, _ and -)"
+
+state=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
+now=${PADDOCK_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
+cur=${now:0:7}
+y=${cur%-*}; m=$((10#${cur#*-} - 1)); [ "$m" -gt 0 ] || { m=12; y=$((10#$y - 1)); }
+prev=$(printf '%04d-%02d' "$((10#$y))" "$m")
+
+# json_esc: stdin -> a JSON string body (no quotes). Control characters other than newline
+# and tab are dropped; newline becomes \n, tab \t.
+json_esc() {
+  tr -d '\000-\010\013\014\016-\037' \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e "s/$tab/\\\\t/g" \
+    | awk 'NR>1{printf "%s","\\n"} {printf "%s",$0}'
+}
+
+# next_seq: one more than the last seq in this id's newest file (continues across months).
+next_seq() {
+  local f last=0
+  f=$(ls "$state"/events/*/"$id".jsonl 2>/dev/null | sort | tail -1)
+  [ -z "$f" ] || last=$(tail -n 1 "$f" | sed -n 's/^{"seq":\([0-9][0-9]*\),.*/\1/p')
+  echo $(( ${last:-0} + 1 ))
+}
+
+# append <kind> <to> <task_id> <text>: one line in this id's own file. ponytail: one process per
+# id at a time (no lock); two shells sharing an id could repeat a seq.
+append() {
+  local d=$state/events/$cur body
+  body=$(printf '%s\n' "$4" | json_esc)
+  [ "${#body}" -le 32768 ] || die 2 "text is longer than 32 KiB"
+  mkdir -p "$d" || die 5 "cannot create $d"
+  printf '{"seq":%s,"ts":"%s","from":"%s","kind":"%s","to":"%s","task_id":"%s","text":"%s"}\n' \
+    "$(next_seq)" "$now" "$id" "$1" "$2" "$3" "$body" >> "$d/$id.jsonl" || die 5 "cannot write $d/$id.jsonl"
+}
+
+# window: every line of this month's and the previous month's files as TSV
+# seq ts from kind to task_id text (text still JSON-escaped; it has no raw tab or newline).
+window() {
+  local f
+  for f in "$state/events/$prev"/*.jsonl "$state/events/$cur"/*.jsonl; do
+    [ -f "$f" ] && cat "$f"
+  done | sed -n "s/^{\"seq\":\([0-9]*\),\"ts\":\"\([^\"]*\)\",\"from\":\"\([^\"]*\)\",\"kind\":\"\([^\"]*\)\",\"to\":\"\([^\"]*\)\",\"task_id\":\"\([^\"]*\)\",\"text\":\"\(.*\)\"}\$/\1$tab\2$tab\3$tab\4$tab\5$tab\6$tab\7/p"
+}
+
+# AWK_UNESC: undo json_esc.
+AWK_UNESC='function unesc(s,  o,i,c,n){o="";for(i=1;i<=length(s);i++){c=substr(s,i,1);if(c=="\\"){i++;n=substr(s,i,1);o=o (n=="n"?"\n":n=="t"?"\t":n)}else o=o c}return o}'
+
+case "$cmd" in
+  send_message)
+    [ $# -ge 2 ] || die 2 "usage: send_message <to> <text>"
+    to=$1; shift; text="$*"
+    valid_id "$to" || die 2 "invalid recipient: $to"
+    [ -n "$text" ] || die 2 "empty text"
+    append message "$to" "" "$text" ;;
+
+  set_summary)
+    [ $# -ge 1 ] && [ -n "$*" ] || die 2 "usage: set_summary <text>"
+    append summary "" "" "$*" ;;
+
+  report)
+    status=${1:-}; [ $# -eq 0 ] || shift
+    case "$status" in start) kind=run_started ;; done) kind=run_completed ;; blocked) kind=run_blocked ;;
+      *) die 2 "usage: report <start|done|blocked> --task <task_id> [--to <id>] <text>" ;; esac
+    task=; to=secretary
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --task) [ $# -ge 2 ] || die 2 "--task needs a value"; task=$2; shift 2 ;;
+        --to) [ $# -ge 2 ] || die 2 "--to needs a value"; to=$2; shift 2 ;;
+        --) shift; break ;;
+        *) break ;;
+      esac
+    done
+    valid_id "$task" || die 2 "report needs --task <task_id> (lowercase letters, digits, _ and -)"
+    valid_id "$to" || die 2 "invalid recipient: $to"
+    [ -n "$*" ] || die 2 "report needs text"
+    append "$kind" "$to" "$task" "$*" ;;
+
+  check_messages)
+    peek=
+    case "${1:-}" in --peek) peek=1 ;; "") ;; *) die 2 "usage: check_messages [--peek]" ;; esac
+    unread=$(window | awk -F"$tab" -v me="$id" '
+      $3==me && $4=="ack" { split($7,a," "); if (a[2]+0>acked[a[1]]) acked[a[1]]=a[2]+0; next }
+      $5==me { n++; seq[n]=$1; line[n]=$0 }
+      END { for (i=1;i<=n;i++) { split(line[i],f,"\t"); if (seq[i]+0>acked[f[3]]+0) print line[i] } }' \
+      | sort -s -t "$tab" -k2,2 -k3,3 -k1,1n)
+    if [ -z "$unread" ]; then echo "no new messages"; exit 0; fi
+    printf '%s\n' "$unread" | awk -F"$tab" "$AWK_UNESC"'
+      { printf "[%s#%s %s %s%s]\n%s\n\n", $3, $1, $2, $4, ($6==""?"":" task=" $6), unesc($7) }'
+    if [ -z "$peek" ]; then
+      printf '%s\n' "$unread" | awk -F"$tab" '{ if ($1+0>m[$3]+0) m[$3]=$1+0 } END { for (s in m) print s, m[s] }' \
+        | sort | while read -r s u; do append ack "" "" "$s $u"; done
+    fi ;;
+
+  list_runs)
+    all=$(window)
+    echo "runs (task, writer, state, time, last text)"
+    printf '%s\n' "$all" | awk -F"$tab" "$AWK_UNESC"'
+      $4=="run_started"||$4=="run_completed"||$4=="run_blocked" {
+        k=$6; if (!(k in ts) || $2>ts[k] || ($2==ts[k] && $1+0>=sq[k]+0)) { ts[k]=$2; sq[k]=$1; w[k]=$3; st[k]=$4; tx[k]=$7 } }
+      END { for (k in ts) { s=st[k]; sub(/^run_/,"",s); if (s=="completed") s="done"; t=unesc(tx[k]); gsub(/\n/," ",t)
+              printf "%s\t%s\t%s\t%s\t%s\n", k, w[k], s, ts[k], substr(t,1,100) } }' | sort -t "$tab" -k4,4 -k1,1
+    echo "summaries (agent, time, text)"
+    printf '%s\n' "$all" | awk -F"$tab" "$AWK_UNESC"'
+      $4=="summary" { k=$3; if (!(k in ts) || $2>ts[k] || ($2==ts[k] && $1+0>=sq[k]+0)) { ts[k]=$2; sq[k]=$1; tx[k]=$7 } }
+      END { for (k in ts) { t=unesc(tx[k]); gsub(/\n/," ",t); printf "%s\t%s\t%s\n", k, ts[k], substr(t,1,200) } }' | sort ;;
+
+  doc)
+    sub=${1:-}; [ $# -eq 0 ] || shift
+    name=${1:-}; [ $# -eq 0 ] || shift
+    case "$name" in
+      org-state) cap=65536 ;;
+      secretary-handover) cap=32768 ;;
+      *) die 6 "document name not allowed: '$name' (decision 0004 lists org-state and secretary-handover)" ;;
+    esac
+    case "$sub" in
+      get) ;;
+      set|update)
+        [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || die 7 "only ${PADDOCK_SECRETARY_NAME:-secretary} writes $name"
+        if [ "$sub" = update ]; then
+          [ "${1:-}" = -- ] && shift
+          [ $# -gt 0 ] || die 2 "usage: doc update <name> -- <command...>"
+        else
+          [ $# -eq 0 ] || die 2 "usage: doc set <name> (value on stdin)"
+          stdin_value=$(tr -d '\n')
+          [ -n "$stdin_value" ] || die 2 "doc set: empty value on stdin"
+        fi ;;
+      *) die 2 "usage: doc get|set|update <name>" ;;
+    esac
+    command -v hc >/dev/null 2>&1 || die 3 "hc not found on PATH (install herdr-core)"
+
+    # One JSON-RPC line through hc connect, input held open (hc can end at end of input
+    # before it answers; prototype 1).
+    rpc() { { printf '%s\n' "$1"; sleep "${PADDOCK_HC_HOLD:-1}"; } | hc connect 2>/dev/null | tr -d '\n'; }
+    # read_doc: sets $val and $ver.
+    read_doc() {
+      local ans
+      ans=$(rpc "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"doc.get\",\"params\":{\"name\":\"$name\"}}")
+      case "$ans" in *'"result"'*) ;; *) die 5 "doc.get $name failed: ${ans:0:200}" ;; esac
+      val=$(printf '%s' "$ans" | sed -e 's/^.*"result": *{ *"value": *//' -e 's/ *, *"version": *[0-9][0-9]* *} *}.*$//')
+      ver=$(printf '%s' "$ans" | sed -n 's/.*"version": *\([0-9][0-9]*\) *} *}.*/\1/p')
+      [ -n "$val" ] && [ -n "$ver" ] || die 5 "doc.get $name: cannot read value and version from: ${ans:0:200}"
+    }
+
+    if [ "$sub" = get ]; then read_doc; printf '%s\n' "$val"; exit 0; fi
+
+    tries=0
+    while [ "$tries" -lt 5 ]; do
+      tries=$((tries + 1))
+      read_doc
+      if [ "$sub" = set ]; then new=$stdin_value
+      else new=$(printf '%s' "$val" | "$@" | tr -d '\n') || die 10 "update command failed; $name not written"; fi
+      [ -n "$new" ] || die 10 "update command printed no value; $name not written"
+      [ "${#new}" -le "$cap" ] || die 8 "value is ${#new} bytes, over the $cap cap of $name"
+      ans=$(rpc "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"doc.set\",\"params\":{\"name\":\"$name\",\"value\":$new,\"version\":$ver}}")
+      case "$ans" in
+        *'"error"'*conflict*) continue ;;
+        *'"error"'*) die 5 "doc.set $name failed: ${ans:0:200}" ;;
+        *'"result"'*) exit 0 ;;
+        *) die 5 "doc.set $name: no answer from hc connect" ;;
+      esac
+    done
+    die 9 "doc.set $name kept conflicting after 5 tries" ;;
+esac

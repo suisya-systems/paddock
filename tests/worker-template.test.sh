@@ -106,7 +106,7 @@ for f in "$tpl" "$rules"; do
   [ -f "$f" ] && ! LC_ALL=C grep -q -P '[^\x00-\x7F]' "$f"; r=$?; check "${f##*/} is ASCII only" $r
 done
 all=$(body "$tpl"; cat "$rules" 2>/dev/null)
-for want in 'one task' 'worktree' 'hc send' 'scripts/org' 'not built' 'push' 'blocked' 'herdr' 'GitHub'; do
+for want in 'one task' 'worktree' 'hc send' 'scripts/org' 'PADDOCK_ORG' 'push' 'blocked' 'herdr' 'GitHub'; do
   grep -qi -- "$want" <<<"$all"; check "role text mentions: $want" $?
 done
 grep -qi 'never[^.]*hc send' <<<"$all"; check "role text forbids hc send" $?

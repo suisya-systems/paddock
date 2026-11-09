@@ -62,6 +62,8 @@ cp -f "$root/templates/secretary.md" "$templates/secretary.md" || die 6 "cannot 
 for f in worker.md worker-rules.md worker-settings.json; do
   cp -f "$root/templates/$f" "$templates/$f" || die 6 "cannot copy $f"
 done
+# The org commands (Issue #60): a worker runs in its own worktree, so it reaches them as $PADDOCK_ORG (set by its template).
+cp -f "$root/scripts/org" "$templates/org" || die 6 "cannot copy scripts/org"
 # Q20: a worker will not start without the read-only GitHub token file. Warn only; never read it.
 tokfile=${PADDOCK_WORKER_GH_TOKEN_FILE:-$cfg/paddock/worker-gh-token}
 [ -s "$tokfile" ] || echo "org-start: warning: no read-only GitHub token in $tokfile; workers will refuse to start until you create it (see skills/org-start/SKILL.md)" >&2
