@@ -452,7 +452,18 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 **Options.** (a) hc's own notes wake the parent ([Q2](#q2-how-much-of-a-childs-reporting-goes-through-the-mailbox) option C); (b) the `org` server or the events bridge sends a short wake-up with `hc send --if idle` to an idle agent, as a named exception to decision 0002; (c) the secretary never goes idle while work is in progress, waiting with `hc wait --children` and checking the mailbox each time it returns; (d) a person is notified and starts the turn.
 
-**Decides.** The owner.
+**Decided (2026-11-10, owner): (c).** The secretary never goes idle while work is in progress. It waits with `hc wait` (`--children`, or the named child terminals it started) and checks the mailbox each time the wait returns. Nothing is typed into an agent.
+
+- **Measured basis:** MON-12, measured 2026-11-10 (hc 0.1.18, [probe](../../scripts/probes/ci-watch-child.sh), Issue #55): `hc wait <name>` blocks until the child ends and prints one JSON line with the exit code, from a plain shell and from a parent launched from a template, and with `--no-notify` nothing was typed into the parent. ([inventory](predecessor-inventory.md) MON-12) `hc wait --children` needs to run inside a terminal or name the parent: from a plain shell it exited 7 at once with `needs_target` ("run it inside a terminal, or name the parent"). Neither form was measured from inside a Claude terminal. ([inventory](predecessor-inventory.md) MON-12, REC-4)
+- **Why:** [decision 0002](../decisions/0002-org-mailbox-not-hc-send.md) stays intact, because the wake-up is the secretary's own wait returning, not text typed into its prompt. It does not depend on hc's notes being typed into the parent (they are off, [Q2](#q2-how-much-of-a-childs-reporting-goes-through-the-mailbox)). An event that is not a child, such as a CI result, becomes a child by being watched through a child terminal, the method of the pull-request skill ([MON-12](predecessor-inventory.md)). A worker's report arrives in the mailbox and is read on the next return.
+- **(a) rejected:** it relies on hc typing notes into the parent's prompt, which decision 0002 avoids.
+- **(b) rejected:** it is a named exception to decision 0002, which exists so that nothing is typed into an agent's prompt.
+- **(d) rejected:** it makes a person the wake mechanism, for events the secretary can wait for itself.
+- **Consequence, secretary template:** [templates/secretary.md](../../templates/secretary.md) gets a waiting rule: while any task is in progress, wait on children and read the mailbox on each return.
+- **Consequence, worker after interrupt:** a worker that is interrupted and idle is woken by the secretary launching its next instruction as a new child, or by the resume path of [Q4](#q4-worker-recovery-after-a-core-restart). A mailbox message alone does not start it ([SK-4](predecessor-inventory.md)).
+- **Consequence, events bridge:** the events bridge ([architecture §4](architecture.md#4-where-each-part-goes)) records events and does not wake agents.
+- **Consequence, Codex-cap denial:** it makes no hc note ([REC-4](predecessor-inventory.md)), so no wait returns for it; it reaches the secretary only as a mailbox message, read on the next return.
+- **Not measured:** `hc wait --children` from inside a Claude Code terminal; the waiting loop over a long session; and whether a Claude Code turn can hold `hc wait` for minutes without the harness interrupting it.
 
 ## Q19. Do workers outlive the secretary that started them?
 
