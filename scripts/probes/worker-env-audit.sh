@@ -54,11 +54,11 @@
 #   RESULT <t> session-vars: PASS|FAIL      t = parent, child-sh, child-claude.
 #       Per variable (CLAUDE_CODE_CHILD_SESSION, CLAUDE_CODE_SESSION_ID,
 #       CLAUDE_CODE_MESSAGING_SOCKET, CLAUDE_CODE_MESSAGING_TOKEN) the detail
-#       line says absent / same-as-runner / differs-from-runner.
+#       line says absent / same-as-baseline / differs-from-baseline.
 #       PASS = every one absent, or (claude terminals only) present with a value
-#       that differs from the runner's (Claude Code set its own).
-#       FAIL = any one present with the runner's value; for child-sh, any
-#       present at all.
+#       that differs from every baseline (Claude Code set its own).
+#       FAIL = any one present with a baseline's value; for child-sh, any
+#       present at all. INCONCLUSIVE = present but no baseline holds it.
 #   RESULT transcript-notice <t>: absent|PRESENT   "Transcript saving is off"
 #       on the screen of the parent / claude child. PASS = absent for both.
 #   RESULT <t> gh-env: PASS|FAIL    FAIL = any of GH_TOKEN, GITHUB_TOKEN,
@@ -162,17 +162,19 @@ settle p34-ccl; [ $? -eq 2 ] && CNOTE=PRESENT
 
 ck() { grep "^$2 " "$OUT/$1.vars" 2>/dev/null | cut -d' ' -f2; } # checksum of variable $2 in dump $1
 
-# verdict <dump> <label> <strict>: strict=1 means any presence fails (no Claude Code in between)
+# verdict <dump> <label> <strict> [extra]: strict=1 means any presence fails (no Claude Code in between).
+# Baselines for "inherited": the control dump (what the core hands out), the runner, and, when given,
+# the dump <extra> (the parent, for the Claude child).
 verdict() {
   [ -f "$OUT/$1.rc" ] || { echo "RESULT $2 session-vars: NO DATA"; return; }
   res=PASS
   for v in $VARS4; do
-    mine=$(ck "$1" $v); ref=$(ck run $v)
+    mine=$(ck "$1" $v); c=$(ck ctl $v); r=$(ck run $v); x=; [ -n "${4:-}" ] && x=$(ck "$4" $v)
     if [ -z "$mine" ]; then d=absent
-    elif [ -n "$ref" ] && [ "$mine" = "$ref" ]; then d=same-as-runner; res=FAIL
+    elif [ "$mine" = "$c" ] || [ "$mine" = "$r" ] || { [ -n "$x" ] && [ "$mine" = "$x" ]; }; then d=same-as-baseline; res=FAIL
     elif [ "$3" = 1 ]; then d=present; res=FAIL
-    elif [ -n "$ref" ]; then d=differs-from-runner
-    else d="present (runner has none; cannot tell inherited from own)"; fi
+    elif [ -n "$c$r$x" ]; then d=differs-from-baseline
+    else d="present (no baseline has it; cannot tell inherited from own)"; [ $res = PASS ] && res=INCONCLUSIVE; fi
     echo "   $2 $v: $d"
   done
   echo "RESULT $2 session-vars: $res"
@@ -197,7 +199,9 @@ if [ -f "$OUT/ctl.rc" ]; then
 else echo "RESULT control: NO DATA"; fi
 verdict par parent 0
 verdict csh child-sh 1
-verdict ccl child-claude 0
+verdict ccl child-claude 0 par
+[ -f "$OUT/par.rc" ] || PNOTE="NO DATA (parent never ran its dump)"
+[ -f "$OUT/ccl.rc" ] || CNOTE="NO DATA (child never ran its dump)"
 echo "RESULT transcript-notice parent: $PNOTE"
 echo "RESULT transcript-notice child-claude: $CNOTE"
 
