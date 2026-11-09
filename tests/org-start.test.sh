@@ -73,6 +73,7 @@ out=$(run); rc=$?
 cmp -s "$here/templates/secretary.md" "$tmp/core/templates/secretary.md"; check "template placed in core templates folder" $?
 cmp -s "$here/mods/org-agents/main.js" "$tmp/app/mods/org-agents/main.js" \
   && cmp -s "$here/mods/org-agents/mod.json" "$tmp/app/mods/org-agents/mod.json"; check "mod files placed" $?
+cmp -s "$here/scripts/org" "$tmp/core/templates/org"; check "scripts/org placed beside the templates (as PADDOCK_ORG)" $?
 ! grep -Eq '^server (stop|restart)' "$tmp/stub/calls"; check "never stops or restarts the core" $?
 
 # Name override: the terminal gets the given name; the template stays "secretary".

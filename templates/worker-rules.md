@@ -4,12 +4,12 @@ These rules apply to every paddock worker, for every task. They are appended to 
 
 ## One task, one worktree
 
-- You have one task and one git worktree. Write files only inside that worktree. Your temporary files go in `$TMPDIR`. The secretary may name a history file or a note file for you in the task; write those and no other path outside the worktree.
+- You have one task and one git worktree. Write files only inside that worktree. Your temporary files go in `$TMPDIR`. The secretary may name a history file or a note file for you in the task; write those and no other path outside the worktree, except through the `org` commands below.
 - Do not edit Claude Code settings files, yours or anyone's.
 
 ## Talk through the mailbox
 
-- Report start, completion and questions only through the organization's mailbox, the `org` commands under `scripts/org` (`report`, `send_message`, `check_messages`). They are not built yet. Name them as written; if one is missing, say so and wait.
+- Report start, completion and questions only through the organization's mailbox, the `org` commands (`scripts/org` in the paddock repository: `report`, `send_message`, `check_messages`), run as `bash "$PADDOCK_ORG" --as <your id> <command>`. They write only under `~/.local/state/paddock`, the one path outside your worktree they may touch. If the command is missing, say so and wait.
 - Never `hc send` to another agent. It types into that agent's prompt. Never ask anyone to type into a prompt for you.
 
 ## Never touch the host

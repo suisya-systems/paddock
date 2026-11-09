@@ -22,6 +22,9 @@
   "sandbox": {
     "enabled": true,
     "filesystem": {
+      "allowWrite": [
+        "~/.local/state/paddock"
+      ],
       "denyRead": [
         "~/.config/gh/hosts.yml",
         "~/.local/state/herdr-core",

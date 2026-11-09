@@ -36,5 +36,5 @@ The log is for audit. Questions about what is happening now are answered from th
 - Concurrent appends (Q8 point 1) do not arise, because every file has one writer. Order across machines (point 5) comes from per-writer `seq` plus `ts` on the primary.
 - Monthly files are kept as they are; readers look at the last two months only. No roll-up job is defined (point 9). At 4x this is about 80 MB per year on disk.
 - Searching across all history is a text scan. If that becomes daily work, this decision is revisited rather than worked around.
-- Still open: where the `events/` folder sits on the primary, the writer ids, the line fields beyond `ts` and `seq`, and which event kinds are kept at all (point 7). They are settled when the first history writer is built.
+- Settled by the first history writer (Issue #60, `scripts/org`): the folder is `$PADDOCK_STATE_DIR/events/` (default `~/.local/state/paddock`); the writer id is the agent's `--as` id (`secretary`, `w-<task_id>`); a line is `{"seq","ts","from","kind","to","task_id","text"}`. The kinds written so far are `message`, `ack`, `summary`, `run_started`, `run_completed`, `run_blocked`. Still open: which other event kinds are kept at all (point 7), and the events bridge.
 - Prototype 1 uses only `org-state` and writes no history.

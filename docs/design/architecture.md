@@ -70,7 +70,7 @@ paddock adds the components below. Each must be written in an environment herdr 
 
 | Component | What it must do | Written in |
 | --- | --- | --- |
-| `org` shell commands (`scripts/org`) | Give every agent the mailbox operations (`send_message`, `check_messages`, `set_summary`, `report`, `list_runs`) as commands the skills call, with no resident process, so they work whether or not a window is open. | Decided (Q8, shell commands) |
+| `org` shell commands (`scripts/org`) | Give every agent the mailbox operations (`send_message`, `check_messages`, `set_summary`, `report`, `list_runs`) as commands the skills call, with no resident process, so they work whether or not a window is open. | Built (Issue #60), shell commands |
 | Events bridge | Follow `hc events --json` and append runs and events to `state.db`, as a kept herdr-core terminal. It does not wake agents: the secretary waits with `hc wait` and reads the mailbox on each return ([Q18](open-questions.md#q18-how-does-anything-reach-an-idle-agent), decided (c)). | Open (Q8) |
 | `state.db` | Hold runs, events and messages durably. The name is kept for the record store whatever its format. | Core documents and JSON-lines files ([decision 0004](../decisions/0004-records-documents-and-jsonl.md)), reached through `hc connect` and the shell |
 | Window | Draw the screen in [section 7](#7-the-screen). | herdr-app mods (JavaScript) ([decision 0003](../decisions/0003-screen-as-app-mods.md)) |
