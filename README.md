@@ -8,7 +8,7 @@ paddock rebuilds these ideas from its predecessor, claude-org-ja, on a new base:
 
 ## Status
 
-A first prototype: the secretary template and a mod that shows approvals and work in progress ([prototype 1](docs/design/prototype-1.md)). To start the secretary and install the mod, run `bash skills/org-start/scripts/org-start.sh` from your own login shell, never from inside an agent ([skill](skills/org-start/SKILL.md); Bash only for now). To renew the secretary's context, run `bash skills/secretary-handover/scripts/secretary-handover.sh` the same way, once the secretary has written its handover ([skill](skills/secretary-handover/SKILL.md)). Start with:
+A first prototype: the secretary template and a mod that shows approvals and work in progress ([prototype 1](docs/design/prototype-1.md)). To start the secretary and install the mod, run `bash skills/org-start/scripts/org-start.sh` from your own login shell, never from inside an agent ([skill](skills/org-start/SKILL.md); Bash only for now). To renew the secretary's context, run `bash skills/secretary-handover/scripts/secretary-handover.sh` the same way, once the secretary has written its handover ([skill](skills/secretary-handover/SKILL.md)). To pause and come back: [`org-suspend`](skills/org-suspend/SKILL.md) records the state and leaves terminals alive, [`org-resume`](skills/org-resume/SKILL.md) prints a plan (and relaunches workers with `--apply`), and [`org-down`](skills/org-down/SKILL.md) ends only the terminals carrying a `task_id` label and stops your core only with `--stop-core`. Start with:
 
 - [Architecture](docs/design/architecture.md): where each part lives, and the rules that hold it together.
 - [Open questions](docs/design/open-questions.md): decisions the owner has not made yet, with what we know so far.
@@ -37,7 +37,7 @@ Portability. The predecessor carried its own terminal transports, pane launcher,
 
 ## CI
 
-CI: relative Markdown links are checked by `scripts/check-links.sh`; `tests/org-start.test.sh` and `tests/secretary-handover.test.sh` test the `org-start` and `secretary-handover` skills against a stubbed `hc`.
+CI: relative Markdown links are checked by `scripts/check-links.sh`; `tests/org-start.test.sh`, `tests/secretary-handover.test.sh`, `tests/org-suspend.test.sh`, `tests/org-resume.test.sh` and `tests/org-down.test.sh` test the skills of the same names against a stubbed `hc`.
 
 ## License
 
