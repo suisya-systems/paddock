@@ -32,17 +32,25 @@ WITH=p48-with
 WITHOUT=p48-without
 TPL_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/herdr-core/templates"
 TPL="$TPL_DIR/p48-secretary.md"
-WORK=$(mktemp -d) || exit 1
 SIDEBAR_WAIT=${SIDEBAR_WAIT:-30}
 
+# has NAME: true if NAME is a whole token in `hc ls` (p48-with must not match p48-without).
+has() { hc ls 2>&1 | grep -Eq "(^|[^A-Za-z0-9_-])$1([^A-Za-z0-9_-]|\$)"; }
+
+# Refuse to start over anything that already exists, before the trap is
+# installed, so cleanup only ever touches what this run created.
+if [ -e "$TPL" ]; then echo "RESULT precondition-failed: $TPL exists; remove it first"; exit 1; fi
+for n in $SEC $WITH $WITHOUT; do
+  if has "$n"; then echo "RESULT precondition-failed: terminal $n already exists"; exit 1; fi
+done
+
+WORK=$(mktemp -d) || exit 1
 cleanup() {
   for n in $WITH $WITHOUT $SEC; do hc kill "$n" >/dev/null 2>&1; hc rm "$n" >/dev/null 2>&1; done
   rm -f "$TPL"
   rm -f "$WORK"/*; rmdir "$WORK" 2>/dev/null
 }
 trap cleanup EXIT INT TERM
-
-if [ -e "$TPL" ]; then echo "RESULT precondition-failed: $TPL exists; remove it first"; exit 1; fi
 mkdir -p "$TPL_DIR" || exit 1
 
 # A worker: reports an OSC 7501 status (so it can count as an agent), then idles.
@@ -77,13 +85,12 @@ hc run --bg --name $SEC p48-secretary || { echo "RESULT precondition-failed: hc 
 echo "== wait for both workers to be listed (up to 20 s)"
 i=0
 while [ $i -lt 20 ]; do
-  L=$(hc ls 2>&1)
-  if echo "$L" | grep -q "$WITH" && echo "$L" | grep -q "$WITHOUT"; then break; fi
+  if has $WITH && has $WITHOUT; then break; fi
   i=$((i + 1)); sleep 1
 done
 echo "== BEFORE kill (hc ls)"; hc ls 2>&1 | grep "p48-"
 for n in $SEC $WITH $WITHOUT; do echo "-- hc get --json $n"; hc get --json "$n" 2>&1; done
-if ! hc ls 2>&1 | grep -q "$WITH" || ! hc ls 2>&1 | grep -q "$WITHOUT"; then
+if ! has $WITH || ! has $WITHOUT; then
   echo "RESULT precondition-failed: the secretary did not start both workers"; exit 1
 fi
 
@@ -101,6 +108,6 @@ for n in $WITH $WITHOUT; do echo "-- hc get --json $n"; hc get --json "$n" 2>&1;
 
 for pair in "with-outlive-parent:$WITH" "without-outlive-parent:$WITHOUT"; do
   label=${pair%%:*}; name=${pair#*:}
-  if hc ls 2>&1 | grep -q "$name"; then echo "RESULT $label: survived"; else echo "RESULT $label: gone"; fi
+  if has "$name"; then echo "RESULT $label: survived"; else echo "RESULT $label: gone"; fi
 done
 echo "== cleanup runs now"
