@@ -14,6 +14,14 @@ A first prototype: the secretary template and a mod that shows approvals and wor
 - [Open questions](docs/design/open-questions.md): decisions the owner has not made yet, with what we know so far.
 - [Decisions](docs/decisions/): short records of what is settled.
 
+## The screen
+
+The window is the herdr-app layout [`layouts/paddock.json`](layouts/paddock.json) with its mod [`mods/org-cockpit/`](mods/org-cockpit/) ([architecture §7](docs/design/architecture.md#7-the-screen)): worker tiles on the left (status colour, last lines, "Needs you" when blocked; click one to open its terminal), the secretary's terminal in the centre, the secretary's questions floating at the top right while its terminal is blocked, and the oldest approval from `org-state` as one card at the bottom right. Workers are the terminals labelled `task_id`; the secretary is the terminal named `secretary`.
+
+To open it, copy `layouts/paddock.json` into herdr-app's `layouts/` folder and `mods/org-cockpit/` into its `mods/` folder (under `~/.config/herdr-app`), run `herdr-app check <that folder>/mods/org-cockpit`, then `herdr-app do layout.switch '{"name":"paddock"}'`. `ctrl-shift-l` switches back.
+
+The centre is the layout's active tab. The mod labels the secretary's terminal `herdr.space=paddock` and `herdr.tab=secretary` when it lacks them, so herdr-app adopts it as the only pane of a `paddock` space, and it brings that pane to the front whenever the secretary's address changes (a renewed secretary is adopted the same way). The centre does not use a layout terminal block: in herdr-app 0.1.13 such a block is removed when its terminal ends, and the next save rewrites the layout file without it. When the secretary runs on another machine (for example a `wsl` machine added with `hc machine add`), add a `"secretary": "<machine>/secretary"` prop to each `org-cockpit` block in your copy of the layout.
+
 ## Goal
 
 Portability. The predecessor carried its own terminal transports, pane launcher, screen-scraping monitor and dashboard. herdr already splits a headless terminal server (core) from a desktop client (app). paddock stands on that split so that the organization itself (roles, skills, messages, records) does not depend on any one terminal or window.
@@ -37,7 +45,7 @@ Portability. The predecessor carried its own terminal transports, pane launcher,
 
 ## CI
 
-CI: relative Markdown links are checked by `scripts/check-links.sh`; `tests/org-start.test.sh`, `tests/secretary-handover.test.sh`, `tests/org-suspend.test.sh`, `tests/org-resume.test.sh` and `tests/org-down.test.sh` test the skills of the same names against a stubbed `hc`.
+CI: relative Markdown links are checked by `scripts/check-links.sh`; `tests/org-start.test.sh`, `tests/secretary-handover.test.sh`, `tests/org-suspend.test.sh`, `tests/org-resume.test.sh` and `tests/org-down.test.sh` test the skills of the same names against a stubbed `hc`; `tests/org-layout.test.sh` checks the shape of the screen's layout and mods (`herdr-app check` and a screenshot are host-side checks).
 
 ## License
 

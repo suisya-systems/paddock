@@ -9,7 +9,7 @@ Status: prototype. This is the first runnable piece of paddock. It shows, in her
 | [`templates/secretary.md`](../../templates/secretary.md) | The secretary as an `hc` template. The header starts Claude Code; the body is the role's instructions, in English, with the conversation language as a setting. |
 | [`mods/org-agents/`](../../mods/org-agents/) | A herdr-app mod, started as `mod.clone` of the shipped `agents` mod. It reads `org-state` and draws the approvals as cards and the work in progress as a list. |
 
-Not in it: the `org` mailbox server, the events bridge, the worker template, any history file, and the left-hand worker tiles and centered secretary of the [screen](architecture.md#7-the-screen). The mod opens as a dialog; it is not placed in a layout yet.
+Not in it: the `org` mailbox server, the events bridge, the worker template, and any history file. The mod opens as a dialog. The [screen](architecture.md#7-the-screen) itself (worker tiles on the left, the secretary in the centre, the secretary's questions floating, one approval card bottom right) came after this prototype, as the layout [`layouts/paddock.json`](../../layouts/paddock.json) with the mod [`mods/org-cockpit/`](../../mods/org-cockpit/); it reads the same `org-state` (see the [README](../../README.md#the-screen)).
 
 ## The `org-state` document
 
