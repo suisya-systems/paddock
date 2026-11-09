@@ -357,7 +357,17 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 **Options.** (a) A person types `/clear` and the resume command; (b) a named exception to decision 0002 for this one control command; (c) end the secretary's terminal and launch a fresh secretary from its template with the handover as the task; (d) rely on Claude Code's own compaction and write no handover.
 
-**Decides.** The owner.
+**Decided (2026-11-10, owner): (c).** The secretary writes a handover document, then its terminal is ended and a fresh secretary is launched from the secretary template with "resume from the handover" as the task. Nothing is typed into a running agent.
+
+- **Why:** [decision 0002](../decisions/0002-org-mailbox-not-hc-send.md) stays intact, because the first task travels in the launch and no control command is typed. Workers survive the renewal because every worker launch carries `--outlive-parent` ([Q19](#q19-do-workers-outlive-the-secretary-that-started-them), decided (b); measured 2026-11-09). No person is needed.
+- **(a) rejected:** it needs a person to type `/clear` and the resume command each time.
+- **(b) rejected:** it would make `/clear` typed by software an exception to decision 0002, which exists so that nothing is typed into an agent's prompt.
+- **(d) rejected:** Claude Code's compaction keeps no handover, so what the next context needs (running tasks, open approvals, decisions not yet recorded) is lost.
+- **Consequence, handover document:** the secretary writes it before its terminal is ended, and only the secretary writes it. Its place is a fixed-name document in herdr-core's document store ([decision 0004](../decisions/0004-records-documents-and-jsonl.md)), proposed name `secretary-handover`. That name is not in decision 0004's table yet, and a new name is added there with its writer, cap and pruning rule, so the name, cap and pruning are still open and belong to the change that implements this (#70). Its content is not specified here; `org-state` already holds the work and approvals, so the handover needs only what `org-state` lacks.
+- **Consequence, relaunch:** `hc run --bg --keep --name secretary secretary "<resume from handover>"`. The task is in the launch ([templates](../../templates/secretary.md) `command` already clears the session-bound variables, [Q17](#q17-what-environment-do-the-core-and-its-terminals-start-with)). Check `first_message.sent` in the result, as for workers.
+- **Consequence, order:** the old terminal must be killed (`hc kill`) and removed (`hc rm`) first, because the name `secretary` is reused. Whether `hc run` rejects a name still held by a finished terminal was not measured here. The new secretary then finds the running workers by their `task_id` label ([Q19](#q19-do-workers-outlive-the-secretary-that-started-them)).
+- **Not measured:** a renewal end to end (a secretary writes the handover, is killed, and a new one resumes from it); no probe has run it. A renewal also needs the old secretary to have no turn in progress; how it knows is [Q18](#q18-how-does-anything-reach-an-idle-agent).
+- **The predecessor's flow is not paddock's:** the automatic watcher that typed `/clear` at a token threshold is not carried over ([inventory](predecessor-inventory.md) HND-2, HK-13, ST-4, PRM-8). When to renew is left to the secretary skill (#70).
 
 ## Q17. What environment do the core and its terminals start with?
 
