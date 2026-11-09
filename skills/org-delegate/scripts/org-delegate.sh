@@ -24,7 +24,7 @@ brief file into the worktree (rules: --append-system-prompt-file in the template
                  Goes to sandbox.filesystem.allowWrite in the worktree's settings file.
 
 Environment overrides:
-  PADDOCK_WORKERS_DIR  the one workers folder, trusted once (default $HOME/paddock-workers)
+  PADDOCK_WORKERS_DIR  the one workers folder, trusted once; an absolute path (default $HOME/paddock-workers)
 
 Exit codes: 0 worker running and recorded, 2 bad argument, 3 hc or git not found,
 5 core unreachable or hc failed (the new worktree and branch are removed when no worker can
@@ -77,6 +77,7 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 name=w-$id
 workers=${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}
 wt=$workers/$id
+case "$workers" in /*) ;; *) die 2 "PADDOCK_WORKERS_DIR must be an absolute path: $workers" ;; esac
 
 # 1. The core answers, and the worker's name is free. Nothing is created before this.
 hc ls >/dev/null 2>&1 || die 5 "cannot reach the herdr core (hc ls failed)"
