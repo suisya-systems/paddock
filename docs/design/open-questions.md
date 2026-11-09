@@ -95,7 +95,14 @@ Either way the organization layer (templates, `org` tools, `state.db`, skills) s
 - **A. Rebuild per run** from `state.db`: a fresh worker with the original task and the worktree as it is.
 - **B. Try `--continue`** in the worktree, and fall back to A when it fails.
 
-**Decides.** The owner.
+**Decided (2026-11-10, owner): B.** After a full core stop and start, the secretary launches each worker again from the worker template with `claude --continue` in the worker's worktree. When that fails, it falls back to A: a fresh worker with the original task and the worktree as it is.
+
+- **Basis (measured):** after a core stop, `claude --continue` in the same folder resumed the same session and answered a codeword set before the stop (Core measurement). With several conversations in one folder it resumes the conversation whose transcript was written most recently, not the first or last created (measured 2026-11-10, Issue #57, bullet above).
+- **Why B over A:** a worker's worktree holds one conversation per task, so `--continue` brings back the working context: what the worker has read, tried and decided. A starts from the task and the files on disk and loses that context.
+- **When the fallback applies:** (1) transcripts are off because the core inherited `CLAUDE_CODE_CHILD_SESSION` ([Q17](#q17-what-environment-do-the-core-and-its-terminals-start-with)); (2) the folder holds no transcript; (3) `--continue` answers with the wrong codeword or reports no status. Case (1) is the one Q17's start rule and template command are there to prevent; it is listed because the fallback must still work when they fail.
+- **What the records must hold for the fallback:** the original task and the worktree path, kept in `org-state` ([decision 0004](../decisions/0004-records-documents-and-jsonl.md)) for as long as the task is in `work`. A launch's `first_message: {sent: false, reason}` survives a core restart in `hc get`, so a task that never reached its worker can be found and resent.
+- **Caveat, several conversations in one folder:** a conversation active later in the same folder wins ("most recently written transcript", bullet above). So nothing else may run Claude Code in a worker's worktree, or `--continue` can resume that one instead of the worker's. This is a rule for the person and for the secretary, not something the core enforces.
+- **Not measured:** the fallback end to end (a failed `--continue` followed by a fresh worker with the original task); and how the secretary detects a wrong resume. The probe identified the resumed conversation by a codeword it had set, and a real worker has none, so the check the secretary uses (a status, a question about the task, a git state comparison) is still to be chosen and belongs to the change that implements `org-resume` (#69).
 
 ## Q5. Does the secretary write mods?
 
