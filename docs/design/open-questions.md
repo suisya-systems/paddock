@@ -287,7 +287,14 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 **Options, per tool.** (a) Rewrite in shell, reading JSON lines and core documents; (b) keep it in Python as a declared exception to principle 1; (c) drop the mechanical check and keep the rule as an instruction only; (d) leave it to the repository's CI (for example a required status check) instead of a local hook.
 
-**Decides.** The owner.
+**Decided (2026-11-10, owner, for the acceptance gate and the head-pinning merge hook only): (d).** The check is left to the repository's CI as a required status check, not a local hook. The other tools named in the question (Codex round cap, premise reminder, generators, settings renderer and drift checker, command splitter, defense report) are not decided here and stay open; the **Decides** line below applies to them.
+
+- **Why:** the gate's evidence is CI results already ([inventory](predecessor-inventory.md) GT-1, MON-12). CI can verify "the first commit declares the test paths, the tests are unchanged to head, CI failed on that commit and passed on head" without Python, SQLite or the GitHub CLI on the person's machine, which keeps principle 1, nothing to install beyond herdr ([architecture §2](architecture.md#2-design-principles)). The single `--match-head-commit` merge form ([inventory](predecessor-inventory.md) HK-15) is replaced by branch protection that requires the status check on the exact head.
+- **Rejected:** (a) a shell rewrite keeps a local hook that can be bypassed and duplicates what CI already does; (b) keeps Python, an exception to principle 1; (c) drops the mechanical check that hold line L-K9 ("a merge needs CI on the exact head and the acceptance gate") relies on ([inventory](predecessor-inventory.md) L-K9).
+- **Consequences:** the inventory rows GT-1, GT-14 and HK-15 point at CI. The CI job's design is a follow-up issue, not this record. A small local hook may be added later if a local block is wanted, as an addition and not a replacement.
+- **Not measured:** no such CI job exists yet. Whether GitHub's required checks can express "failed at the first commit" is not established and needs the follow-up.
+
+**Decides (the other tools).** The owner.
 
 ## Q12. Where do a worker's role rules and task brief live?
 
