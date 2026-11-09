@@ -5,6 +5,8 @@
 # Run from a terminal that hc launched (so it is the parent of what it starts),
 # e.g. the secretary's terminal. About 10 seconds. Needs only hc and sh.
 #   sh scripts/probes/hc-wait-children-exit-code.sh
+# Run it under a dedicated hc-launched parent with no other children, so an
+# unrelated child or message cannot end the wait early (that would read as FAIL).
 # Paste the whole output back. It changes nothing but its own child terminal.
 #
 # How to read the output:
@@ -48,3 +50,4 @@ echo "get exit: $?"
 echo "== 4. hc ls"
 hc ls 2>&1
 echo "== done (the child is killed on exit, ignore 'no such terminal' noise)"
+exit "$rc"
