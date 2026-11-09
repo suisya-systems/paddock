@@ -39,7 +39,7 @@ The full list of what the predecessor distributes, enforces and records, with a 
 | Part of the predecessor | In paddock |
 | --- | --- |
 | Role contracts (each role's CLAUDE.md) | herdr-core templates (`~/.config/herdr-core/templates/<name>.md`: header with `command`, body with the role's instructions) plus the worktree's `AGENTS.md` ([principle 8](#2-design-principles)). `hc run <template> "<task>"` starts a role by name. |
-| Delegation (create a worktree, open a pane, send the instruction) | A delegation skill creates the worktree, then runs `hc run --bg --name w-<task> --cwd <worktree> --label task_id=<task> worker "<task>"`. The task travels in the launch, not in a later send. In a new worktree it is not delivered until Claude Code's folder-trust dialog is answered ([Q13](open-questions.md#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog)). |
+| Delegation (create a worktree, open a pane, send the instruction) | A delegation skill creates the worktree, then runs `hc run --bg --name w-<task> --cwd <worktree> --label task_id=<task> worker "<task>"`. The task travels in the launch, not in a later send. Worktrees are created under one workers folder per machine that is trusted once, so the folder-trust dialog does not stop the launch ([Q13](open-questions.md#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog)). |
 | Peer messaging (`send_message`, `check_messages`, `set_summary`) | The `org` MCP server: `send_message`, `check_messages`, `set_summary`, `report`, `list_runs`. The mailbox is the messages record in `state.db`. |
 | Monitoring (screen hashes, spinner detection, the dispatcher's polling loop) | OSC 7501 status held by herdr-core. A small non-LLM bridge follows `hc events --json` and writes runs and events into `state.db`; it runs as a kept herdr-core terminal (`hc run --bg --keep`). |
 | Attention watcher, cockpit, dashboard | herdr-app mods, started by duplicating the shipped `agents` mod ([decision 0003](../decisions/0003-screen-as-app-mods.md)). |
@@ -81,7 +81,7 @@ paddock adds the components below. Each must be written in an environment herdr 
 
 1. You tell the secretary what you want.
 2. The secretary's delegation skill creates a worktree and launches a worker from the `worker` template with `hc run --bg`, putting the task in the launch and `task_id` in a label.
-3. herdr-core waits for the worker's first status report before sending the opening message, and reports whether it was sent. In a new worktree the report does not come until Claude Code's folder-trust dialog is answered, so the message is not sent ([Q13](open-questions.md#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog)).
+3. herdr-core waits for the worker's first status report before sending the opening message, and reports whether it was sent. Outside a trusted folder the report does not come until Claude Code's folder-trust dialog is answered, so the message is not sent; worktrees under the trusted workers folder do not stop there ([Q13](open-questions.md#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog)).
 4. The worker works. Its status flows through OSC 7501 into herdr-core, and from there to the window and the events bridge.
 5. The worker reports with the `org` tool `report` (or `send_message`). The secretary reads it at the end of its turn with `check_messages`.
 
