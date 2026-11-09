@@ -36,7 +36,7 @@ USAGE
 }
 
 die() { code=$1; shift; echo "org: $*" >&2; exit "$code"; }
-tab=$(printf '\t')
+tab=$(printf '\t'); cr=$(printf '\r')
 
 id=${PADDOCK_ORG_ID:-}
 case "${1:-}" in -h|--help|help) usage; exit 0 ;; esac
@@ -61,7 +61,7 @@ prev=$(printf '%04d-%02d' "$((10#$y))" "$m")
 # and tab are dropped; newline becomes \n, tab \t.
 json_esc() {
   tr -d '\000-\010\013\014\016-\037' \
-    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e "s/$tab/\\\\t/g" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e "s/$tab/\\\\t/g" -e "s/$cr/\\\\r/g" \
     | awk 'NR>1{printf "%s","\\n"} {printf "%s",$0}'
 }
 
@@ -94,7 +94,7 @@ window() {
 }
 
 # AWK_UNESC: undo json_esc.
-AWK_UNESC='function unesc(s,  o,i,c,n){o="";for(i=1;i<=length(s);i++){c=substr(s,i,1);if(c=="\\"){i++;n=substr(s,i,1);o=o (n=="n"?"\n":n=="t"?"\t":n)}else o=o c}return o}'
+AWK_UNESC='function unesc(s,  o,i,c,n){o="";for(i=1;i<=length(s);i++){c=substr(s,i,1);if(c=="\\"){i++;n=substr(s,i,1);o=o (n=="n"?"\n":n=="t"?"\t":n=="r"?"\r":n)}else o=o c}return o}'
 
 case "$cmd" in
   send_message)
@@ -187,8 +187,9 @@ case "$cmd" in
       local ans
       ans=$(rpc "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"doc.get\",\"params\":{\"name\":\"$name\"}}")
       case "$ans" in *'"result"'*) ;; *) die 5 "doc.get $name failed: ${ans:0:200}" ;; esac
-      val=$(printf '%s' "$ans" | sed -e 's/^.*"result": *{ *"value": *//' -e 's/ *, *"version": *[0-9][0-9]* *} *}.*$//')
-      ver=$(printf '%s' "$ans" | sed -n 's/.*"version": *\([0-9][0-9]*\) *} *}.*/\1/p')
+      # Anchored at both ends so a "version" key inside the value is left alone.
+      val=$(printf '%s' "$ans" | sed -e 's/^{[^{]*"result": *{ *"value": *//' -e 's/ *, *"version": *[0-9][0-9]* *} *} *$//')
+      ver=$(printf '%s' "$ans" | sed -n 's/.*"version": *\([0-9][0-9]*\) *} *} *$/\1/p')
       [ -n "$val" ] && [ -n "$ver" ] || die 5 "doc.get $name: cannot read value and version from: ${ans:0:200}"
     }
 
@@ -199,7 +200,10 @@ case "$cmd" in
       tries=$((tries + 1))
       read_doc
       if [ "$sub" = set ]; then new=$stdin_value
-      else new=$(printf '%s' "$val" | "$@" | tr -d '\n') || die 10 "update command failed; $name not written"; fi
+      else
+        new=$(printf '%s' "$val" | "$@") || die 10 "update command failed; $name not written"
+        new=$(printf '%s' "$new" | tr -d '\n')
+      fi
       [ -n "$new" ] || die 10 "update command printed no value; $name not written"
       [ "${#new}" -le "$cap" ] || die 8 "value is ${#new} bytes, over the $cap cap of $name"
       ans=$(rpc "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"doc.set\",\"params\":{\"name\":\"$name\",\"value\":$new,\"version\":$ver}}")

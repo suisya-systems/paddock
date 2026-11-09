@@ -45,7 +45,7 @@ Portability. The predecessor carried its own terminal transports, pane launcher,
 
 ## CI
 
-CI: relative Markdown links are checked by `scripts/check-links.sh`; `tests/org-start.test.sh`, `tests/secretary-handover.test.sh`, `tests/org-suspend.test.sh`, `tests/org-resume.test.sh` and `tests/org-down.test.sh` test the skills of the same names against a stubbed `hc`; `tests/org-pull-request.test.sh` tests [`org-pull-request`](skills/org-pull-request/SKILL.md) against a stubbed `hc` and GitHub CLI; `tests/org-commands.test.sh` tests the `org` commands against a stubbed `hc`; the host probe [`scripts/probes/org-mailbox-restart.sh`](scripts/probes/org-mailbox-restart.sh) shows the messages survive a window restart (not measured yet); `tests/org-layout.test.sh` checks the shape of the screen's layout and mods (`herdr-app check` and a screenshot are host-side checks).
+CI: relative Markdown links are checked by `scripts/check-links.sh`; `tests/org-start.test.sh`, `tests/secretary-handover.test.sh`, `tests/org-suspend.test.sh`, `tests/org-resume.test.sh` and `tests/org-down.test.sh` test the skills of the same names against a stubbed `hc`; `tests/org-pull-request.test.sh` tests [`org-pull-request`](skills/org-pull-request/SKILL.md) against a stubbed `hc` and GitHub CLI; `tests/org-commands.test.sh` and `tests/org-commands-edge.test.sh` test the `org` commands against a stubbed `hc`; the host probe [`scripts/probes/org-mailbox-restart.sh`](scripts/probes/org-mailbox-restart.sh) shows the messages survive a window restart (not measured yet); `tests/org-layout.test.sh` checks the shape of the screen's layout and mods (`herdr-app check` and a screenshot are host-side checks).
 
 ## License
 
