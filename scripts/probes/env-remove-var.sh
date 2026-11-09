@@ -31,8 +31,7 @@
 # If every case prints "rpc error" about parameters, check terminal.run in hc schema and fix cmd_json.
 set -u
 
-OUT=${TMPDIR:-/tmp}/probe47.$$
-mkdir -p "$OUT" || exit 1
+OUT=$(mktemp -d "${TMPDIR:-/tmp}/probe47.XXXXXX") || exit 1 # private (0700): env dumps hold secrets
 trap 'rm -rf "$OUT"' EXIT INT TERM
 
 VAR=HOME
