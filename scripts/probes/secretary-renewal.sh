@@ -107,7 +107,7 @@ cleanup() {
   [ $DRY -eq 1 ] || hc server stop >/dev/null 2>&1 # HC_SESSION is the temp core's: yours is untouched
   rm -rf "$WORK"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT; trap 'exit 130' INT TERM # cleanup runs once, from the EXIT trap
 
 result() { # result <name> <PASS|FAIL|NO DATA> <detail>
   echo "RESULT $1: $2${3:+ ($3)}"
