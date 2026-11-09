@@ -90,7 +90,7 @@ done
 
 screen=$(hc read $NAME 2>&1)
 case "$screen" in
-  *red*blue*|*Red*Blue*) echo "RESULT question-seen: yes" ;;
+  *"Enter to select"*) echo "RESULT question-seen: yes" ;;
   *) echo "RESULT question-seen: no (check the screen below)" ;;
 esac
 echo "== screen at the end of polling"; echo "$screen"
