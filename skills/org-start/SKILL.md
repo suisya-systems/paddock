@@ -45,4 +45,6 @@ The script places the mod but does not open it: `mod.json` has `"place": "none"`
 
 The deny and sandbox paths in `templates/worker-settings.json` are the default folders (`~/.config/herdr-core`, `~/.config/herdr-app`, `~/.local/state/herdr-core`, `~/.config/gh/hosts.yml`). A JSON settings file cannot expand `XDG_CONFIG_HOME` or `APPDATA`, so with those set to another place the paths do not follow. Not solved here.
 
+`scripts/org` writes under `$PADDOCK_STATE_DIR` (default `~/.local/state/paddock`), and the worker settings allow writing only that default path; with `PADDOCK_STATE_DIR` or `XDG_STATE_HOME` pointing elsewhere, edit `sandbox.filesystem.allowWrite` in your copy of `worker-settings.json`. Not solved here.
+
 The `PADDOCK_*` overrides reach a worker only through the environment of the core. Set them in the login shell that starts the core; setting them for an org-start run against a core that is already running changes only org-start's own check and placement.

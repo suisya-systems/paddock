@@ -26,7 +26,7 @@ History is JSON lines, events/<YYYY-MM>/<id>.jsonl under $PADDOCK_STATE_DIR
 (default ${XDG_STATE_HOME:-~/.local/state}/paddock); each id appends only to its own file.
 Readers look at this month and the last. $PADDOCK_NOW (UTC ISO 8601) fixes the clock for tests.
 Documents are the names of decision 0004: org-state (64 KiB), secretary-handover (32 KiB);
-the writer is $PADDOCK_SECRETARY_NAME (default secretary). $PADDOCK_HC_HOLD seconds (default 1)
+the writer is secretary (or the terminal name in $PADDOCK_SECRETARY_NAME, for a probe beside a real one). $PADDOCK_HC_HOLD seconds (default 1)
 is how long hc connect's input stays open after a request.
 
 Exit codes: 0 ok, 2 bad usage, 3 hc not found (doc), 5 store or core error, 6 document name
@@ -166,7 +166,8 @@ case "$cmd" in
     case "$sub" in
       get) ;;
       set|update)
-        [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || die 7 "only ${PADDOCK_SECRETARY_NAME:-secretary} writes $name"
+        # PADDOCK_SECRETARY_NAME is the terminal name (org-start); accept it as well as `secretary`.
+        [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || die 7 "only secretary writes $name"
         if [ "$sub" = update ]; then
           [ "${1:-}" = -- ] && shift
           [ $# -gt 0 ] || die 2 "usage: doc update <name> -- <command...>"

@@ -42,4 +42,9 @@ rm -f "$STUB/set-request"
 org --as secretary doc update org-state -- sh -c 'printf "{}"; exit 1' >/dev/null; r=$?
 [ "$r" -eq 10 ] && [ ! -e "$STUB/set-request" ]; check "a failing update command exits 10 and sets nothing" $?
 
+# 4. PADDOCK_SECRETARY_NAME is a terminal name; the mailbox id `secretary` still writes documents.
+echo null > "$STUB/docval"; echo 1 > "$STUB/docver"
+echo "{}" | env PADDOCK_SECRETARY_NAME=boss PADDOCK_HC_HOLD=0 PADDOCK_STATE_DIR="$tmp/state" PATH="$stubdir:$PATH" bash "$script" --as secretary doc set org-state >/dev/null 2>&1; r=$?
+[ "$r" -eq 0 ]; check "--as secretary writes a document even with PADDOCK_SECRETARY_NAME set" $?
+
 exit $fail
