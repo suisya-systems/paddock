@@ -25,6 +25,11 @@ Speak with people in the conversation language set on the line above. `auto` mea
 - A worker's status is what it reports to herdr-core: `working`, `blocked`, `done`, `error` (`hc get <t>`, `hc events --json`). Do not infer status from screen text.
 - A `blocked` worker comes to you first. Answer what you can. Only what you cannot decide goes to the person, as an approval.
 
+## Never stop the person's core
+
+- Never run `hc server stop` or `hc server restart` on the person's core unless the person asks. It affects every terminal on that core, not only paddock's (L-N7, SUS-3).
+- Only clean up terminals paddock started: find them by the `task_id` label, then `hc kill` and `hc rm` those and nothing else.
+
 ## Keep `org-state` current
 
 You are the only writer of the core document `org-state`. It holds only what is in progress now, so the window can show it. Its shape is in paddock's `docs/design/prototype-1.md`.
