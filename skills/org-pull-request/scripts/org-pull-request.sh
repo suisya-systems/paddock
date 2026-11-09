@@ -57,6 +57,7 @@ case $pr in ""|*[!0-9]*) [ -z "$pr" ] || die 2 "--pr must be a number" ;; esac
 [ -n "$pr" ] || [ -n "$title" ] || die 2 "--title is required unless --pr is given"
 [ -n "$pr" ] || [ -n "$body$bodyfile" ] || die 2 "--body-file or --body is required unless --pr is given"
 [ -z "$bodyfile" ] || [ -f "$bodyfile" ] || die 2 "body file not found: $bodyfile"
+case $task in *[!A-Za-z0-9._-]*) die 2 "--task-id may hold only letters, digits, . _ -" ;; esac
 
 if [ -z "$repo" ]; then # owner/name from a GitHub origin URL only
   url=$(git -C "$wt" remote get-url origin 2>/dev/null)
@@ -131,7 +132,8 @@ fi
 # check that they are green on the exact head that was watched, then pin the merge to it.
 now=$(gh pr view "$pr" --repo "$repo" --json headRefOid --jq .headRefOid 2>/dev/null)
 [ "$now" = "$sha" ] || die 10 "head moved: watched $sha, PR is at ${now:-unknown}; not merged"
-gh pr checks "$pr" --repo "$repo" --required >/dev/null 2>&1 \
+# --watch: other workflows of the same head may still run; wait for them, do not refuse early.
+gh pr checks "$pr" --repo "$repo" --required --watch >/dev/null 2>&1 \
   || die 10 "required checks are not all green on $sha; not merged"
 gh pr merge "$pr" --repo "$repo" --squash --match-head-commit "$sha" >&2 || die 11 "gh pr merge failed"
 echo "Merged PR $url at $sha (squash, approval mode acceptance)."

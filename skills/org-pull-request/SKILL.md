@@ -24,7 +24,7 @@ Bash only, plus `git`, `gh` and `hc`. `--repo OWNER/NAME` is taken from a GitHub
    `{"seq":1,"ts":"2026-11-10T01:02:03Z","kind":"ci_completed","writer":"secretary","task_id":"t1","pr":42,"sha":"<head>","run_id":777,"exit_code":0,"conclusion":"success"}`
 6. Acts by the approval mode, then prints the outcome.
    - `human`: prints `PR_URL=...` and that the person decides; merges nothing. Exit 0.
-   - `acceptance`: there is no local gate ([Q11](../../docs/design/open-questions.md#q11-what-happens-to-the-predecessors-python-gates-and-generators), decided (d); inventory [GT-1](../../docs/design/predecessor-inventory.md)). The check is the repository's CI as a required status check. The script only checks that the PR head (`gh pr view --json headRefOid`) still equals the watched sha and that `gh pr checks --required` is green, then runs `gh pr merge <n> --squash --match-head-commit <sha>`. No `--admin`, no `--auto`.
+   - `acceptance`: there is no local gate ([Q11](../../docs/design/open-questions.md#q11-what-happens-to-the-predecessors-python-gates-and-generators), decided (d); inventory [GT-1](../../docs/design/predecessor-inventory.md)). The check is the repository's CI as a required status check. The script only checks that the PR head (`gh pr view --json headRefOid`) still equals the watched sha and that `gh pr checks --required --watch` (it waits for other workflows of the head still running) is green, then runs `gh pr merge <n> --squash --match-head-commit <sha>`. No `--admin`, no `--auto`.
 
 The mode is `--mode`, else `merge_approval_mode` in the `org-state` document (read with `doc.get` through `hc connect`), else `human`. Any other value means `human`.
 
@@ -49,6 +49,8 @@ The mode is `--mode`, else `merge_approval_mode` in the `org-state` document (re
 - Approval mode lives in `org-state` as a top-level `merge_approval_mode` string. The prototype-1 shape has no such field yet; this is the smallest reading of "read from org-state or an argument".
 - The events folder is `$PADDOCK_EVENTS_DIR`, else `${XDG_STATE_HOME:-~/.local/state}/paddock/events`. Decision 0004 leaves the folder and the writer ids open; the writer id here is `secretary`, and `seq` is the line count of that month's file plus one (one writer, so no race). Lines carry `kind`, `writer`, `task_id` (when given), `pr`, `sha`, `run_id`, `exit_code` and `conclusion` beyond `seq` and `ts`.
 - The base branch is `main` unless `--base` says otherwise. The title and body are written by the secretary in English.
+- `--task-id` may hold only letters, digits, `.`, `_` and `-` (it goes into a JSON line); anything else exits 2 before the push.
+- Known limit: when a head has several runs (for example both `push` and `pull_request` workflows), only the newest one found is watched and recorded. In `human` mode "CI green" means that run; in `acceptance` mode the required checks cover the rest.
 - `gh pr checks --required` exits non-zero when a required check fails, is pending, or none is configured; all of those refuse the merge.
 - Reviews are not handled here. The row's "handles review" and "closes the worker" stay with the secretary template.
 
