@@ -72,10 +72,10 @@ echo "-- SessionStart seen: $(grep -c '^SessionStart ' "$MARKERS")"
 echo "== PHASE 1: send one task"
 hc send $NAME "Run exactly this one Bash command and nothing else: echo hk18" || echo "hc send exit: $?"
 
-echo "== wait for Stop (up to 90 s)"
+echo "== wait for PostToolUse and the second Stop (up to 90 s)"
 i=0
 while [ $i -lt 90 ]; do
-  if grep -q '^Stop ' "$MARKERS"; then break; fi
+  if grep -q '^PostToolUse ' "$MARKERS" && [ "$(grep -c '^Stop ' "$MARKERS")" -ge 2 ]; then break; fi
   i=$((i + 1)); sleep 1
 done
 sleep 3
