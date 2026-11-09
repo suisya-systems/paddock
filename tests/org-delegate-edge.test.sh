@@ -36,6 +36,14 @@ out=$(cd "$tmp/cwd" && env STUB="$tmp/stub" PATH="$stubdir:$PATH" PADDOCK_WORKER
   && ! grep -Eq '^(run|file) ' "$tmp/stub/calls" && [ -z "$(git -C "$proj" worktree list | sed 1d)" ]
 check "a relative PADDOCK_WORKERS_DIR exits 2 and creates nothing" $?
 
+# A path with a newline (or other control character) would make the settings JSON invalid.
+for bad in $'/tmp/out\n' $'/tmp/a\nb' $'/tmp/a\tb'; do
+  out=$(env STUB="$tmp/stub" PATH="$stubdir:$PATH" PADDOCK_WORKERS_DIR="$tmp/workers" PADDOCK_STATE_DIR="$tmp/state" \
+    bash "$script" --project "$proj" --task-id t1 --task t --allow-write "$bad" 2>&1); rc=$?
+  [ "$rc" -eq 2 ] && grep -q 'control character' <<<"$out" && [ ! -e "$tmp/workers" ]
+  check "--allow-write with a control character exits 2, nothing created: $(printf '%q' "$bad")" $?
+done
+
 # The secretary template describes the recovery paths of the exit codes it can get.
 t=$here/templates/secretary.md
 grep -q 'Exit 12: the start record could not be written and nothing was started' "$t"; check "secretary template: exit 12 means nothing was started" $?

@@ -66,7 +66,7 @@ fi
 for p in ${allow[@]+"${allow[@]}"}; do
   case "$p" in /*|"~/"*) ;; *) die 2 "--allow-write needs an absolute path or ~/...: $p" ;; esac
   case "$p" in *[\"\\]*) die 2 "--allow-write path has a quote or backslash: $p" ;; esac
-  [ -z "$(printf '%s' "$p" | tr -d '[:print:]')" ] || die 2 "--allow-write path has a control character"
+  case "$p" in *[[:cntrl:]]*) die 2 "--allow-write path has a control character (a newline too)" ;; esac
 done
 
 command -v hc >/dev/null 2>&1 || die 3 "hc not found on PATH (install herdr-core)"
