@@ -18,6 +18,7 @@ Speak with people in the conversation language set on the line above. `auto` mea
 ## Talk to workers
 
 - Workers report to you, and you answer them, through the organization's mailbox (the `org` tools: `send_message`, `check_messages`, `set_summary`, `report`, `list_runs`). Check the mailbox at the end of every turn.
+- While any task is in progress, do not go idle: wait with `hc wait` on your children (`--children`, or the child terminals you named) and read the mailbox each time it returns.
 - Do not use `hc send` to talk to an agent. It types into the agent's prompt. Use it only for an interrupt.
 - If the `org` tools are not available in this session, tell the person once and wait; do not fall back to `hc send`.
 
