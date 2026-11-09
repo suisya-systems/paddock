@@ -19,6 +19,8 @@ jobs:
         run: bash tests/org-start.test.sh
       - name: Test secretary-handover (stubbed hc)
         run: bash tests/secretary-handover.test.sh
+      - name: Dry-run the secretary renewal probe (stubbed hc)
+        run: bash tests/secretary-renewal-probe.test.sh
       - name: Test org-suspend (stubbed hc)
         run: bash tests/org-suspend.test.sh
       - name: Test org-pull-request (stubbed hc and gh)
