@@ -11,6 +11,8 @@ Status: prototype. This is the first runnable piece of paddock. It shows, in her
 
 Not in it: the events bridge. (The `org` mailbox commands and the history files came after this prototype, as [`scripts/org`](../../scripts/org); see the README.) The mod opens as a dialog. The [screen](architecture.md#7-the-screen) itself (worker tiles on the left, the secretary in the centre, the secretary's questions floating, one approval card bottom right) came after this prototype, as the layout [`layouts/paddock.json`](../../layouts/paddock.json) with the mod [`mods/org-cockpit/`](../../mods/org-cockpit/); it reads the same `org-state` (see the [README](../../README.md#the-screen)).
 
+Also built after this prototype: the delegation skill [`skills/org-delegate`](../../skills/org-delegate/SKILL.md), which makes a task's worktree and starts a worker from `templates/worker.md`. A real worker started by the skill is not measured yet: the probes of Issues #40, #42 and #43 are a host run.
+
 ## The `org-state` document
 
 `org-state` is a core document (`doc.get` / `doc.set`). The secretary is its only writer. Its value, for this prototype:
