@@ -34,3 +34,7 @@ Defaults are `$XDG_CONFIG_HOME` (else `~/.config`), or `%APPDATA%` when set, plu
 ## After it runs
 
 Probe #52 (the SK-2 row of the [predecessor inventory](../../docs/design/predecessor-inventory.md)) checks that `env` inside the secretary has no `CLAUDE_CODE_CHILD_SESSION`. The script does not check that itself.
+
+## Known limit
+
+The script places the mod but does not open it: `mod.json` has `"place": "none"`, and opening the dialog is a separate herdr-app step that can toggle, so it is not scripted until an idempotent form is measured. Open it as described in [prototype 1](../../docs/design/prototype-1.md).
