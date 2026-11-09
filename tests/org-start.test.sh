@@ -75,6 +75,13 @@ cmp -s "$here/mods/org-agents/main.js" "$tmp/app/mods/org-agents/main.js" \
   && cmp -s "$here/mods/org-agents/mod.json" "$tmp/app/mods/org-agents/mod.json"; check "mod files placed" $?
 ! grep -Eq '^server (stop|restart)' "$tmp/stub/calls"; check "never stops or restarts the core" $?
 
+# Name override: the terminal gets the given name; the template stays "secretary".
+: > "$tmp/stub/calls"; rm -f "$tmp/stub/secretary"
+out=$(run PADDOCK_SECRETARY_NAME=probe-sec); rc=$?
+[ "$rc" -eq 0 ] && grep -qx 'run --bg --keep --name probe-sec secretary' "$tmp/stub/calls" \
+  && grep -qx 'get probe-sec' "$tmp/stub/calls"; check "PADDOCK_SECRETARY_NAME names the terminal" $?
+rm -f "$tmp/stub/secretary"; run >/dev/null # back to the first-run state for the next checks
+
 # Second run: idempotent.
 : > "$tmp/stub/calls"
 out=$(run); rc=$?

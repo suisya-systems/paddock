@@ -15,6 +15,7 @@ Environment overrides:
   PADDOCK_CORE_TEMPLATES_DIR  herdr-core templates folder
   PADDOCK_APP_MODS_DIR        herdr-app mods folder
   PADDOCK_READY_TRIES         seconds to wait for a status (default 15)
+  PADDOCK_SECRETARY_NAME      terminal name of the secretary (default secretary)
 
 Exit codes: 0 ready, 2 bad argument, 3 hc not found, 4 run inside an agent,
 5 core unreachable, 6 files could not be placed, 7 secretary has no status.
@@ -48,6 +49,7 @@ cfg=${XDG_CONFIG_HOME:-$HOME/.config}
 templates=${PADDOCK_CORE_TEMPLATES_DIR:-$cfg/herdr-core/templates}
 mods=${PADDOCK_APP_MODS_DIR:-$cfg/herdr-app/mods}
 tries=${PADDOCK_READY_TRIES:-15}
+name=${PADDOCK_SECRETARY_NAME:-secretary} # terminal name only; the template stays "secretary"
 
 # 1. Reuse the core (this starts one from this shell if none runs).
 hc ls >/dev/null 2>&1 || die 5 "cannot reach the herdr core (hc ls failed)"
@@ -66,19 +68,19 @@ cp -f "$root/mods/org-agents/main.js" "$root/mods/org-agents/mod.json" "$mods/or
   || die 6 "cannot copy the org-agents mod"
 
 # 3. Start the secretary unless one exists. Never stops or restarts the core.
-if hc get secretary >/dev/null 2>&1; then
-  echo "org-start: secretary already exists; not starting another"
+if hc get "$name" >/dev/null 2>&1; then
+  echo "org-start: $name already exists; not starting another"
 else
-  hc run --bg --keep --name secretary secretary || die 5 "hc run failed for the secretary"
+  hc run --bg --keep --name "$name" secretary || die 5 "hc run failed for the secretary"
 fi
 
 # 4. Readiness: hc get shows a status object. (The CLAUDE_CODE_CHILD_SESSION check is probe #52.)
 i=0
 while [ "$i" -lt "$tries" ]; do
-  if hc get --json secretary 2>/dev/null | grep -Eq '"status": *\{'; then
-    echo "org-start: ready. secretary reports a status; the mod is in $mods/org-agents"
+  if hc get --json "$name" 2>/dev/null | grep -Eq '"status": *\{'; then
+    echo "org-start: ready. $name reports a status; the mod is in $mods/org-agents"
     exit 0
   fi
   i=$((i + 1)); sleep 1
 done
-die 7 "secretary has no status after ${tries}s; look at 'hc get secretary' and 'hc read secretary'"
+die 7 "secretary has no status after ${tries}s; look at 'hc get $name' and 'hc read $name'"
