@@ -35,10 +35,13 @@ terms=$(paddock_terminals) || die 5 "cannot reach the herdr core (hc ls failed)"
 
 # org-state through hc connect (hc has no document verb; prototype 1: hold the input 1 s).
 req='{"jsonrpc":"2.0","id":1,"method":"doc.get","params":{"name":"org-state"}}'
-doc=$({ printf '%s\n' "$req"; sleep 1; } | hc connect 2>/dev/null | tr -d '\n') || die 5 "hc connect failed"
+doc=$(set -o pipefail; { printf '%s\n' "$req"; sleep 1; } | hc connect 2>/dev/null | tr -d '\n') || die 5 "hc connect failed; the previous record is kept"
+printf '%s' "$doc" | grep -q '"result"' || die 5 "org-state could not be read (no result in the answer); the previous record is kept"
 printf '%s' "$doc" | grep -Eq '"value": *\{' || doc=null
 
 jf() { printf '%s' "$1" | sed -n 's/.*"'"$2"'": *"\(\([^"\\]\|\\.\)*\)".*/\1/p'; }
+n_all=$(printf '%s' "$doc" | grep -o '"worktree"' | wc -l); n_ok=$(printf '%s' "$doc" | grep -o '{[^{}]*"worktree"[^{}]*}' | wc -l)
+[ "$n_all" -eq "$n_ok" ] || die 5 "a work entry in org-state cannot be read (braces inside a string?); the previous record is kept"
 tmpf=$(mktemp "${TMPDIR:-/tmp}/org-suspend.XXXXXX") || die 5 "cannot create a temporary file"
 {
   echo "# paddock suspend record (org-suspend)"

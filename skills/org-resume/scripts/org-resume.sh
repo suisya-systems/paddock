@@ -66,11 +66,16 @@ end() {
   hc rm "$1" >/dev/null 2>&1 || die 5 "hc rm $1 failed"
 }
 
+cur=$(paddock_terminals) || die 5 "cannot reach the herdr core (hc ls failed)"
 failed=0
 while IFS=$'\t' read -r kind id wt head dirty task title; do
   [ "$kind" = work ] || continue
-  name=$(awk -F'\t' -v id="$id" '$1=="terminal" && $3==id {print $2; exit}' "$rec"); name=${name:-w-$id}
-  st=$(term_status "$name" 2>/dev/null) || st=gone
+  # Rediscover by label: the terminal may have been recreated under another name.
+  name=$(printf '%s\n' "$cur" | awk -F'\t' -v id="$id" '$2==id {print $1; exit}')
+  if [ -n "$name" ]; then st=$(term_status "$name" 2>/dev/null) || st=gone
+  else
+    name=$(awk -F'\t' -v id="$id" '$1=="terminal" && $3==id {print $2; exit}' "$rec"); name=${name:-w-$id}; st=gone
+  fi
   # Git: what changed in the worktree since the record.
   if [ "$wt" = - ] || ! git -C "$wt" rev-parse HEAD >/dev/null 2>&1; then
     echo "$id: git: worktree missing ($wt)"
