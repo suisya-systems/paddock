@@ -76,7 +76,7 @@ case "$cmd" in
   connect) cat >/dev/null; cat "$STUB/doc" ;;
   ls) ls "$STUB" | sed -n 's/^term-//p' ;;
   get) n=$last; [ -f "$STUB/term-$n" ] || { echo '{"error":{"kind":"not_found"}}'; exit 1; }
-       printf '{"name":"%s","state":"live","created_ms":%s,"labels":%s,"status":{"app":"claude-code","state":"idle"}}\n' \
+       printf '{"name":"%s","state":"live","created_ms":%s,"labels":%s,"status":{"app":"claude-code","state":"done"}}\n' \
          "$n" "$(cat "$STUB/term-$n")" "$([ "$n" = p116-w ] && echo '{"task_id":"p116-w"}' || echo '{}')" ;;
   run) c=$(( $(cat "$STUB/clock") + 1 )); echo $c > "$STUB/clock"; echo $c > "$STUB/term-$name"
        case "$name" in secretary)
@@ -125,6 +125,7 @@ trust_dialog() { # answer Claude Code's folder-trust dialog (Enter), like probe 
   case "$(hc read $SEC 2>/dev/null)" in *"Quick safety check"*|*"trust this folder"*) echo "-- answering the folder-trust dialog"; hc keys $SEC enter >/dev/null 2>&1 ;; esac
 }
 state_of() { hc get --json "$1" 2>/dev/null | one_line | grep -Eo '"status": *\{[^{}]*"state": *"[a-z]*"' | grep -Eo '"[a-z]*"$' | tr -d '"'; }
+quiet() { [ "$1" = idle ] || [ "$1" = done ]; } # a real Claude Code reports done between turns (Q12)
 
 # The runner's own environment, names only. The handover script refuses (exit 4) in an agent.
 RUNNER=
@@ -140,7 +141,10 @@ mkdir -p "$XDG/herdr-core/templates" && cp -f "$ROOT/templates/secretary.md" "$X
   || { result setup FAIL "cannot place the template"; exit 1; }
 TASK="This is probe 116 of the paddock organization; do exactly these steps, then stop and wait. 1) Start one worker stand-in: hc run --bg --outlive-parent --name $WK --label task_id=$WK -- sleep 3600 (check first_message is not needed here). 2) Write the core document org-state (doc.get then doc.set through hc connect) with a work list holding one entry {task_id: $WK, title: probe worker, since: <now, UTC ISO 8601>}, an empty approvals list and updated_at. 3) Write the core document secretary-handover with last_exchange \"$MARK: probe 116 asked for a handover test\", unrecorded_decisions an empty list, open_threads one entry {task_id: $WK, promised: nothing, expect: nothing}, and written_at. 4) Say 'handover ready' and stop. Do not end your own terminal and do not run any script from skills/."
 echo "== start the secretary"
-out=$(cd "$CWD" && hc run --bg --keep --name $SEC secretary "$TASK" 2>&1) || { result secretary-start FAIL "hc run failed: $out"; exit 1; }
+# hc run waits for the status before the first message, so the trust dialog is answered while it is pending.
+( cd "$CWD" && hc run --bg --keep --name $SEC secretary "$TASK" > "$WORK/run.out" 2>&1; echo $? > "$WORK/run.rc" ) &
+t=0; while [ ! -f "$WORK/run.rc" ] && [ $t -lt 120 ]; do trust_dialog; t=$((t + 2)); sleep $((TICK > 0 ? 2 : 0)); done
+out=$(cat "$WORK/run.out" 2>/dev/null); [ "$(cat "$WORK/run.rc" 2>/dev/null)" = 0 ] || { result secretary-start FAIL "hc run failed or hung: $out"; exit 1; }
 printf '%s' "$out" | one_line | grep -Eq '"sent": *true' && result secretary-start PASS "first_message.sent true" \
   || result secretary-start FAIL "first_message.sent is not true: $out"
 
@@ -160,14 +164,14 @@ hc ls 2>&1 | grep -q "$WK" && hc get --json $WK 2>&1 | one_line | grep -Eq '"tas
 echo "== hc ls (before)"; hc ls 2>&1
 
 # The old secretary must be idle (the handover script refuses a turn in progress, Q18).
-i=0; while [ $i -lt 30 ]; do s=$(state_of $SEC); [ "$s" = idle ] && break; i=$((i + 1)); sleep $TICK; done
-result old-secretary-idle "$([ "${s:-}" = idle ] && echo PASS || echo FAIL)" "state ${s:-none}"
+i=0; while [ $i -lt 30 ]; do s=$(state_of $SEC); quiet "$s" && break; i=$((i + 1)); sleep $TICK; done
+result old-secretary-idle "$(quiet "${s:-}" && echo PASS || echo FAIL)" "state ${s:-none}"
 OLD=$(hc get --json $SEC 2>&1 | field created_ms); OLDWK=$(hc get --json $WK 2>&1 | field created_ms)
 echo "-- before: $SEC $OLD, $WK $OLDWK"
 
 # 3. The renewal itself, run as the person would: from this login shell.
 echo "== run secretary-handover.sh"
-HOUT=$(PADDOCK_SECRETARY_NAME=$SEC bash "$HANDOVER" 2>&1); HRC=$?
+HOUT=$(cd "$CWD" && PADDOCK_SECRETARY_NAME=$SEC bash "$HANDOVER" 2>&1); HRC=$?
 printf '%s\n' "$HOUT"
 if [ "$HRC" = 0 ]; then result handover-exit PASS "0"; else result handover-exit FAIL "$HRC (code table: skills/secretary-handover/SKILL.md)"; fi
 NEW=$(hc get --json $SEC 2>&1 | field created_ms)
