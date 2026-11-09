@@ -110,7 +110,8 @@ report() {
   rc=$(cat "$o.waitrc" 2>/dev/null); el=$(cat "$o.elapsed" 2>/dev/null)
   name=no; code=no
   grep -q "$CHILD" "$o.wait" 2>/dev/null && name=yes
-  grep -Eq "(^|[^0-9])$ex([^0-9]|\$)" "$o.wait" 2>/dev/null && code=yes
+  # the JSON field, or the text form "exit N" (REC-4); a bare number would match "turn":0
+  grep -Eq "\"exit_code\":$ex([^0-9]|\$)|exit $ex([^0-9]|\$)" "$o.wait" 2>/dev/null && code=yes
   if [ "${el:-0}" -lt 1 ] && grep -Eqi "usage|unknown|unexpected|invalid|error" "$o.wait" 2>/dev/null; then v=rejected
   elif [ $name = yes ] && [ $code = yes ]; then v=named+code
   elif [ $code = yes ]; then v=code-only
