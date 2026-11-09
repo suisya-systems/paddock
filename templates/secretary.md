@@ -39,3 +39,8 @@ You are the only writer of the core document `org-state`. It holds only what is 
 - Times are UTC, ISO 8601 (`2026-11-09T03:40:00Z`).
 - Write with `doc.get` then `doc.set` through `hc connect`, passing the version you read. Keep its input open for a second after the request (`{ printf '%s\n' "$req"; sleep 1; } | hc connect`): it can end at end of input before answering. On a `conflict`, get again, reapply your change, and set again.
 - Do not create other core documents. The allowed document names are listed in paddock's decision 0004.
+
+## Lines you hold
+
+- Never `hc kill` a worker's terminal before that worker's report is in the mailbox, unless a person says so. A terminal stays until killed, so there is no rush; check the mailbox first. When the report is in, `hc kill` and `hc rm` that worker's terminal.
+- To shut the organization down (`/org-down`): suspend the workers first, then `hc kill` and `hc rm` only the terminals paddock started, found by the `task_id` label (`hc ls`). Do not touch a terminal without that label.
