@@ -9,3 +9,28 @@ jobs:
         run: bash tests/check-links.test.sh
       - name: Check relative Markdown links
         run: bash scripts/check-links.sh
+  templates-and-mods:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test the template header checker
+        run: bash tests/check-templates.test.sh
+      - name: Check every template header
+        run: bash scripts/check-templates.sh
+      - name: Probe scripts parse (no hook script tests exist yet)
+        # There are no hook scripts or tests under scripts/ or templates/ yet,
+        # so this runs the sh -n syntax check over the probe scripts instead.
+        run: |
+          set -e
+          for f in scripts/probes/*.sh; do echo "sh -n $f"; sh -n "$f"; done
+      - name: Check the mod without herdr-app
+        # Skipped: `herdr-app check` needs a display (the docs do not say it runs
+        # headless, and we do not guess). Replaced by: mod.json parses and
+        # main.js passes node --check. See docs/design/predecessor-inventory.md HK-17.
+        run: |
+          set -e
+          for d in mods/*/; do
+            node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "${d}mod.json"
+            node --check "${d}main.js"
+            echo "ok $d"
+          done
