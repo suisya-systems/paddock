@@ -167,6 +167,6 @@ grep -q 'templates/worker' "$here/README.md"; check "README names the worker tem
 for row in 'L-N1' 'L-N2' 'L-N9' 'L-K2' 'L-K4' 'INS-12'; do
   grep "^| $row" "$here/docs/design/predecessor-inventory.md" | grep -q 'templates/worker'; check "inventory row $row points at the worker template" $?
 done
-grep -q 'tests/worker-template.test.sh' "$here/.github/workflows/ci.yml"; check "CI runs this test" $?
+grep -Eq 'tests/(worker-template|\*)\.test\.sh|tests/\*\.test\.sh' "$here/.github/workflows/ci.yml"; check "CI runs this test (by name or by the tests/*.test.sh glob)" $?
 
 exit $fail
