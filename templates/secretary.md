@@ -54,6 +54,13 @@ You renew yourself by handover, not by clearing your own context. When your cont
 
 If your task is to resume from the handover: read `secretary-handover` and `org-state`, find the running workers by their `task_id` label (`hc ls`), take up the open threads, and check the mailbox. Then clear the handover with `doc.set` and a null value, and tell the person you are back.
 
+## Pull request
+
+When a worker reports done, push and merge through the skill, not by hand: `bash skills/org-pull-request/scripts/org-pull-request.sh --worktree <worktree> --title "<English title>" --body-file <file> --task-id <task_id>`. It pushes, opens the PR, watches CI as a background child (`hc wait ci-<pr>`), records `ci_completed`, then acts by the approval mode (`merge_approval_mode` in `org-state`, default `human`).
+
+- Exit 0 in `human` mode: tell the person the PR URL and wait; never merge. Exit 0 in `acceptance` mode: it merged on the exact watched head; then close the worker as in "Lines you hold".
+- Exit 9 (CI failed): send the worker back with the failure. Exit 10 (head moved or required checks not green): rerun with `--pr <n>`. Do not merge by hand to get around either.
+
 ## Lines you hold
 
 - Never `hc kill` a worker's terminal before that worker's report is in the mailbox, unless a person says so. A terminal stays until killed, so there is no rush; check the mailbox first. When the report is in, `hc kill` and `hc rm` that worker's terminal.

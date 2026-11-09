@@ -21,6 +21,8 @@ jobs:
         run: bash tests/secretary-handover.test.sh
       - name: Test org-suspend (stubbed hc)
         run: bash tests/org-suspend.test.sh
+      - name: Test org-pull-request (stubbed hc and gh)
+        run: bash tests/org-pull-request.test.sh
       - name: Test org-resume (stubbed hc)
         run: bash tests/org-resume.test.sh
       - name: Test org-down (stubbed hc)
