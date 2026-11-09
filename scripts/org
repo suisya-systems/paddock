@@ -73,15 +73,22 @@ next_seq() {
   echo $(( ${last:-0} + 1 ))
 }
 
-# append <kind> <to> <task_id> <text>: one line in this id's own file. ponytail: one process per
-# id at a time (no lock); two shells sharing an id could repeat a seq.
+# append <kind> <to> <task_id> <text>: one line in this id's own file. A mkdir lock per id
+# keeps seq unique and increasing when one agent runs commands in parallel. ponytail: a lock
+# held for 5 s is taken as stale and broken; a flock or a per-call seq source if that ever bites.
 append() {
-  local d=$state/events/$cur body
+  local d=$state/events/$cur body lk=$state/events/$id.lock n=0 ok=0
   body=$(printf '%s\n' "$4" | json_esc)
   [ "${#body}" -le 32768 ] || die 2 "text is longer than 32 KiB"
   mkdir -p "$d" || die 5 "cannot create $d"
+  until mkdir "$lk" 2>/dev/null; do
+    n=$((n + 1)); [ "$n" -le 100 ] || { rmdir "$lk" 2>/dev/null; n=0; }
+    sleep 0.05 2>/dev/null || sleep 1
+  done
   printf '{"seq":%s,"ts":"%s","from":"%s","kind":"%s","to":"%s","task_id":"%s","text":"%s"}\n' \
-    "$(next_seq)" "$now" "$id" "$1" "$2" "$3" "$body" >> "$d/$id.jsonl" || die 5 "cannot write $d/$id.jsonl"
+    "$(next_seq)" "$now" "$id" "$1" "$2" "$3" "$body" >> "$d/$id.jsonl" && ok=1
+  rmdir "$lk" 2>/dev/null
+  [ "$ok" -eq 1 ] || die 5 "cannot write $d/$id.jsonl"
 }
 
 # window: every line of this month's and the previous month's files as TSV

@@ -42,6 +42,12 @@ rm -f "$STUB/set-request"
 org --as secretary doc update org-state -- sh -c 'printf "{}"; exit 1' >/dev/null; r=$?
 [ "$r" -eq 10 ] && [ ! -e "$STUB/set-request" ]; check "a failing update command exits 10 and sets nothing" $?
 
+# 5. Parallel sends from one id get distinct, increasing seq numbers.
+for i in 1 2 3 4 5 6 7 8; do org --as w8 send_message secretary "p$i" >/dev/null & done; wait
+seqs=$(sed -n 's/^{"seq":\([0-9]*\),.*/\1/p' "$tmp"/state/events/*/w8.jsonl | sort -n | tr '\n' ' ')
+[ "$seqs" = "1 2 3 4 5 6 7 8 " ]; check "8 parallel sends from one id get seq 1..8 (got: $seqs)" $?
+[ ! -d "$tmp/state/events/w8.lock" ]; check "the per-id lock is released" $?
+
 # 4. PADDOCK_SECRETARY_NAME is a terminal name; the mailbox id `secretary` still writes documents.
 echo null > "$STUB/docval"; echo 1 > "$STUB/docver"
 echo "{}" | env PADDOCK_SECRETARY_NAME=boss PADDOCK_HC_HOLD=0 PADDOCK_STATE_DIR="$tmp/state" PATH="$stubdir:$PATH" bash "$script" --as secretary doc set org-state >/dev/null 2>&1; r=$?
