@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(hc:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh issue:*)",
+      "Bash(gh release:*)",
+      "Bash(gh workflow:*)",
+      "Bash(gh api:*)",
+      "Read(~/.config/gh/hosts.yml)",
+      "Read(~/.config/herdr-core/**)",
+      "Read(~/.config/herdr-app/**)",
+      "Read(~/.local/state/herdr-core/**)",
+      "Edit(~/.config/herdr-core/**)",
+      "Edit(~/.config/herdr-app/**)",
+      "Edit(~/.local/state/herdr-core/**)",
+      "Edit(~/.claude/settings.json)",
+      "Edit(.claude/settings*.json)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "filesystem": {
+      "denyRead": [
+        "~/.config/gh/hosts.yml",
+        "~/.local/state/herdr-core",
+        "~/.config/herdr-app"
+      ],
+      "denyWrite": [
+        "~/.config/herdr-core",
+        "~/.config/herdr-app",
+        "~/.local/state/herdr-core"
+      ]
+    }
+  }
+}

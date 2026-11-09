@@ -23,6 +23,8 @@ jobs:
         run: bash tests/org-suspend.test.sh
       - name: Test org-pull-request (stubbed hc and gh)
         run: bash tests/org-pull-request.test.sh
+      - name: Test the worker template (stubbed hc and claude)
+        run: bash tests/worker-template.test.sh
       - name: Test org-resume (stubbed hc)
         run: bash tests/org-resume.test.sh
       - name: Test org-down (stubbed hc)
