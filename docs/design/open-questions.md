@@ -56,7 +56,10 @@ Either way the organization layer (templates, `org` tools, `state.db`, skills) s
 - **B. Mailbox plus a window notification** on completion.
 - **C. Mailbox plus herdr-core's own child notes**, accepting that those notes are typed into the parent's terminal.
 
-**Decides.** The owner.
+**Decided (2026-11-10, owner): A.** Workers report completion only through the `org` mailbox. The secretary learns of it at its next check of the mailbox, and may block on `hc wait --children`, which returns the child's exit and code ([REC-4](predecessor-inventory.md), measured 2026-11-09). herdr-core's notes are turned off (`notes = false`).
+
+- **B rejected:** the screen shows state through the organization's state, not through notifications.
+- **C rejected:** notes are turned off, consistent with [decision 0002](../decisions/0002-org-mailbox-not-hc-send.md); nothing but a person types into the parent's terminal.
 
 ## Q3. Incident threshold when the secretary does not move
 
