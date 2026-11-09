@@ -110,6 +110,11 @@ Either way the organization layer (templates, `org` tools, `state.db`, skills) s
 - **B. Yes, through pull requests** to paddock's own mods (for example under `mods/org-*/`), installed after review.
 - **C. Yes, directly**, for a scratch copy only.
 
+**Decided (2026-11-10, owner): B.** The secretary or a worker may change the window's mods only through pull requests to paddock's own mods under `mods/org-*/`, reviewed by a person and installed after review (copied into herdr-app's `mods/` folder, [decision 0003](../decisions/0003-screen-as-app-mods.md)). No agent writes `~/.config/herdr-app` directly; the architecture already denies it ([L-N1](predecessor-inventory.md)).
+
+- **A rejected:** the agents are the ones who see what the screen lacks, and the pull-request review keeps the trust boundary.
+- **C rejected:** a scratch copy that is never reviewed either drifts or gets installed unreviewed.
+
 **Decides.** The owner.
 
 ## Q6. How the predecessor's runtime pieces are wound down

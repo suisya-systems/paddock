@@ -23,5 +23,5 @@ The organization layer (templates, the `org` tools, the record store, skills) st
 - paddock follows herdr-app's release cadence and its type files (`herdr.d.ts`, `gpui-kit.d.ts`), which are rewritten on every start. A mod may need changes when the app updates.
 - The window needs a GPU (Vulkan on Linux).
 - `herdr-app check` does not lay out a mod, so every change to a mod is also looked at with `herdr-app shot`. The first prototype is checked this way ([prototype 1](../design/prototype-1.md)).
-- Mods are trusted code. Who may change them is still [open question Q5](../design/open-questions.md#q5-does-the-secretary-write-mods).
+- Mods are trusted code. Agents change them only through pull requests to `mods/org-*/`, reviewed by a person and installed after review ([Q5](../design/open-questions.md#q5-does-the-secretary-write-mods), decided 2026-11-10).
 - Our own TUI, native app and web client are not pursued now. A web client for reaching the cockpit from a phone can be reconsidered later; it would read the same organization layer.
