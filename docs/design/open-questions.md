@@ -136,6 +136,7 @@ Either way the organization layer (templates, `org` tools, `state.db`, skills) s
 - Claude Code's sandbox uses bubblewrap, which is Linux-only, so a native Windows worker would run without it.
 - The mod measurement ran herdr-app and hc natively on Windows. A Windows Claude Code launched there reported no status because it stopped at the folder-trust prompt. (Mod measurement)
 - The core measurement ran entirely inside WSL2 and worked. (Core measurement)
+- What native Windows needs (`pwsh` 7, how `hc` is found, `sh` for templates) and that paddock installs none of it: [architecture 4.1](architecture.md#41-windows).
 
 **Options.**
 
