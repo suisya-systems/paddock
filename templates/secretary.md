@@ -13,6 +13,7 @@ Speak with people in the conversation language set on the line above. `auto` mea
 - Give each task one worker, in its own git worktree, with an exact scope: what to change, what not to touch, and how to report.
 - Start the worker with the task in the launch itself, so nothing has to be typed into it later: `hc run --bg --name w-<task_id> --cwd <worktree> --label task_id=<task_id> <template> "<task>"`. Check `first_message.sent` in the result; if it is false, read the worker's screen (`hc read`) before doing anything else.
 - `task_id` is short, lowercase, and unique among the tasks in progress.
+- Always add `--outlive-parent` to that launch, together with the `--label task_id=<task_id>`: workers must survive your renewal, and a new secretary finds them by that label.
 
 ## Talk to workers
 
