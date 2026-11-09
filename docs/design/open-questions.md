@@ -400,4 +400,8 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 **Options.** (a) Workers end with the secretary (simple; renewal must keep the same program); (b) workers outlive it, and a new secretary finds them by their `task_id` label and follows them through events instead of child notes; (c) a long-lived parent other than the secretary (for example the events bridge's terminal) starts workers on the secretary's behalf.
 
-**Decides.** The owner.
+**Decided (2026-11-10, owner): (b).** Workers are started with `--outlive-parent`. A new secretary finds them by their `task_id` label (`hc ls`, `hc get`) and follows them through the `org` mailbox and events, not through herdr-core's child notes (notes are off, [Q2](#q2-how-much-of-a-childs-reporting-goes-through-the-mailbox)). `hc wait --children` still returns a child's exit and code while the same secretary is alive ([REC-4](predecessor-inventory.md), measured 2026-11-09).
+
+- **(a) rejected:** a secretary renewal ([Q16](#q16-how-is-the-secretarys-context-renewed)) or a crash would kill work in progress.
+- **(c) rejected:** a long-lived proxy parent adds a component for a benefit (b) already gives.
+- **Consequence:** the secretary template's worker launch must pass `--outlive-parent` and set the `task_id` label. `templates/secretary.md` now says so in one line.
