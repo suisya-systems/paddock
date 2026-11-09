@@ -17,6 +17,8 @@ jobs:
         run: bash tests/check-templates.test.sh
       - name: Test org-start (stubbed hc)
         run: bash tests/org-start.test.sh
+      - name: Test secretary-handover (stubbed hc)
+        run: bash tests/secretary-handover.test.sh
       - name: Check every template header
         run: bash scripts/check-templates.sh
       - name: Probe scripts parse (no hook script tests exist yet)
