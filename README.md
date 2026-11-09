@@ -8,7 +8,7 @@ paddock rebuilds these ideas from its predecessor, claude-org-ja, on a new base:
 
 ## Status
 
-A first prototype: the secretary template and a mod that shows approvals and work in progress ([prototype 1](docs/design/prototype-1.md)). To start the secretary and install the mod, run `bash skills/org-start/scripts/org-start.sh` from your own login shell, never from inside an agent ([skill](skills/org-start/SKILL.md); Bash only for now). Start with:
+A first prototype: the secretary template and a mod that shows approvals and work in progress ([prototype 1](docs/design/prototype-1.md)). To start the secretary and install the mod, run `bash skills/org-start/scripts/org-start.sh` from your own login shell, never from inside an agent ([skill](skills/org-start/SKILL.md); Bash only for now). To renew the secretary's context, run `bash skills/secretary-handover/scripts/secretary-handover.sh` the same way, once the secretary has written its handover ([skill](skills/secretary-handover/SKILL.md)). Start with:
 
 - [Architecture](docs/design/architecture.md): where each part lives, and the rules that hold it together.
 - [Open questions](docs/design/open-questions.md): decisions the owner has not made yet, with what we know so far.
@@ -37,7 +37,7 @@ Portability. The predecessor carried its own terminal transports, pane launcher,
 
 ## CI
 
-CI: relative Markdown links are checked by `scripts/check-links.sh`; `tests/org-start.test.sh` tests the `org-start` skill against a stubbed `hc`.
+CI: relative Markdown links are checked by `scripts/check-links.sh`; `tests/org-start.test.sh` and `tests/secretary-handover.test.sh` test the `org-start` and `secretary-handover` skills against a stubbed `hc`.
 
 ## License
 
