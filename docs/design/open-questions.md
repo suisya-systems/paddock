@@ -72,7 +72,7 @@ Either way the organization layer (templates, `org` tools, `state.db`, skills) s
 - `hc send` refuses a blocked terminal without `--force`, so nothing typed by accident answers its dialog. (Core docs; Core measurement)
 - A Claude Code that stops at its startup folder-trust prompt reports no status at all, so it is never `blocked` and herdr-app does not list it. (Mod measurement)
 
-**Options.** A fixed time; a time per `kind`; "the secretary's own status has not changed for N minutes while a worker is blocked". A separate rule is needed for terminals that never reported status after launch.
+**Options.** A fixed time; a time per `kind`; "the secretary's own status has not changed for N minutes while a worker is blocked". A separate rule is needed for terminals that never reported status after launch (decided below).
 
 **Decides.** The owner.
 
@@ -82,8 +82,24 @@ Either way the organization layer (templates, `org` tools, `state.db`, skills) s
 - **Fixed time rejected:** it ignores that some blocked states are legitimate waits, for example a worker waiting on a person the secretary has already escalated to.
 - **Time per `kind` rejected:** it needs a table of times per `kind` that nobody has measured, and `blocked` is measured for two prompts only, `permission` and `question` ([MON-5](predecessor-inventory.md)); other prompts are Unverified.
 - **How it is evaluated:** the check reads `hc get` for the secretary and for each blocked worker. It fires when a worker is `blocked` and the secretary's `status_ms` is at least N minutes old, and then confirms the secretary is frozen, not in a long turn, by an unchanged `turn` count and an unchanged screen (`hc read --lines 0`) across the same N minutes ([MON-7](predecessor-inventory.md)). A fresh secretary status, screen or `turn` change resets it.
-- **Still open:** who runs this check. The secretary cannot, because it is the one not moving; it needs a watcher outside it (a script or a mod), and a mod runs only while herdr-app is open ([NTF-1](predecessor-inventory.md)). The separate rule for terminals that never reported status after launch is also open.
+- **Still open:** who runs this check. The secretary cannot, because it is the one not moving; it needs a watcher outside it (a script or a mod), and a mod runs only while herdr-app is open ([NTF-1](predecessor-inventory.md)). The rule for terminals that never reported status after launch is decided below.
 - **Not measured:** no run of the rule end to end, and no measurement of how long a healthy secretary keeps one status. N = 10 is a starting value, not a measured one.
+
+### Terminals that never reported status after launch (Issue #8)
+
+A terminal that never reported status is never `blocked`, so the rule above does not catch it. The facts: it reports no status at all and herdr-app does not list it ([MON-5](predecessor-inventory.md)); `hc run` returned after about 58 s with `first_message: {sent: false, reason: "it never reported its status, so it may be showing a dialog ..."}` ([Q13](#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog), probes P4 to P6); a launch's `first_message: {sent: false, reason}` survives a core restart in `hc get` ([Q4](#q4-worker-recovery-after-a-core-restart)).
+
+**Decided (2026-11-10, owner): both signals, one number.** A terminal is treated as never-reported when either holds:
+
+1. **Immediate:** `hc run` returns `first_message.sent = false`.
+2. **Timeout:** the terminal has no status N minutes after launch. N is the same 10 minutes as in the rule above, so there is one number to tune.
+
+- **Who is told:** a person, on the screen, in the same place as approvals and escalations (G3), with the terminal's name and the reason text from `first_message.reason`. This is an incident, not a message to the secretary: the secretary cannot see a worker that has no status.
+- **Why both:** the immediate signal needs no waiting and already carries the reason; the timeout covers a terminal whose launch was never checked, or whose `first_message` was `sent: true` but which then stopped reporting. Using Q3's N keeps one threshold.
+- **Consequence, delegation skill:** it already checks `first_message.sent` in the `hc run` result ([Q13](#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog)); on `false` it raises the incident above instead of pressing keys on the worker.
+- **Consequence, who runs the timeout:** the same open question as the check above: a watcher outside the secretary. The incident is shown with the approvals and escalations, so it needs the same screen path.
+- **Follow-ups (not done here):** the delegation skill's incident on `sent = false`; the watcher or mod that applies the timeout and shows the incident card.
+- **Not measured:** whether the Q13 decision (worktrees under a trusted parent) makes case 1 rare in practice; that the timeout and the immediate signal agree on a real never-reported launch; how long a healthy launch takes to first report, so N = 10 may be far too long for this case; the "Load development channel?" startup prompt the predecessor met ([MON-5](predecessor-inventory.md)) under this rule.
 
 ## Q4. Worker recovery after a core restart
 
