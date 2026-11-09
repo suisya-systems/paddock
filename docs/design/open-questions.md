@@ -323,7 +323,17 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 **Options.** (a) The template body only; (b) `AGENTS.md` written into the worktree, falling back to something else when the target has a CLAUDE.md; (c) `CLAUDE.local.md`, as the predecessor did; (d) a file outside the worktree passed with `--append-system-prompt-file` in the template command; or a split, for example role rules in (d) and the task in the template body.
 
-**Decides.** The owner.
+**Decided (2026-11-10, owner): the split.** A worker's role rules are a file outside the target repository, passed with `--append-system-prompt-file <rules path>` in the worker template's `command` (option d). The task brief is the template body plus the task appended in the launch (option a).
+
+- **Measured basis:** a rule given only in the template body was still followed, and still stated, after `/compact` (measured 2026-11-10, hc 0.1.18, Claude Code 2.1.319; `scripts/probes/q12-rule-after-compact.sh`, Issue #45; one run, screen-check evidence only, see "What we know" above). A template-launched Claude read a codeword written only in the worktree's `AGENTS.md` (Inventory probes, P2), so files in the worktree do reach the agent; the split does not need that.
+- **Why the split:** the task travels in the launch, so nothing is typed into the worker later ([architecture §4](architecture.md#4-where-each-part-goes)). The rules file never touches the target repository's git, so it cannot collide with the target's own CLAUDE.md or `AGENTS.md` and cannot be committed by accident. There is one rules file per role, kept where the templates are, so a role's rules change in one place.
+- **(a) alone rejected:** the role rules would rest on one measurement with no transcript of the replies, at a context far below the window. A rules file does not depend on that.
+- **(b) rejected:** writing `AGENTS.md` into the worktree collides with a target that has its own CLAUDE.md or `AGENTS.md`, and the fallback (Claude Code reads `AGENTS.md` only when there is no CLAUDE.md) is a second path to build and keep right. The file also sits in the target's checkout, where `git add` can pick it up.
+- **(c) rejected:** the predecessor's `CLAUDE.local.md` is a file written into the target checkout and kept out of the target's git by exclusion ([inventory](predecessor-inventory.md) INS-12); that exclusion is what the outside file avoids.
+- **Consequence, worker template:** its `command` gains `--append-system-prompt-file <rules path>` (and keeps the Q17 `env -u` prefix, [Q17](#q17-what-environment-do-the-core-and-its-terminals-start-with)). The template does not exist yet; it is part of the delegation work (#62).
+- **Consequence, delegation skill:** it writes nothing into the worktree for rules. It creates the worktree, then launches the worker with the task in the launch ([Q13](#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog)).
+- **Consequence, rules file location:** next to the templates, one file per role. Its exact name and folder are left open here; they belong to the worker template (#62). Whether `hc run` leaves the path as written or expands it (for example `~`, a relative path against `--cwd`) was not measured, so the template should use an absolute path until a launch shows otherwise.
+- **Not measured:** `--append-system-prompt-file` in a template launch (the flag is documented in `claude --help` and the CHANGELOG, but no probe has launched a worker with it); whether the rules survive several compactions (the probe ran one compaction); whether a target's own CLAUDE.md and the appended rules conflict in practice.
 
 ## Q13. How does a new worktree get past Claude Code's folder-trust dialog?
 
