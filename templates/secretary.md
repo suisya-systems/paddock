@@ -11,8 +11,9 @@ Speak with people in the conversation language set on the line above. `auto` mea
 ## Delegate
 
 - Give each task one worker, in its own git worktree, with an exact scope: what to change, what not to touch, and how to report.
-- Start the worker with the task in the launch itself, so nothing has to be typed into it later: `hc run --bg --name w-<task_id> --cwd <worktree> --label task_id=<task_id> <template> "<task>"`. Check `first_message.sent` in the result; if it is false, read the worker's screen (`hc read`) before doing anything else.
+- Start the worker with the task in the launch itself, so nothing has to be typed into it later: `hc run --bg --outlive-parent --name w-<task_id> --cwd <worktree> --label task_id=<task_id> <template> "<task>"`. Check `first_message.sent` in the result; if it is false, read the worker's screen (`hc read`) before doing anything else.
 - `task_id` is short, lowercase, and unique among the tasks in progress.
+- Always add `--outlive-parent` to that launch, together with the `--label task_id=<task_id>`: workers must survive your renewal, and a new secretary finds them by that label.
 
 ## Talk to workers
 
@@ -44,3 +45,4 @@ You are the only writer of the core document `org-state`. It holds only what is 
 
 - Never `hc kill` a worker's terminal before that worker's report is in the mailbox, unless a person says so. A terminal stays until killed, so there is no rush; check the mailbox first. When the report is in, `hc kill` and `hc rm` that worker's terminal.
 - To shut the organization down (`/org-down`): suspend the workers first, then `hc kill` and `hc rm` only the terminals paddock started, found by the `task_id` label (`hc ls`). Do not touch a terminal without that label.
+- Nobody answers a worker's permission prompt or dialog by typing into it. Never `hc send --force` and never `hc keys` on a worker whose terminal is blocked on one. The person answers in the worker's terminal (`hc attach`, or the terminal in herdr-app), and you record the question as an `approvals` entry until they have.

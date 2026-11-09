@@ -56,7 +56,10 @@ Either way the organization layer (templates, `org` tools, `state.db`, skills) s
 - **B. Mailbox plus a window notification** on completion.
 - **C. Mailbox plus herdr-core's own child notes**, accepting that those notes are typed into the parent's terminal.
 
-**Decides.** The owner.
+**Decided (2026-11-10, owner): A.** Workers report completion only through the `org` mailbox. The secretary learns of it at its next check of the mailbox, and may block on `hc wait --children`, which returns the child's exit and code ([REC-4](predecessor-inventory.md), measured 2026-11-09). herdr-core's notes are turned off (`notes = false`).
+
+- **B rejected:** the screen shows state through the organization's state, not through notifications.
+- **C rejected:** notes are turned off, consistent with [decision 0002](../decisions/0002-org-mailbox-not-hc-send.md); nothing but a person types into the parent's terminal.
 
 ## Q3. Incident threshold when the secretary does not move
 
@@ -133,6 +136,7 @@ Either way the organization layer (templates, `org` tools, `state.db`, skills) s
 - Claude Code's sandbox uses bubblewrap, which is Linux-only, so a native Windows worker would run without it.
 - The mod measurement ran herdr-app and hc natively on Windows. A Windows Claude Code launched there reported no status because it stopped at the folder-trust prompt. (Mod measurement)
 - The core measurement ran entirely inside WSL2 and worked. (Core measurement)
+- What native Windows needs (`pwsh` 7, how `hc` is found, `sh` for templates) and that paddock installs none of it: [architecture 4.1](architecture.md#41-windows).
 
 **Options.**
 
@@ -298,9 +302,11 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 - `hc --skill` documents the recovery: "resolve readiness first (a trust dialog may need `hc keys <t> down enter`), then send the task". The probes did that and it worked. (Core docs; Inventory probes)
 - The dialog's default choice is "No, exit": a blind Enter ends the worker. The predecessor answered it only after reading the screen, behind a hook that refused keys without a fresh screen-judgment record. ([inventory](predecessor-inventory.md) HK-8)
 - A Claude Code stopped at this dialog reports no status, so herdr-app does not list it. (Mod measurement)
-- Not measured: whether trusting a parent folder covers new worktrees below it, and whether trust can be recorded before launch. Probe: accept the dialog once in a folder, create a new subfolder in it, launch a template there, and check `first_message.sent`.
+- Measured on 2026-11-10 (hc 0.1.18, Claude Code 2.1.319; `scripts/probes/folder-trust-worktrees.sh`, Issue #46): **trusting a parent folder covers a new subfolder created later.** In a fresh folder under `$HOME`, `hc run --bg` returned `first_message.sent: false` and `hc read` showed the dialog; `hc keys <t> down enter` reached the normal prompt (the first message was not delivered afterwards, since `hc run` tries it only at start). A new subfolder of that folder, launched from the same template after the first terminal was killed, returned `first_message: {sent: true, started: true, turn: 0}`, showed no dialog, and the agent answered the task.
+- Where trust is recorded: after the dialog was accepted, `~/.claude.json` held `projects["<parent path>"].hasTrustDialogAccepted = true`. The child got its own entry with `hasTrustDialogAccepted = false`, so the dialog was skipped by looking up a trusted ancestor, not by copying the flag. This key is not a documented interface.
+- Recording trust before launch: **works as of this version, but not through a supported interface.** On 2026-11-10 (Claude Code 2.1.319, hc 0.1.18) the owner wrote `projects["<folder path>"] = {"allowedTools": [], "hasTrustDialogAccepted": true}` into `~/.claude.json` for a fresh folder under `$HOME` before launch. The template launch there returned `first_message: {sent: true, started: true, turn: 0}`, `hc read` showed no dialog, and the agent answered. The key is undocumented and may change. `claude --help` mentions trust only for non-interactive mode (`-p` or stdout not a TTY), which does not fit a template launch.
 
-**Options.** (a) The delegation skill answers the dialog with `hc keys` after `hc read` shows it, as `hc --skill` describes; (b) worktrees are created under one folder that is trusted once, if the probe shows trust carries down; (c) trust is recorded for the worktree before launch, if Claude Code offers a supported way; (d) a person accepts it in the window.
+**Options.** (a) The delegation skill answers the dialog with `hc keys` after `hc read` shows it, as `hc --skill` describes; (b) worktrees are created under one folder that is trusted once (measured: trust carries down, so this is available; the first folder still needs (a) or (d) once); (c) trust is recorded for the worktree before launch, if Claude Code offers a supported way (measured to work by writing the undocumented `~/.claude.json` key before launch; not a documented interface); (d) a person accepts it in the window.
 
 **Decides.** The owner.
 
@@ -397,4 +403,8 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 **Options.** (a) Workers end with the secretary (simple; renewal must keep the same program); (b) workers outlive it, and a new secretary finds them by their `task_id` label and follows them through events instead of child notes; (c) a long-lived parent other than the secretary (for example the events bridge's terminal) starts workers on the secretary's behalf.
 
-**Decides.** The owner.
+**Decided (2026-11-10, owner): (b).** Workers are started with `--outlive-parent`. A new secretary finds them by their `task_id` label (`hc ls`, `hc get`) and follows them through the `org` mailbox and events, not through herdr-core's child notes (notes are off, [Q2](#q2-how-much-of-a-childs-reporting-goes-through-the-mailbox)). `hc wait --children` still returns a child's exit and code while the same secretary is alive ([REC-4](predecessor-inventory.md), measured 2026-11-09).
+
+- **(a) rejected:** a secretary renewal ([Q16](#q16-how-is-the-secretarys-context-renewed)) or a crash would kill work in progress.
+- **(c) rejected:** a long-lived proxy parent adds a component for a benefit (b) already gives.
+- **Consequence:** the secretary template's worker launch must pass `--outlive-parent` and set the `task_id` label. `templates/secretary.md` now says so in one line.
