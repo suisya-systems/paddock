@@ -98,6 +98,17 @@ The screen is not an admin console. It is drawn by herdr-app mods ([decision 000
 - A pending approval shows as a single card in the bottom right.
 - No tables. No charts.
 
+### 7.1 Approvals
+
+When a worker blocks on a permission prompt or dialog, nobody types the answer for the person ([L-N3](predecessor-inventory.md)):
+
+1. The worker's terminal reports `blocked`; the secretary sees it and adds an `org-state.approvals` entry (`task_id`, `question`, `asked_at`).
+2. The mod shows the entry as a card, and the tile as "Needs you".
+3. The person answers in the worker's own terminal (`hc attach`, or the terminal in herdr-app).
+4. The secretary removes the entry once the terminal is no longer blocked.
+
+`hc send` refuses a blocked terminal unless `--force`; `hc keys` has no such refusal, so for it the rule is the secretary's template only.
+
 ## 8. Facts this design relies on
 
 From the upstream documentation (herdr-core README, `docs/commands.md`, `docs/templates.md`, `docs/security.md`, `schema/README.md`, `schema/hc.openrpc.json`; herdr-app README and its mod guide `defaults/AGENTS.md`; the `hc --skill` manual of hc 0.1.18):
