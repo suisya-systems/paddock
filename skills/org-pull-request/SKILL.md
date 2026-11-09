@@ -51,6 +51,7 @@ The mode is `--mode`, else `merge_approval_mode` in the `org-state` document (re
 - The base branch is `main` unless `--base` says otherwise. The title and body are written by the secretary in English.
 - `--task-id` may hold only letters, digits, `.`, `_` and `-` (it goes into a JSON line); anything else exits 2 before the push.
 - Known limit: when a head has several runs (for example both `push` and `pull_request` workflows), only the newest one found is watched and recorded. In `human` mode "CI green" means that run; in `acceptance` mode the required checks cover the rest.
+- Known limit: the final line "Merged" means `gh pr merge` succeeded. On a branch with a merge queue that only enqueues the PR; the script does not query the merge state afterwards. This repository has no merge queue.
 - `gh pr checks --required` exits non-zero when a required check fails, is pending, or none is configured; all of those refuse the merge.
 - Reviews are not handled here. The row's "handles review" and "closes the worker" stay with the secretary template.
 
