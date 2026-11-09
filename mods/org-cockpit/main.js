@@ -29,17 +29,20 @@ function named(x, want) {
 // `hc connect` (0.1.18) ends at end of input without waiting for its answer, so stdin is held open 1 s.
 // Windows has no sh, and hc is often not on PATH there: pwsh, with hc's default install folder.
 // ponytail: one process and 1 s per read; subscribe to doc events once a long-lived reader exists.
-function rpcCommand() {
-  if (window()?.platform === "windows") {
+function rpcCommand(on) {
+  if (!on && window()?.platform === "windows") {
     const hcExe = '$hc = (Get-Command hc -ErrorAction SilentlyContinue).Source; if (-not $hc) { $hc = "$env:LOCALAPPDATA\\Programs\\herdr-core\\hc.exe" }';
     return ["pwsh", ["-NoProfile", "-NonInteractive", "-Command", `${hcExe}; & { '${REQ.replace(/'/g, "''")}'; Start-Sleep -Seconds 1 } | & $hc connect`]];
   }
   return ["sh", ["-c", '{ printf "%s\\n" "$1"; sleep 1; } | hc connect', "sh", REQ]];
 }
 
-async function readDoc() {
-  const [cmd, args] = rpcCommand();
-  const r = await exec(cmd, args);
+// `on`: the machine whose core holds org-state (the secretary's), null for this one. Another
+// machine is reached through herdr-core and runs sh there.
+// ponytail: assumes a remote machine has sh (Linux, macOS, WSL); a remote native Windows does not.
+async function readDoc(on) {
+  const [cmd, args] = rpcCommand(on);
+  const r = await exec(cmd, args, { on });
   const line = r.stdout.split("\n").find((l) => l.trim().startsWith("{"));
   if (!line) throw new Error(r.stderr.trim() || `hc connect exited with ${r.code} and no answer`);
   const msg = JSON.parse(line);
@@ -101,7 +104,7 @@ export default class Cockpit extends View {
   refresh(cx) {
     cx.spawn(async (cx) => {
       try {
-        this.doc = await readDoc();
+        this.doc = await readDoc(this.secretaryMachine());
         this.error = null;
       } catch (e) {
         this.error = String(e?.message ?? e);
@@ -129,6 +132,12 @@ export default class Cockpit extends View {
         this.reading = false;
       }
     });
+  }
+
+  // "wsl/secretary" -> "wsl"; a bare name -> null (this machine).
+  secretaryMachine() {
+    const n = this.secretaryName();
+    return n.includes("/") ? n.slice(0, n.indexOf("/")) : null;
   }
 
   secretaryName() {
