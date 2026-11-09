@@ -29,7 +29,9 @@ for a in "$@"; do case "$a" in --*) ;; *) name=$a ;; esac; done
 case "$cmd" in
   connect) cat >/dev/null; cat "$STUB/doc" 2>/dev/null \
              || echo '{"jsonrpc":"2.0","id":1,"result":{"value":null,"version":0}}'; exit 0 ;;
-  get) [ -f "$STUB/term-$name" ] || { echo '{"error":{"kind":"not_found"}}'; exit 1; }
+  get) [ -z "${STUB_GET_FAIL:-}" ] || { echo 'hc: connection reset' >&2; exit 1; }
+       [ -f "$STUB/term-$name" ] || { echo '{"error":{"kind":"not_found"}}'; exit 1; }
+       [ -z "${STUB_MULTILINE:-}" ] || { printf '{\n  "name": "%s",\n  "state": "live",\n  "status": {\n    "app": "claude-code",\n    "state": "%s"\n  }\n}\n' "$name" "$(cat "$STUB/state")"; exit 0; }
        echo "{\"name\":\"$name\",\"state\":\"live\",\"status\":{\"app\":\"claude-code\",\"state\":\"$(cat "$STUB/state" 2>/dev/null || echo idle)\"}}"; exit 0 ;;
   kill) [ -f "$STUB/term-$name" ] || exit 1; echo '{"killed":true}'; exit 0 ;;
   rm) rm -f "$STUB/term-$name"; echo '{"removed":true}'; exit 0 ;;
@@ -71,6 +73,14 @@ for st in working blocked; do
   [ "$rc" -eq 8 ] && ! grep -Eq '^(kill|rm|run) ' "$calls" && [ -f "$tmp/stub/term-secretary" ]
   check "status $st exits 8, ends and starts nothing" $?
 done
+
+# Refusal: the status cannot be read, or is multiline. A failed read is never taken as idle.
+reset idle; out=$(run STUB_GET_FAIL=1); rc=$?
+[ "$rc" -eq 11 ] && ! grep -Eq '^(kill|rm|run) ' "$calls"; check "hc get failing exits 11, ends and starts nothing" $?
+reset working; out=$(run STUB_MULTILINE=1); rc=$?
+[ "$rc" -eq 8 ] && ! grep -Eq '^(kill|rm|run) ' "$calls"; check "multiline JSON with working status exits 8" $?
+reset idle; out=$(run STUB_MULTILINE=1); rc=$?
+[ "$rc" -eq 0 ] && grep -q '^kill ' "$calls"; check "multiline JSON with idle status relaunches" $?
 
 # Refusal: no handover document (never written, or cleared to null). Nothing is ended.
 reset idle nodoc; out=$(run); rc=$?

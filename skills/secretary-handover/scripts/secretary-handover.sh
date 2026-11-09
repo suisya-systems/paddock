@@ -17,7 +17,8 @@ Environment overrides:
 
 Exit codes: 0 relaunched, 2 bad argument, 3 hc not found, 4 run inside an agent,
 5 core unreachable or hc run/kill/rm failed, 8 a turn is in progress, 9 no handover
-document, 10 the new secretary did not get its first message.
+document, 10 the new secretary did not get its first message, 11 its status could
+not be read (nothing was ended).
 USAGE
 }
 
@@ -49,13 +50,19 @@ doc=$({ printf '%s\n' "$req"; sleep 1; } | hc connect 2>/dev/null) || die 5 "can
 printf '%s' "$doc" | grep -Eq '"value": *\{' \
   || die 9 "no secretary-handover document (never written, or already cleared). Ask the secretary to write it first; nothing was ended."
 
-# 2. Never end a secretary that is mid-turn. A missing terminal is fine: an earlier run may have died after rm.
-if hc get "$name" >/dev/null 2>&1; then
-  if hc get --json "$name" 2>/dev/null | grep -Eq '"state": *"(working|blocked)"[^{}]*\}'; then
+# 2. Never end a secretary that is mid-turn, and never guess: an unreadable status is a refusal.
+# Only a clear not_found means there is no old terminal (an earlier run may have died after rm).
+if st=$(hc get --json "$name" 2>&1); then
+  st=$(printf '%s' "$st" | tr -d '\n')
+  printf '%s' "$st" | grep -Eq '"state": *"' \
+    || die 11 "cannot read the status of $name (unexpected hc get output); nothing was ended."
+  if printf '%s' "$st" | grep -Eq '"status": *\{[^{}]*"state": *"(working|blocked)"'; then
     die 8 "$name has a turn in progress (working or blocked). Wait until it is idle, then rerun; nothing was ended."
   fi
   hc kill "$name" >/dev/null 2>&1 || die 5 "hc kill $name failed"
   hc rm "$name" >/dev/null 2>&1 || die 5 "hc rm $name failed"
+elif ! printf '%s' "$st" | grep -q 'not_found'; then
+  die 11 "cannot read the status of $name (hc get failed); nothing was ended."
 fi
 
 # 3. The task travels in the launch (decision 0002). The new secretary reads the document itself.

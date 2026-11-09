@@ -22,7 +22,7 @@ Bash only, like [org-start](../org-start/SKILL.md).
 
 1. Refuses (exit 4) when its own environment shows it runs inside an agent, as `org-start` does ([Q17](../../docs/design/open-questions.md#q17-what-environment-do-the-core-and-its-terminals-start-with)).
 2. Reads the core document `secretary-handover` with `doc.get` through `hc connect`. If it was never written or was cleared (a `null` value), exits 9 and ends nothing.
-3. If a terminal named `secretary` exists: if `hc get --json` shows its status as `working` or `blocked` (a turn is in progress), exits 8 and ends nothing. Otherwise `hc kill`, then `hc rm`. A missing terminal is fine, so a rerun after a partial failure continues.
+3. Reads `hc get --json secretary` once. If the status is `working` or `blocked` (a turn is in progress), exits 8 and ends nothing. If the read fails, or the output has no `state`, exits 11 and ends nothing: an unreadable status is never taken as idle. Otherwise `hc kill`, then `hc rm`. Only a `not_found` answer means the terminal is gone, so a rerun after a partial failure continues.
 4. Runs `hc run --bg --keep --name secretary secretary "<resume from the handover>"`. The task is in the launch ([decision 0002](../../docs/decisions/0002-org-mailbox-not-hc-send.md)). The task text tells the new secretary to read `secretary-handover` and `org-state`, find the running workers by their `task_id` label (`hc ls`), and then clear `secretary-handover`.
 5. Checks `first_message.sent` in the result; exits 10 if it is not true, and then you read the screen (`hc read`) before anything else.
 
@@ -30,7 +30,7 @@ Workers are not touched: they were started with `--outlive-parent` ([Q19](../../
 
 ## Name
 
-`PADDOCK_SECRETARY_NAME` sets the terminal name (default `secretary`), for the kill, rm and run. The template stays `secretary`. Set the same value for `org-start`.
+`PADDOCK_SECRETARY_NAME` sets the terminal name (default `secretary`), for the kill, rm and run. The template stays `secretary`. The script supports it now; `org-start` does not honour it until the org-start name override lands, so set it for both only after that.
 
 ## Idempotence
 
@@ -38,7 +38,7 @@ The document is cleared by the new secretary once it has resumed, so a second ru
 
 ## Exit codes
 
-0 relaunched, 2 bad argument, 3 `hc` not found, 4 run inside an agent, 5 core unreachable or `hc kill`, `hc rm` or `hc run` failed, 8 a turn is in progress, 9 no handover document, 10 the first message was not sent.
+0 relaunched, 2 bad argument, 3 `hc` not found, 4 run inside an agent, 5 core unreachable or `hc kill`, `hc rm` or `hc run` failed, 8 a turn is in progress, 9 no handover document, 10 the first message was not sent, 11 the secretary's status could not be read.
 
 ## Not measured
 
