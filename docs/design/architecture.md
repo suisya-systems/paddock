@@ -64,6 +64,8 @@ What paddock needs on a native Windows machine, and what it does about it. Wheth
 
 Most of the organization is herdr itself: role launch (templates), task identity (labels), status (OSC 7501 through `hc get` / `hc events`), waiting (`hc wait --children`), interrupts (`hc interrupt`), remote machines (`hc machine`, `--on`), and the window (mods with `exec`, file reads and writes, `notify`, shared state). Skills are Markdown that Claude Code reads.
 
+Skills live under [`skills/`](../../skills/). The first is [`org-start`](../../skills/org-start/SKILL.md): it starts the secretary from its template, places the mods and reports readiness, and starts no core itself ([Q17](open-questions.md#q17-what-environment-do-the-core-and-its-terminals-start-with)).
+
 paddock adds the components below. Each must be written in an environment herdr already brings (a mod's JavaScript, `hc` templates and CLI, the shell) unless that proves impossible. Which one each uses is [Q8](open-questions.md#q8-what-is-each-component-written-in).
 
 | Component | What it must do | Written in |
