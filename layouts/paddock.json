@@ -1,0 +1,50 @@
+{
+  "id": "root",
+  "type": "row",
+  "theme": "graphite",
+  "colors": { "border": "#00000000" },
+  "background": "canvas",
+  "font_size": 14,
+  "terminal_padding": [16, 12],
+  "padding": 12,
+  "gap": 12,
+  "children": [
+    {
+      "id": "workers",
+      "type": "block",
+      "size": { "px": 280 },
+      "min": 240,
+      "max": 400,
+      "content": { "mod": "org-cockpit", "props": { "role": "workers" } }
+    },
+    {
+      "id": "secretary",
+      "type": "block",
+      "content": {
+        "tab": "active",
+        "pane": { "gap": 8, "radius": 12, "background": "background", "lone": true }
+      }
+    },
+    {
+      "id": "rail",
+      "type": "column",
+      "size": { "px": 300 },
+      "min": 260,
+      "children": [
+        {
+          "id": "approval",
+          "type": "block",
+          "content": { "mod": "org-cockpit", "props": { "role": "approval" } }
+        }
+      ],
+      "floating": [
+        {
+          "id": "consult",
+          "content": { "mod": "org-cockpit", "props": { "role": "consult" } },
+          "edge": "top",
+          "align": "start"
+        }
+      ]
+    }
+  ]
+}
