@@ -240,11 +240,19 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 **Options, per component.**
 
-- **`org` MCP server**: (a) a shell program speaking MCP over stdio; (b) shell commands the skills call instead of MCP tools; (c) a separate runtime, accepted as the one exception.
+- **`org` server** (decided: (b); it was called the `org` MCP server): (a) a shell program speaking MCP over stdio; (b) shell commands the skills call instead of MCP tools; (c) a separate runtime, accepted as the one exception.
 - **Events bridge**: (a) a shell pipeline on `hc events --json` in a kept terminal; (b) a mod, accepting gaps while no window is open; (c) part of the same program as the `org` server.
 - **`state.db`** (sizes above): (a) SQLite, which needs a SQLite tool that herdr does not ship and is out of reach of a mod's own code; (b) append-only files (for example JSON lines) written from the shell or a mod; (c) core documents, reached through a JSON-RPC client, limited by the layouts in the table above; (d) a mix, for example core documents for in-progress state and JSON-lines files for the log and history.
 
-**Decided for `state.db`** (2026-11-09): option (d), core documents for in-progress state and per-writer monthly JSON lines for history, no SQLite ([decision 0004](../decisions/0004-records-documents-and-jsonl.md)). The `org` server and the events bridge are still open.
+**Decided for `state.db`** (2026-11-09): option (d), core documents for in-progress state and per-writer monthly JSON lines for history, no SQLite ([decision 0004](../decisions/0004-records-documents-and-jsonl.md)). The `org` server is decided below (shell commands, option (b)); the events bridge is still open.
+
+**Decided for the `org` server** (2026-11-10, owner): (b), shell commands the skills call instead of MCP tools.
+
+- **Decision:** there is no `org` MCP server. The mailbox operations `send_message`, `check_messages`, `set_summary`, `report` and `list_runs` become shell commands under one entry point, `scripts/org` (for example `scripts/org send_message <to> <text>`). Skills and agents call them through the shell.
+- **Why:** the mailbox and the records are core documents and JSON lines ([decision 0004](../decisions/0004-records-documents-and-jsonl.md)), all readable and writable with `hc connect` and the shell. An MCP server would add a resident process and a JSON-RPC implementation, against [principle 1](architecture.md#2-design-principles) ("nothing to install beyond herdr"). The skills already are shell scripts (see [skills/](../../skills/)), so commands fit how the organization is already built.
+- **Rejected:** (a) a shell MCP server is the same code behind a protocol nobody else calls; (c) a separate runtime breaks principle 1.
+- **Consequences:** [templates/secretary.md](../../templates/secretary.md) and the [architecture](architecture.md) call these operations "`org` tools" or "the `org` MCP server"; they become commands under `scripts/org`. The architecture's section 4 row for the `org` server now says shell commands. The template text still says "tools" and "if the `org` tools are not available"; the task that implements `scripts/org` must update it (the template is not changed here, because the commands do not exist yet and the template checker runs on it). Whether `scripts/org` is one script with subcommands or several files is that task's choice.
+- **Not measured:** nothing. This is a language choice, not a measured one.
 
 ## Q9. Where does the conversation language setting live?
 

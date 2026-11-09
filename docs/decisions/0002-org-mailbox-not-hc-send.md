@@ -17,7 +17,7 @@ The predecessor, claude-org-ja, used a peer messaging design with three operatio
 
 ## Decision
 
-Messages between agents go through the organization's mailbox: an `org` MCP server offering `send_message`, `check_messages`, `set_summary`, `report` and `list_runs`, with the box stored in `state.db`. It does not depend on any terminal.
+Messages between agents go through the organization's mailbox: an `org` mailbox offering `send_message`, `check_messages`, `set_summary`, `report` and `list_runs`, with the box stored in `state.db`. It does not depend on any terminal.
 
 `hc send` is used only to give an agent its first task (normally inside `hc run` itself) and for interrupts. No agent types into another agent's prompt to talk to it.
 
@@ -25,5 +25,5 @@ Messages between agents go through the organization's mailbox: an `org` MCP serv
 
 - Status, messages and signals stay on three separate channels (OSC 7501 status in herdr-core, the mailbox, and window notifications), as the [architecture](../design/architecture.md#2-design-principles) requires.
 - Receivers must check the box. The secretary does so at the end of every turn. Completion raises no window notification and herdr-core's child notes are turned off (`notes = false`), as decided in [Q2](../design/open-questions.md#q2-how-much-of-a-childs-reporting-goes-through-the-mailbox) (2026-11-10).
-- paddock must build and run the `org` server and its storage. What they are written in is [open question Q8](../design/open-questions.md#q8-what-is-each-component-written-in).
+- paddock must build and run the `org` commands and their storage. They are shell commands, as decided in [open question Q8](../design/open-questions.md#q8-what-is-each-component-written-in).
 - Templates and skills must tell agents to report through the mailbox, replacing herdr-core's default advice to report with `hc send`.
