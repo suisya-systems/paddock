@@ -76,7 +76,8 @@ gen() { # $1 = dir: FILES deterministic files, ROWS lines each, ~80 bytes a line
 }
 
 screen() { hc read $NAME 2>&1; }
-is_idle() { hc get --json $NAME 2>&1 | tr -d '\n' | grep -Eq '"state" *: *"idle"'; }
+# Measured status vocabulary: "working", "done" (between turns), "blocked"; not "idle".
+is_idle() { hc get --json $NAME 2>&1 | tr -d '\n' | grep -Eq '"state" *: *"(done|idle)"'; }
 wait_idle() { # $1 = max seconds; waits 10 s first (status may lag a send)
   sleep 10; i=10
   while [ $i -lt "$1" ]; do is_idle && return 0; i=$((i + 5)); sleep 5; done
