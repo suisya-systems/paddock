@@ -11,7 +11,7 @@ paddock keeps the predecessor's three ideas: you talk to a secretary, the organi
 1. **Write it in what herdr already runs.** Implementation leans on the environments herdr provides: herdr-app mods (JavaScript), `hc` templates and the `hc` CLI, and the shell. paddock avoids languages and runtimes that need a separate install. The components stay as designed; what each one is written in is listed in [section 5](#5-components-and-what-they-are-written-in) and left open in [Q8](open-questions.md#q8-what-is-each-component-written-in).
 2. **Three channels, never mixed.**
    - **Status**: each agent reports `working` / `blocked` / `done` / `error` through OSC 7501; herdr-core stores it. Nothing infers status from screen text.
-   - **Messages**: agents talk to each other through the organization's mailbox (the `org` MCP tools), stored in `state.db`. Messages are queued and read asynchronously.
+   - **Messages**: agents talk to each other through the organization's mailbox (the `org` commands), stored in `state.db`. Messages are queued and read asynchronously.
    - **Signals**: the window's notifications tell a person or the secretary that something is waiting. The secretary checks its mailbox at the end of each turn.
 
    The full transcript of each conversation stays where Claude Code writes it (its JSONL session logs). paddock does not copy it.
@@ -40,7 +40,7 @@ The full list of what the predecessor distributes, enforces and records, with a 
 | --- | --- |
 | Role contracts (each role's CLAUDE.md) | herdr-core templates (`~/.config/herdr-core/templates/<name>.md`: header with `command`, body with the role's instructions) plus the worktree's `AGENTS.md` ([principle 8](#2-design-principles)). `hc run <template> "<task>"` starts a role by name. |
 | Delegation (create a worktree, open a pane, send the instruction) | A delegation skill creates the worktree, then runs `hc run --bg --name w-<task> --cwd <worktree> --label task_id=<task> worker "<task>"`. The task travels in the launch, not in a later send. Worktrees are created under one workers folder per machine that is trusted once, so the folder-trust dialog does not stop the launch ([Q13](open-questions.md#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog)). |
-| Peer messaging (`send_message`, `check_messages`, `set_summary`) | The `org` MCP server: `send_message`, `check_messages`, `set_summary`, `report`, `list_runs`. The mailbox is the messages record in `state.db`. |
+| Peer messaging (`send_message`, `check_messages`, `set_summary`) | The `org` shell commands (`scripts/org`, [Q8](open-questions.md#q8-what-is-each-component-written-in)): `send_message`, `check_messages`, `set_summary`, `report`, `list_runs`. The mailbox is the messages record in `state.db`. |
 | Monitoring (screen hashes, spinner detection, the dispatcher's polling loop) | OSC 7501 status held by herdr-core. A small non-LLM bridge follows `hc events --json` and writes runs and events into `state.db`; it runs as a kept herdr-core terminal (`hc run --bg --keep`). |
 | Attention watcher, cockpit, dashboard | herdr-app mods, started by duplicating the shipped `agents` mod ([decision 0003](../decisions/0003-screen-as-app-mods.md)). |
 | `state.db` (runs, events) | The records are kept and a record of messages is added. In-progress state goes in fixed-name core documents and history in per-writer monthly JSON lines, with no SQLite ([decision 0004](../decisions/0004-records-documents-and-jsonl.md)). |
@@ -70,7 +70,7 @@ paddock adds the components below. Each must be written in an environment herdr 
 
 | Component | What it must do | Written in |
 | --- | --- | --- |
-| `org` MCP server | Give every agent the mailbox tools (`send_message`, `check_messages`, `set_summary`, `report`, `list_runs`) and run whether or not a window is open. | Open (Q8) |
+| `org` shell commands (`scripts/org`) | Give every agent the mailbox operations (`send_message`, `check_messages`, `set_summary`, `report`, `list_runs`) as commands the skills call, with no resident process, so they work whether or not a window is open. | Decided (Q8, shell commands) |
 | Events bridge | Follow `hc events --json` and append runs and events to `state.db`, as a kept herdr-core terminal. | Open (Q8) |
 | `state.db` | Hold runs, events and messages durably. The name is kept for the record store whatever its format. | Core documents and JSON-lines files ([decision 0004](../decisions/0004-records-documents-and-jsonl.md)), reached through `hc connect` and the shell |
 | Window | Draw the screen in [section 7](#7-the-screen). | herdr-app mods (JavaScript) ([decision 0003](../decisions/0003-screen-as-app-mods.md)) |
@@ -83,7 +83,7 @@ paddock adds the components below. Each must be written in an environment herdr 
 2. The secretary's delegation skill creates a worktree and launches a worker from the `worker` template with `hc run --bg`, putting the task in the launch and `task_id` in a label.
 3. herdr-core waits for the worker's first status report before sending the opening message, and reports whether it was sent. Outside a trusted folder the report does not come until Claude Code's folder-trust dialog is answered, so the message is not sent; worktrees under the trusted workers folder do not stop there ([Q13](open-questions.md#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog)).
 4. The worker works. Its status flows through OSC 7501 into herdr-core, and from there to the window and the events bridge.
-5. The worker reports with the `org` tool `report` (or `send_message`). The secretary reads it at the end of its turn with `check_messages`.
+5. The worker reports with the `org` command `report` (or `send_message`). The secretary reads it at the end of its turn with `check_messages`.
 
 ### 6.2 A worker is stuck
 
