@@ -25,7 +25,7 @@ It never runs `hc server stop` or `hc server restart`.
 
 ## Folders
 
-Defaults are `$XDG_CONFIG_HOME` (else `~/.config`), or `%APPDATA%` when set, plus `herdr-core/templates` and `herdr-app/mods`. Override with `PADDOCK_CORE_TEMPLATES_DIR` and `PADDOCK_APP_MODS_DIR`. These default paths are not verified on every platform.
+Defaults are `$XDG_CONFIG_HOME` (else `~/.config`), or `%APPDATA%` when set, plus `herdr-core/templates` and `herdr-app/mods`. Override with `PADDOCK_CORE_TEMPLATES_DIR` and `PADDOCK_APP_MODS_DIR`. These default paths are not verified on every platform. `PADDOCK_SECRETARY_NAME` changes the secretary's terminal name (default `secretary`); the template keeps its name. It exists so a probe can run beside a real secretary.
 
 ## Exit codes
 
