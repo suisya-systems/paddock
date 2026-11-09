@@ -27,8 +27,8 @@
 # empty or null case shows the variable ABSENT. "VAR=" present is not enough
 # for CLAUDE_CODE_CHILD_SESSION if Claude Code tests for presence.
 #
-# If every case prints "rpc error" about parameters, read the terminal.run
-# definition printed at the top and set CMD_JSON / PARAMS below to match.
+# Null: the schema types env values as strings, so null is expected to be rejected (invalid_params).
+# If every case prints "rpc error" about parameters, check terminal.run in hc schema and fix cmd_json.
 set -u
 
 OUT=${TMPDIR:-/tmp}/probe47.$$
@@ -36,18 +36,17 @@ mkdir -p "$OUT" || exit 1
 trap 'rm -rf "$OUT"' EXIT INT TERM
 
 VAR=HOME
-# terminal.run `command` as JSON; adjust if the schema above says otherwise.
-# $1 = output file. Single-quoted sh body, so $1 stays literal for the inner sh.
-cmd_json() { printf '["sh","-c","env > %s"]' "$1"; }
+# terminal.run `line` (run by sh -c); params per hc schema: argv, line, env (string values only).
+# $1 = output file.
+cmd_json() { printf "\"env > %s\"" "$1"; }
 
-echo "== terminal.run definition from hc schema =="
-hc schema 2>&1 | grep -A40 '"terminal.run"' | head -60
+echo "== hc schema: terminal.run is under .methods[] (name terminal.run); env values must be strings =="
 echo "== hc version =="; hc --version 2>&1
 
 call() { # $1 = case name, $2 = env JSON object or "" for none
   f="$OUT/$1.env"
   if [ -n "$2" ]; then envp=",\"env\":$2"; else envp=""; fi
-  req="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"terminal.run\",\"params\":{\"command\":$(cmd_json "$f")$envp}}"
+  req="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"terminal.run\",\"params\":{\"line\":$(cmd_json "$f")$envp}}"
   echo "-- $1: $req"
   # Keep input open: hc connect can exit at end of input before answering.
   { printf '%s\n' "$req"; sleep 2; } | hc connect > "$OUT/$1.resp" 2>&1
