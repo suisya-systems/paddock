@@ -49,6 +49,15 @@ The full list of what the predecessor distributes, enforces and records, with a 
 | Other machines | `hc machine add`, then `hc run --on <machine>`. Remote terminals join the same list and event stream. |
 | Retired | Both transport stacks and their terminal adapters (tmux, WezTerm, the older Herdr TUI), the dispatcher runner, the separate dashboard, container setup, pane layout files, and the runtime version pin. |
 
+### 4.1 Windows
+
+What paddock needs on a native Windows machine, and what it does about it. Whether native Windows is supported at all, or only WSL2, is still open ([Q7](open-questions.md#q7-windows)); this section does not decide it.
+
+- **`pwsh` (PowerShell 7).** The `org-agents` mod reaches `hc connect` through `pwsh -NoProfile`, because Windows has no `sh` to pipe a request into it. Windows PowerShell 5 is not tried ([prototype 1](prototype-1.md)).
+- **`hc`.** The herdr-core install folder is not on the Windows `PATH` by default. The mod uses `hc` from `PATH` if it is there, and otherwise looks in herdr-core's default install folder. A person who installed herdr-core elsewhere, or whose folder is not the default, puts it on `PATH`.
+- **`sh`.** Also not on the Windows `PATH`. Templates run their command through `sh`, so the secretary template needs it (for example from Git for Windows). The mod does not, because it uses `pwsh`.
+- **What paddock installs.** Nothing. The person installs PowerShell 7 and herdr-core (and `sh` if they run templates natively), and paddock does not change their `PATH`.
+
 <a id="components"></a>
 
 ## 5. Components and what they are written in
