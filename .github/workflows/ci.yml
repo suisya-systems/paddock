@@ -13,30 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Test the template header checker
-        run: bash tests/check-templates.test.sh
-      - name: Test org-start (stubbed hc)
-        run: bash tests/org-start.test.sh
-      - name: Test secretary-handover (stubbed hc)
-        run: bash tests/secretary-handover.test.sh
-      - name: Dry-run the secretary renewal probe (stubbed hc)
-        run: bash tests/secretary-renewal-probe.test.sh
-      - name: Test org-suspend (stubbed hc)
-        run: bash tests/org-suspend.test.sh
-      - name: Test org-pull-request (stubbed hc and gh)
-        run: bash tests/org-pull-request.test.sh
-      - name: Test the worker template (stubbed hc and claude)
-        run: bash tests/worker-template.test.sh
-      - name: Test org-resume (stubbed hc)
-        run: bash tests/org-resume.test.sh
-      - name: Test org-down (stubbed hc)
-        run: bash tests/org-down.test.sh
-      - name: Test the org commands (stubbed hc)
-        run: bash tests/org-commands.test.sh
-      - name: Test the org commands, review regressions (stubbed hc)
-        run: bash tests/org-commands-edge.test.sh
-      - name: Test the organization layout shape
-        run: bash tests/org-layout.test.sh
+      - name: Run every test (tests/*.test.sh, with stubbed hc and other commands)
+        # One glob step: a new tests/<name>.test.sh runs without touching this file.
+        run: |
+          set -e
+          for t in tests/*.test.sh; do echo "== $t"; bash "$t"; done
       - name: Check every template header
         run: bash scripts/check-templates.sh
       - name: Probe scripts parse (no hook script tests exist yet)

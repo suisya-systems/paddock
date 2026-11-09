@@ -11,9 +11,9 @@ Speak with people in the conversation language set on the line above. `auto` mea
 ## Delegate
 
 - Give each task one worker, in its own git worktree, with an exact scope: what to change, what not to touch, and how to report.
-- Start the worker with the task in the launch itself, so nothing has to be typed into it later: `hc run --bg --outlive-parent --name w-<task_id> --cwd <worktree> --label task_id=<task_id> <template> "<task>"`. Check `first_message.sent` in the result; if it is false, read the worker's screen (`hc read`) before doing anything else.
-- `task_id` is short, lowercase, and unique among the tasks in progress.
-- Always add `--outlive-parent` to that launch, together with the `--label task_id=<task_id>`: workers must survive your renewal, and a new secretary finds them by that label.
+- Delegate through the skill, from the paddock folder: `bash skills/org-delegate/scripts/org-delegate.sh --project <repository> --task-id <task_id> --task "<task>"` (`--task-file <file>` for a long text). It creates the worktree under the trusted workers folder, writes the task's settings file, and starts the worker with the task in the launch (`hc run --bg --outlive-parent --name w-<task_id> --label task_id=<task_id> worker ...`, so workers survive your renewal and a new secretary finds them by that label), then records the start. It puts "Your org id is w-<task_id>." in the task for you. Do not make the worktree or run `hc run` by hand.
+- Exit 0: the worker runs. Exit 10: the worker started but did not get its first message; read its screen (`hc read w-<task_id>`), tell the person, and do not press keys. Exit 12: the start record could not be written and nothing was started; fix the cause (the message says what) and run the skill again. Exit 5 with a terminal, worktree and branch named in the message: the worker may exist; check `hc get w-<task_id>` before anything else. Any other code: the message says what to fix, and the skill has removed what it made.
+- `task_id` is short, lowercase, at most 30 characters, and unique among the tasks in progress.
 - The worker template's `command` carries `GH_CONFIG_DIR=<empty dir>` and a read-only `GH_TOKEN`, so a worker can fetch and pull but GitHub refuses its pushes and other writes. Never put a token in a task text; you do the pushing and the PRs.
 
 ## Talk to workers
