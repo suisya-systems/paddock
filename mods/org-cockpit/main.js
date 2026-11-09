@@ -18,11 +18,13 @@ const SECRETARY = "secretary"; // org-start's default name; props.secretary over
 const SPACE = "paddock";
 const TAB = "secretary";
 
-// Is terminal x the one named `want`? `want` is a name, or `<machine>/<name>` for a terminal on
-// another machine (its address is then `<machine>/tN`), as the layout's terminal block takes it.
+// Is terminal x the one named `want`? `want` is a name on this machine, or `<machine>/<name>` for
+// a terminal on another machine (its address is then `<machine>/tN`). A bare name never matches
+// another machine's terminal: org-state is read from the machine `want` names.
 function named(x, want) {
   const slash = x.address?.indexOf("/") ?? -1;
-  return x.name === want || x.address === want || (slash > 0 && `${x.address.slice(0, slash)}/${x.name}` === want);
+  if (slash < 0) return x.name === want || x.address === want;
+  return x.address === want || `${x.address.slice(0, slash)}/${x.name}` === want;
 }
 
 // hc's CLI has no doc verb, and exec has no stdin, so a shell pipes one JSON-RPC line into `hc connect`.
