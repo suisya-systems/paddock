@@ -13,6 +13,7 @@ Sources used below:
 - **App type definitions**: herdr-app's `AGENTS.md`, `herdr.d.ts` and `gpui-kit.d.ts` (used in Q8 only).
 - **Inventory probes**: probes P1 to P7 in the [predecessor inventory](predecessor-inventory.md#2-probes-run-for-this-inventory), hc 0.1.18 with Claude Code 2.1.319 on WSL2, 2026-11-08 (used from Q10 on).
 - **Claude Code docs**: `claude --help` and the CHANGELOG of Claude Code 2.1.319 (used from Q10 on).
+- **Env probe**: [`scripts/probes/env-remove-var.sh`](../../scripts/probes/env-remove-var.sh), hc 0.1.18 on a running core, 2026-11-09 (used in Q17 only).
 - **Predecessor**: files of claude-org-ja, as listed in the [predecessor inventory](predecessor-inventory.md) (used from Q10 on).
 
 ## Q1. App mod or our own client?
@@ -357,9 +358,10 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 - "The CLI starts a background core when it needs one", so the first `hc` command run decides the environment. (Core docs, `docs/security.md`)
 - `terminal.run` takes an `env` parameter; the `hc run` CLI has no `--env` option. A template's `command` runs through `sh`, so it can set or remove variables before starting the agent. (Core docs, `hc.openrpc.json`, `docs/commands.md`, `docs/templates.md`)
 - Without transcripts, `claude --continue` cannot resume a session ([Q4](#q4-worker-recovery-after-a-core-restart), [Q16](#q16-how-is-the-secretarys-context-renewed)).
-- Not measured: whether `terminal.run`'s `env` can remove an inherited variable, or only add and override.
+- `terminal.run`'s `env` cannot remove an inherited variable. It adds and overrides: `{"HOME":"x"}` gave `HOME=x`, and a new name appeared. An empty string leaves the variable set to empty (`HOME=` and `CLAUDE_CODE_CHILD_SESSION=` in `env` output, not absent). `null` is rejected with `invalid_params` ("invalid type: null, expected a string"), because the schema types `env` values as strings. The core's own environment held `CLAUDE_CODE_CHILD_SESSION=1`, and a launch without `env` inherited it. (Env probe, 2026-11-09)
+- Not measured: whether Claude Code treats an empty `CLAUDE_CODE_CHILD_SESSION` as unset, so that transcripts stay on. If it does, option (c) works with `"CLAUDE_CODE_CHILD_SESSION": ""`. One launch of `claude` with that `env` and a check for the "Transcript saving is off" notice would settle it.
 
-**Options.** (a) The core is started only from a login shell or a service, never from inside an agent; (b) each template's command clears the variables it must not inherit (for example `env -u CLAUDE_CODE_CHILD_SESSION ... claude`); (c) every launch passes an explicit environment; (d) a mix.
+**Options.** (a) The core is started only from a login shell or a service, never from inside an agent; (b) each template's command clears the variables it must not inherit (for example `env -u CLAUDE_CODE_CHILD_SESSION ... claude`); (c) every launch passes an explicit environment (it can add and override but not remove a variable, so it clears `CLAUDE_CODE_CHILD_SESSION` only if an empty value counts as unset); (d) a mix.
 
 **Decides.** The owner.
 
