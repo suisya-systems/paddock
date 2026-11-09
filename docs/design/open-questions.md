@@ -493,3 +493,29 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 - **(a) rejected:** a secretary renewal ([Q16](#q16-how-is-the-secretarys-context-renewed)) or a crash would kill work in progress.
 - **(c) rejected:** a long-lived proxy parent adds a component for a benefit (b) already gives.
 - **Consequence:** the secretary template's worker launch must pass `--outlive-parent` and set the `task_id` label. `templates/secretary.md` now says so in one line.
+
+## Q20. How is a worker's GitHub access held to read-only?
+
+**Question.** Hold line L-K2 says only the secretary pushes and writes to GitHub. A worker's environment carries no GitHub variable, yet its `gh` authenticates through the config file under the person's home. How is that path closed without also cutting the worker's `git fetch` and `git pull`? (Issue #99; Refs #34, #41)
+
+**What we know.**
+
+- Measured 2026-11-10 (hc 0.1.18, Claude Code 2.1.319, `scripts/probes/worker-env-audit.sh`): none of `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN` and `GH_CONFIG_DIR` was in the control, parent or shell-child terminal, yet `gh auth status` succeeded in all of them, because `gh` read its login from the config file under the person's home. (Inventory, [L-K2](predecessor-inventory.md))
+- `gh` resolves its config directory from `GH_CONFIG_DIR`, else `XDG_CONFIG_HOME/gh`, else `~/.config/gh`. (gh docs, `gh help environment`)
+- Each template's `command` runs through `sh` and already carries an `env -u ...` prefix, so a template can also set a variable before launching `claude`. ([Q17](#q17-what-environment-do-the-core-and-its-terminals-start-with) decision (b))
+- The predecessor denied the file with a Claude Code sandbox credential rule (`~/.config/gh/hosts.yml`, mode deny) in the worker settings. That stops the agent's own tools but not a program the agent starts outside the sandbox. (claude-org-ja worker settings; inventory HK-3)
+- Measured in practice, 2026-11-10 (the conveyor run, no probe script): with a worker's GitHub access cut by its environment alone, every worker's `git fetch` of a private repository failed. (Owner's report; the run's output was not kept in the repository.)
+
+**Options.** (a) The worker template's command sets `GH_CONFIG_DIR` to an empty directory, so `gh` finds no credentials. (b) Keep the deny rules only (HK-3) and record that the config-file path stays open. (c) Both: (a) in the template and the deny rule in settings. (d) (a) plus a read-only token, so fetch still works.
+
+**Decided (2026-11-10, owner): (d).** Each worker launch gets `GH_CONFIG_DIR` pointed at an empty directory (so `gh` never reads the person's `hosts.yml`) and `GH_TOKEN` set to a fine-grained GitHub token with `contents:read` only, for just the repositories that worker may fetch. Git keeps using `gh` as its credential helper, so fetch and pull work, while push, PR creation and every other write are refused by GitHub itself. The line is held by the platform, not by a rule the agent could bypass.
+
+- **Why:** an empty `GH_CONFIG_DIR` alone would also cut `git fetch` and `git pull` of a private repository (measured in practice, above). The deny rules stop the agent's own tool calls but not programs it starts. With a read-only token, a refused write is GitHub's decision, whatever program makes it.
+- **(a) alone rejected:** it cuts fetch and pull of private repositories, which the conveyor showed is unworkable.
+- **(b) and (c) rejected as the holder:** deny rules alone can be bypassed by a started program. The deny rule may stay in settings as a second line; it is no longer what holds L-K2.
+- **Secretary fetching on behalf of workers, rejected:** manual toil for every fetch and pull.
+- **Consequence, worker template:** its `command` carries `GH_CONFIG_DIR=<empty dir> GH_TOKEN=<read-only token>` (after the Q17 `env -u` prefix, before `claude`). No worker template exists yet; it will be written under #62, with the role-rules path from [Q12](#q12-where-do-a-workers-role-rules-and-task-brief-live). [templates/secretary.md](../../templates/secretary.md) says in one line that the worker template carries the two variables.
+- **Consequence, the token value:** it is the owner's secret and is never in this repository. The template reads it from an environment variable the person sets in the login shell that starts the core ([Q17](#q17-what-environment-do-the-core-and-its-terminals-start-with) start rule), or from a file path outside the repository; the template names which. The variable must not be named `GH_TOKEN` in the core's environment: the secretary also inherits the core's environment, and it must keep write access, so the worker template maps a differently named variable onto `GH_TOKEN` for the worker only. The name and the empty directory (a fixed one, or a per-launch temporary folder) are left to the worker template.
+- **Consequence, inventory:** the L-K2 row's "Open (gh config file)" becomes "Decided; not measured" until the probe below runs. The L-N4 row points here for its GitHub half.
+- **Not measured:** the probe. In a worker terminal started from the template, `gh auth status` reports the token login (and not the person's), `git fetch` of an allowed private repository succeeds, and a `git push` fails with the token (refused by GitHub). Also not measured: that git's credential helper, configured as `gh`, picks up `GH_TOKEN` and the empty `GH_CONFIG_DIR` in the worker's terminal, and the same check in the Claude child (see L-N4).
+- **Open question (scope list):** does `gh run watch` work with `contents:read`, or does it need `actions:read`? The worker would use it to watch its own CI. The needed scope list (`contents:read`, plus perhaps `actions:read` and `metadata:read`) is not established; a probe of `gh run watch` with a token holding only `contents:read` would settle it. Until then the decision grants `contents:read` only.

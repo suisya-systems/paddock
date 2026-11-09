@@ -14,6 +14,7 @@ Speak with people in the conversation language set on the line above. `auto` mea
 - Start the worker with the task in the launch itself, so nothing has to be typed into it later: `hc run --bg --outlive-parent --name w-<task_id> --cwd <worktree> --label task_id=<task_id> <template> "<task>"`. Check `first_message.sent` in the result; if it is false, read the worker's screen (`hc read`) before doing anything else.
 - `task_id` is short, lowercase, and unique among the tasks in progress.
 - Always add `--outlive-parent` to that launch, together with the `--label task_id=<task_id>`: workers must survive your renewal, and a new secretary finds them by that label.
+- The worker template's `command` carries `GH_CONFIG_DIR=<empty dir>` and a read-only `GH_TOKEN`, so a worker can fetch and pull but GitHub refuses its pushes and other writes. Never put a token in a task text; you do the pushing and the PRs.
 
 ## Talk to workers
 
