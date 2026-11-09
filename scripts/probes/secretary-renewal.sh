@@ -187,7 +187,10 @@ while [ $t -lt "$RESUME_WAIT" ]; do
   t=$((t + TICK + 1)); sleep $TICK
 done
 [ $cleared -eq 1 ] && result document-cleared PASS "value null after ~${t}s" || result document-cleared FAIL "document still set after ${RESUME_WAIT}s (a prompt may be blocking the new secretary: hc attach $SEC)"
-[ "$(hc get --json $WK 2>&1 | field created_ms)" = "$OLDWK" ] && result worker-survived PASS "$WK is the same terminal" || result worker-survived FAIL "$WK gone or replaced"
+WKJ=$(hc get --json $WK 2>&1 | one_line)
+if [ -n "$OLDWK" ] && [ "$(printf '%s' "$WKJ" | field created_ms)" = "$OLDWK" ] && printf '%s' "$WKJ" | grep -Eq '"state": *"live"'; then
+  result worker-survived PASS "$WK is the same terminal and still live"
+else result worker-survived FAIL "$WK gone, replaced or not live"; fi
 hc get --json $WK 2>&1 | one_line | grep -Eq '"task_id": *"'$WK'"' && result worker-label PASS "task_id=$WK" || result worker-label FAIL "label lost"
 LABELS=$(hc get --json $SEC 2>&1 | one_line | grep -Eo '"labels": *\{[^}]*\}')
 echo "-- new secretary labels: ${LABELS:-none} (herdr.space / herdr.tab appear only once herdr-app has adopted it)"
