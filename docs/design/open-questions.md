@@ -288,7 +288,21 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 - **Source.** Hand-written files per role, reviewed as code; or one schema rendered per role, which brings back a renderer ([Q11](#q11-what-happens-to-the-predecessors-python-gates-and-generators)).
 - **Skills.** In the user's skill folder for every agent; or per role, next to the role's settings.
 
-**Decides.** The owner.
+**Decided (2026-11-10, owner, for the channel and the moment; the Source and Skills questions are not decided here): a mix.**
+
+- **Role settings, (b):** one settings file per role, kept outside the worktrees next to the templates and named in the role's template `command` with `--settings <path>`. It carries the sandbox, the deny list and the hooks. It is put in place when the templates are installed (`org-start` places them).
+- **Task-specific paths, (a):** a small `.claude/settings.local.json` written into the worktree at each delegation by the delegation skill, only for paths that change per task.
+- **Why:** a role's rules live in one file that does not touch the target repository, so they cannot be committed by accident and are the same for every task; only paths change per task, and only those are written per worktree. `--settings` is a documented Claude Code flag (`claude --help`, Claude Code docs). It is consistent with [Q12](#q12-where-do-a-workers-role-rules-and-task-brief-live), where a role's rules also travel outside the worktree. A file outside the worktree is also what hold line L-K5 (no self-edit) relies on, since a file inside the worktree is inside the sandbox's write surface ([inventory](predecessor-inventory.md) L-K5).
+- **(a) alone rejected:** it writes the whole policy into every worktree, where it can be committed, and repeats it per task.
+- **(c) rejected:** user settings apply to the person's own Claude Code sessions as well as to the roles' agents.
+- **(d) rejected:** managed settings need administrator placement and are per machine, not per role.
+- **Consequence, `org-start`:** it copies the role settings files next to the templates when it installs them.
+- **Consequence, worker template:** its `command` carries `--settings <path>` (an absolute path until a launch shows how `hc run` treats `~` and relative paths, as in Q12), together with the Q12 `--append-system-prompt-file` and the Q17 `env -u` prefix, and the permission mode ([Q12](#q12-where-do-a-workers-role-rules-and-task-brief-live), [Q17](#q17-what-environment-do-the-core-and-its-terminals-start-with)). The template does not exist yet (#62).
+- **Consequence, delegation skill:** it writes the per-task settings file into the worktree after creating it and before launching the worker ([Q13](#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog)).
+- **Consequence, inventory:** the rows about permissions distribution (PRM-1, PRM-2, PRM-6, SK-9, RET-1, RET-4, L-K4, L-K7) point here.
+- **Not measured:** (1) that `--settings` in a template launch is honoured together with a per-worktree `settings.local.json`: P2 and P5 each used one channel, and no probe used both in one launch. **This is the probe to run**: launch a worker from a template whose `command` names a `--settings` file with a deny rule, with a worktree `settings.local.json` carrying a different deny rule, and check that both refuse their commands. (2) That a `--settings` file's sandbox applies: P5 showed its deny rule and hooks apply, and does not show its sandbox ([inventory](predecessor-inventory.md) L-K7). The same launch should run the negative checks of L-K1, L-K4, L-K5 and L-K7, so the sandbox's applying from `--settings` is settled there. (3) Which settings take precedence when the two files disagree; the Claude Code docs were not read for this here.
+
+**Decides (Source and Skills).** The owner.
 
 ## Q11. What happens to the predecessor's Python gates and generators?
 
