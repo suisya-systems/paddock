@@ -29,6 +29,8 @@ jobs:
         run: bash tests/org-resume.test.sh
       - name: Test org-down (stubbed hc)
         run: bash tests/org-down.test.sh
+      - name: Test the org commands (stubbed hc)
+        run: bash tests/org-commands.test.sh
       - name: Test the organization layout shape
         run: bash tests/org-layout.test.sh
       - name: Check every template header
