@@ -62,18 +62,16 @@ hc ls >/dev/null 2>&1 || die 5 "cannot reach the herdr core (hc ls failed)"
 
 # 2. Place the template and the mods. Plain copies: re-running changes nothing.
 mkdir -p "$templates" || die 6 "cannot create $templates"
+mkdir -p "$orgbin" || die 6 "cannot create $orgbin"
 # The bin folder must not be the templates folder or inside it: the stale cleanup below would remove
-# the new copies, and hc would list the rules file. Compared as physical paths (symlinks resolved).
-phys() { local p=$1 rest=; while [ ! -d "$p" ]; do rest=/${p##*/}$rest; p=${p%/*}; [ -n "$p" ] || p=/; done
-         echo "$(cd -P "$p" && pwd)$rest"; }
-pt=$(phys "$templates"); pb=$(phys "$orgbin")
+# the new copies, and hc would list the rules file. Both exist now, so cd -P resolves symlinks and "..".
+pt=$(cd -P "$templates" && pwd) && pb=$(cd -P "$orgbin" && pwd) || die 6 "cannot resolve $templates or $orgbin"
 case "$pb/" in "$pt"/*) die 2 "PADDOCK_BIN_DIR must not be the templates folder or inside it: $orgbin" ;; esac
 cp -f "$root/templates/secretary.md" "$templates/secretary.md" || die 6 "cannot copy the secretary template"
 cp -f "$root/templates/worker.md" "$templates/worker.md" || die 6 "cannot copy the worker template"
 # The org commands (Issue #60), and the worker's rules and settings files its template command names
 # (Q10, Q12): a worker may read this folder and may not write it (worker-settings.json, Issue #128).
 # Not in the templates folder: hc lists every *.md there as a template (Issue #129).
-mkdir -p "$orgbin" || die 6 "cannot create $orgbin"
 for f in scripts/org templates/worker-rules.md templates/worker-settings.json; do
   cp -f "$root/$f" "$orgbin/${f##*/}" || die 6 "cannot copy $f to $orgbin"
 done
