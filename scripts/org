@@ -33,7 +33,8 @@ Readers look at this month and the last. $PADDOCK_NOW (UTC ISO 8601) fixes the c
 Documents are the names of decision 0004: org-state (64 KiB), secretary-handover (32 KiB);
 the writer is secretary (or the terminal name in $PADDOCK_SECRETARY_NAME, for a probe beside a real one). $PADDOCK_HC_HOLD seconds (default 1)
 is how long hc connect's input stays open after a request. $PADDOCK_WAIT_POLL seconds (default 2)
-is how often wait looks at the mailbox.
+is how often wait looks at the mailbox. $PADDOCK_LOCK_WAIT seconds (default 60) is how long a
+write waits for its id's lock when the holder is alive or unknown (a dead holder's lock is broken).
 
 Exit codes: 0 ok, 2 bad usage, 3 hc not found (doc), 5 store or core error, 6 document name
 not allowed, 7 not the document's writer, 8 value over the cap, 9 version conflict that did
@@ -76,29 +77,56 @@ json_esc() {
     | awk 'NR>1{printf "%s","\\n"} {printf "%s",$0}'
 }
 
-# next_seq: one more than the last seq in this id's newest file (continues across months).
+# next_seq: one more than the highest last seq over this id's files (continues across months;
+# a writer that took its month before the lock may write to an older file).
 next_seq() {
-  local f last=0
-  f=$(ls "$state"/events/*/"$id".jsonl 2>/dev/null | sort | tail -1)
-  [ -z "$f" ] || last=$(tail -n 1 "$f" | sed -n 's/^{"seq":\([0-9][0-9]*\),.*/\1/p')
-  echo $(( ${last:-0} + 1 ))
+  local f s max=0
+  for f in "$state"/events/*/"$id".jsonl; do
+    [ -f "$f" ] || continue
+    s=$(tail -n 1 "$f" | sed -n 's/^{"seq":\([0-9][0-9]*\),.*/\1/p')
+    [ "${s:-0}" -le "$max" ] || max=$s
+  done
+  echo $((max + 1))
 }
 
-# append <kind> <to> <task_id> <text>: one line in this id's own file. A mkdir lock per id
-# keeps seq unique and increasing when one agent runs commands in parallel. ponytail: a lock
-# held for 5 s is taken as stale and broken; a flock or a per-call seq source if that ever bites.
+# excl <file> <text>: create <file> holding <text> only if it does not exist yet. The shell's own
+# noclobber open (O_EXCL) decides, so no external command's exit status is trusted for it.
+excl() { local r; set -C; { printf '%s\n' "$2" > "$1"; } 2>/dev/null; r=$?; set +C; return "$r"; }
+
+# append <kind> <to> <task_id> <text>: one line in this id's own file. A lock per id keeps seq
+# unique and increasing when one agent runs commands in parallel (Issue #145). The lock is the
+# folder <lock> holding the file <lock>/pid: a writer holds it only when its mkdir succeeded AND
+# it created <lock>/pid itself with excl. mkdir alone is not trusted: uutils coreutils 0.10.0
+# mkdir (a GitHub ubuntu runner, 2026-11) reported success to the loser of a race for the same
+# folder; GNU coreutils 9.4 mkdir was not seen to do so. A waiter never breaks a lock
+# whose holder is alive: it breaks one only when the recorded pid is dead, holding the guard
+# file <lock>.break, and only if the pid it re-reads there is still that dead one. A lock with no
+# pid recorded (holder killed right after mkdir) or a .break left behind is never broken: the
+# send gives up after $PADDOCK_LOCK_WAIT s (default 60) with exit 5 and names what to remove.
 append() {
-  local d=$state/events/$cur body lk=$state/events/$id.lock n=0 ok=0
+  local d=$state/events/$cur body lk=$state/events/$id.lock me=${BASHPID:-$$} n=0 o ok=0 end
   body=$(printf '%s\n' "$4" | json_esc)
   [ "${#body}" -le 32768 ] || die 2 "text is longer than 32 KiB"
   mkdir -p "$d" || die 5 "cannot create $d"
-  until mkdir "$lk" 2>/dev/null; do
-    n=$((n + 1)); [ "$n" -le 100 ] || { rmdir "$lk" 2>/dev/null; n=0; }
+  end=$((SECONDS + ${PADDOCK_LOCK_WAIT:-60}))
+  until mkdir "$lk" 2>/dev/null && excl "$lk/pid" "$me"; do
+    n=$((n + 1))
+    if [ $((n % 20)) -eq 0 ]; then
+      o=$(cat "$lk/pid" 2>/dev/null)
+      case "$o" in ''|*[!0-9]*) ;; *)
+        if ! kill -0 "$o" 2>/dev/null && excl "$lk.break" "$me"; then
+          [ "$(cat "$lk/pid" 2>/dev/null)" = "$o" ] && ! kill -0 "$o" 2>/dev/null \
+            && rm -f "$lk/pid" && rmdir "$lk" 2>/dev/null
+          rm -f "$lk.break"
+        fi ;;
+      esac
+      [ "$SECONDS" -lt "$end" ] || die 5 "lock $lk is held (pid ${o:-not recorded}); if no org command of $id is running, remove $lk and $lk.break"
+    fi
     sleep 0.05 2>/dev/null || sleep 1
   done
   printf '{"seq":%s,"ts":"%s","from":"%s","kind":"%s","to":"%s","task_id":"%s","text":"%s"}\n' \
     "$(next_seq)" "$now" "$id" "$1" "$2" "$3" "$body" >> "$d/$id.jsonl" && ok=1
-  rmdir "$lk" 2>/dev/null
+  rm -f "$lk/pid"; rmdir "$lk" 2>/dev/null
   [ "$ok" -eq 1 ] || die 5 "cannot write $d/$id.jsonl"
 }
 
@@ -160,8 +188,9 @@ case "$cmd" in
     printf '%s\n' "$unread" | awk -F"$tab" "$AWK_UNESC"'
       { printf "[%s#%s %s %s%s]\n%s\n\n", $3, $1, $2, $4, ($6==""?"":" task=" $6), unesc($7) }'
     if [ -z "$peek" ]; then
-      printf '%s\n' "$unread" | awk -F"$tab" '{ if ($1+0>m[$3]+0) m[$3]=$1+0 } END { for (s in m) print s, m[s] }' \
-        | sort | while read -r s u; do append ack "" "" "$s $u"; done
+      # the loop runs in this shell, not a pipeline subshell, so append's lock owner is this process
+      while read -r s u; do append ack "" "" "$s $u"; done < <(printf '%s\n' "$unread" \
+        | awk -F"$tab" '{ if ($1+0>m[$3]+0) m[$3]=$1+0 } END { for (s in m) print s, m[s] }' | sort)
     fi ;;
 
   wait)
