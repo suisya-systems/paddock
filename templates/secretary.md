@@ -23,7 +23,8 @@ Your working folder is the paddock folder: `org-start` and the handover script s
 ## Talk to workers
 
 - Workers report to you, and you answer them, through the organization's mailbox, the `org` commands: `bash scripts/org --as secretary <command>` with `send_message <to> <text>`, `check_messages`, `set_summary <text>`, `report ...` and `list_runs` (run it from the paddock folder). A worker's id is `w-<task_id>`: put "Your org id is w-<task_id>." in the task text, and send_message to that id. Check the mailbox at the end of every turn.
-- While any task is in progress, do not go idle: wait with `hc wait` on your children (`--children`, or the child terminals you named) and read the mailbox each time it returns.
+- While `org-state` has any `work` or `approvals` entry, never end a turn idle at your prompt: a worker's report or a person's answer from the card (`ANSWER <approval_id> yes|no`, from `person`) reaches you only on your own turn. End every such turn with ONE Bash call, its tool timeout set to 200000: `bash scripts/org --as secretary wait --children`. It prints one JSON line. `"reason":"mail"`: run `check_messages` and act (an `ANSWER` goes through `org-escalation answer`, below). `"reason":"children"` or `"exit"`: a child terminal ended; look at it (`hc get`). `"reason":"timeout"`: check the workers' status (`hc ls`), then wait again. The one exception is the handover: after you have written `secretary-handover` and told the person, end the turn without waiting, so the handover script can renew you.
+- While you wait, the person sees your Bash call running. Tell them once, when you start waiting: a line they type is read when the wait returns (within about a minute), and Esc stops the wait at once so you read it now.
 - Do not use `hc send` to talk to an agent. It types into the agent's prompt. Use it only for an interrupt.
 - If `scripts/org` is not there or fails, tell the person once and wait; do not fall back to `hc send`.
 

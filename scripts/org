@@ -15,6 +15,11 @@ Usage: org [--as <id>] <command> [args]
   report <start|done|blocked> --task <task_id> [--to <id>] <text>
                                                 write a run record and tell <to> (default: secretary)
   list_runs                                     latest state per task, and each agent's summary
+  wait [--timeout S] [--children]               hold until you have unread mail (prints
+                                                {"reason":"mail","unread":N}; marks nothing read)
+                                                or S seconds pass ({"reason":"timeout"}; default
+                                                $PADDOCK_WAIT_TIMEOUT, else 60); --children also
+                                                ends on hc wait --children any's children line
   doc get <name>                                print a core document's value
   doc set <name>                                set it from stdin (secretary only)
   doc update <name> -- <command...>             re-read, run command (old value on stdin, new
@@ -27,7 +32,8 @@ History is JSON lines, events/<YYYY-MM>/<id>.jsonl under $PADDOCK_STATE_DIR
 Readers look at this month and the last. $PADDOCK_NOW (UTC ISO 8601) fixes the clock for tests.
 Documents are the names of decision 0004: org-state (64 KiB), secretary-handover (32 KiB);
 the writer is secretary (or the terminal name in $PADDOCK_SECRETARY_NAME, for a probe beside a real one). $PADDOCK_HC_HOLD seconds (default 1)
-is how long hc connect's input stays open after a request.
+is how long hc connect's input stays open after a request. $PADDOCK_WAIT_POLL seconds (default 2)
+is how often wait looks at the mailbox.
 
 Exit codes: 0 ok, 2 bad usage, 3 hc not found (doc), 5 store or core error, 6 document name
 not allowed, 7 not the document's writer, 8 value over the cap, 9 version conflict that did
@@ -46,16 +52,21 @@ cmd=${1:-}; [ $# -eq 0 ] || shift
 
 valid_id() { case "$1" in ''|-*|*[!a-z0-9_-]*) return 1 ;; esac; }
 case "$cmd" in
-  send_message|check_messages|set_summary|report|list_runs|doc) ;;
+  send_message|check_messages|set_summary|report|list_runs|doc|wait) ;;
   *) echo "org: unknown command: $cmd" >&2; usage >&2; exit 2 ;;
 esac
 valid_id "$id" || die 2 "no valid id: give --as <id> or set PADDOCK_ORG_ID (lowercase letters, digits, _ and -)"
 
 state=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
-now=${PADDOCK_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
-cur=${now:0:7}
-y=${cur%-*}; m=$((10#${cur#*-} - 1)); [ "$m" -gt 0 ] || { m=12; y=$((10#$y - 1)); }
-prev=$(printf '%04d-%02d' "$((10#$y))" "$m")
+# clock: sets now, cur (this month) and prev (the last). wait calls it on every poll.
+clock() {
+  local y m
+  now=${PADDOCK_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
+  cur=${now:0:7}
+  y=${cur%-*}; m=$((10#${cur#*-} - 1)); [ "$m" -gt 0 ] || { m=12; y=$((10#$y - 1)); }
+  prev=$(printf '%04d-%02d' "$((10#$y))" "$m")
+}
+clock
 
 # json_esc: stdin -> a JSON string body (no quotes). Control characters other than newline
 # and tab are dropped; newline becomes \n, tab \t.
@@ -100,6 +111,14 @@ window() {
   done | sed -n "s/^{\"seq\":\([0-9]*\),\"ts\":\"\([^\"]*\)\",\"from\":\"\([^\"]*\)\",\"kind\":\"\([^\"]*\)\",\"to\":\"\([^\"]*\)\",\"task_id\":\"\([^\"]*\)\",\"text\":\"\(.*\)\"}\$/\1$tab\2$tab\3$tab\4$tab\5$tab\6$tab\7/p"
 }
 
+# unread_lines: the window's lines addressed to $id above its last ack per sender (unsorted).
+unread_lines() {
+  window | awk -F"$tab" -v me="$id" '
+    $3==me && $4=="ack" { split($7,a," "); if (a[2]+0>acked[a[1]]) acked[a[1]]=a[2]+0; next }
+    $5==me { n++; seq[n]=$1; line[n]=$0 }
+    END { for (i=1;i<=n;i++) { split(line[i],f,"\t"); if (seq[i]+0>acked[f[3]]+0) print line[i] } }'
+}
+
 # AWK_UNESC: undo json_esc.
 AWK_UNESC='function unesc(s,  o,i,c,n){o="";for(i=1;i<=length(s);i++){c=substr(s,i,1);if(c=="\\"){i++;n=substr(s,i,1);o=o (n=="n"?"\n":n=="t"?"\t":n=="r"?"\r":n)}else o=o c}return o}'
 
@@ -136,11 +155,7 @@ case "$cmd" in
   check_messages)
     peek=
     case "${1:-}" in --peek) peek=1 ;; "") ;; *) die 2 "usage: check_messages [--peek]" ;; esac
-    unread=$(window | awk -F"$tab" -v me="$id" '
-      $3==me && $4=="ack" { split($7,a," "); if (a[2]+0>acked[a[1]]) acked[a[1]]=a[2]+0; next }
-      $5==me { n++; seq[n]=$1; line[n]=$0 }
-      END { for (i=1;i<=n;i++) { split(line[i],f,"\t"); if (seq[i]+0>acked[f[3]]+0) print line[i] } }' \
-      | sort -s -t "$tab" -k2,2 -k3,3 -k1,1n)
+    unread=$(unread_lines | sort -s -t "$tab" -k2,2 -k3,3 -k1,1n)
     if [ -z "$unread" ]; then echo "no new messages"; exit 0; fi
     printf '%s\n' "$unread" | awk -F"$tab" "$AWK_UNESC"'
       { printf "[%s#%s %s %s%s]\n%s\n\n", $3, $1, $2, $4, ($6==""?"":" task=" $6), unesc($7) }'
@@ -148,6 +163,42 @@ case "$cmd" in
       printf '%s\n' "$unread" | awk -F"$tab" '{ if ($1+0>m[$3]+0) m[$3]=$1+0 } END { for (s in m) print s, m[s] }' \
         | sort | while read -r s u; do append ack "" "" "$s $u"; done
     fi ;;
+
+  wait)
+    # Issue #140: the secretary ends its turns here while work or approvals are in progress,
+    # so a mailbox message (the card's ANSWER, a worker's report) starts its next turn.
+    # ponytail: polls the files every PADDOCK_WAIT_POLL s; a file-change wait if they grow large.
+    timeout=${PADDOCK_WAIT_TIMEOUT:-60}; children=
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --timeout) [ $# -ge 2 ] || die 2 "--timeout needs a value"; timeout=$2; shift 2 ;;
+        --children) children=1; shift ;;
+        *) die 2 "usage: wait [--timeout S] [--children]" ;;
+      esac
+    done
+    case "$timeout" in ''|*[!0-9]*|0) die 2 "--timeout needs a whole number of seconds above 0" ;; esac
+    poll=${PADDOCK_WAIT_POLL:-2}
+    hout=; hpid=
+    if [ -n "$children" ] && command -v hc >/dev/null 2>&1; then
+      hout=$(mktemp) || die 5 "cannot create a temp file"
+      hc wait --children any --timeout "$timeout" > "$hout" 2>&1 & hpid=$!
+    fi
+    finish() { [ -z "$hpid" ] || kill "$hpid" 2>/dev/null; [ -z "$hout" ] || rm -f "$hout"; }
+    trap finish EXIT
+    end=$((SECONDS + timeout))
+    while :; do
+      clock
+      n=$(unread_lines | wc -l | tr -d ' ')
+      if [ "$n" -gt 0 ]; then printf '{"reason":"mail","unread":%s}\n' "$n"; exit 0; fi
+      # hc wait's own line counts only when a child ended; any other ending (no children,
+      # needs_target, its own check-in) is dropped and the mail wait goes on.
+      if [ -n "$hpid" ] && ! kill -0 "$hpid" 2>/dev/null; then
+        if grep -Eq '"reason": *"(children|exit)"' "$hout"; then tr -d '\n' < "$hout"; echo; exit 0; fi
+        hpid=
+      fi
+      [ "$SECONDS" -lt "$end" ] || { echo '{"reason":"timeout"}'; exit 0; }
+      sleep "$poll"
+    done ;;
 
   list_runs)
     all=$(window)
