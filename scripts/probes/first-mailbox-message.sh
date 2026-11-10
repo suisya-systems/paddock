@@ -29,7 +29,7 @@
 #                   reaching the mailbox, which first_message.sent cannot show.
 #   first-is-first  PASS = that run_started is line 1 of the worker's file (seq 1).
 #   in-box          PASS = list_runs, as the secretary, shows the task from w-<id>.
-#   after-rm        PASS = after `hc kill` + `hc rm` of the terminal, the same run_started
+#   after-rm        PASS = (hc get answers not_found) and after `hc kill` + `hc rm` of the terminal, the same run_started
 #                   line is still in the file AND list_runs still shows the task.
 #   hc-after-rm     INFO = `hc get` of the removed terminal (expected: not found, so
 #                   first_message.sent is gone).
@@ -43,7 +43,7 @@ ROOT=$(pwd)
 PROJ=${1:-}
 [ -n "$PROJ" ] && git -C "$PROJ" rev-parse --git-dir >/dev/null 2>&1 || { echo "RESULT precondition-failed: give an already trusted git project path as the argument"; exit 1; }
 for c in hc git bash; do command -v $c >/dev/null 2>&1 || { echo "RESULT precondition-failed: $c not on PATH"; exit 1; }; done
-ID=p58-$$; W=w-$ID; WAIT=${PADDOCK_PROBE_WAIT:-180}
+ID=p58-$$-$(date +%s); W=w-$ID; WAIT=${PADDOCK_PROBE_WAIT:-180}
 WT=${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}/$ID
 STATE=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
 KEEP=
@@ -87,7 +87,7 @@ hc kill "$W" >/dev/null 2>&1; hc rm "$W" >/dev/null 2>&1
 after=$(hc get --json "$W" 2>&1 | tr -d "\n")
 echo "RESULT hc-after-rm: INFO $(printf %s "$after" | cut -c1-200)"
 gone=; case "$after" in *not_found*) gone=1 ;; esac
-if mine | grep -qF "$line" && [ -n "$(runs)" ]; then
+if [ -n "$gone" ] && mine | grep -qF "$line" && [ -n "$(runs)" ]; then
   echo "RESULT after-rm: PASS"
-  [ -n "$gone" ] && echo "RESULT survives-hc: PASS" || echo "RESULT survives-hc: FAIL (hc get did not answer not_found after rm)"
-else echo "RESULT after-rm: FAIL (record missing from the file or from list_runs)"; fi
+  echo "RESULT survives-hc: PASS"
+else echo "RESULT after-rm: FAIL (terminal not confirmed removed (no not_found), or record missing from the file or list_runs)"; fi
