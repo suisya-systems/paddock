@@ -157,8 +157,6 @@ A terminal that never reported status is never `blocked`, so the rule above does
 
 **Question.** How are renga (the predecessor's terminal client) and claude-org-runtime (its runtime, including an adapter for the older Herdr TUI) ended?
 
-**What we know.**
-
 **Draft recommendation (Issue #11; awaiting the owner, not decided).**
 
 - **renga: maintenance mode now, archive later.** Only fixes the predecessor needs to keep running; no new features. Archive it when the replacement criterion below is met. Why: paddock does not use it, and the one way it came back (Q1 option B) is closed.
