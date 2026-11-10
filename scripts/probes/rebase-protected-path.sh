@@ -34,11 +34,12 @@
 #   c2 hooks     .claude/hooks/p50-<id>.sh          Claude Code's built-in write protection
 #   c3 settings  .claude/settings.json      Edit(.claude/settings*.json) in worker-settings.json
 #                                           and a Claude Code built-in protection
-#   c4 local     .claude/settings.local.json  same; NOTE org-delegate has already written this
-#                                           file (untracked) into the worktree, so a rebase that
-#                                           adds it can also stop for git's own reason ("untracked
-#                                           working tree files would be overwritten"); the text
-#                                           tells the two apart
+#   c4 local     .claude/settings.local.json  same; org-delegate has already written this
+#                                           file (untracked) into the worktree
+# After each case the worker runs `git reset --hard` to the start branch so the cases are
+# independent. Run 1 showed the sandbox leaves empty untracked entries for its protected paths in
+# the worktree, so git may stop on "untracked working tree files would be overwritten" before any
+# write; the layer lines say what the text proves and what it does not.
 # Where the paths come from. The settings file is the one templates/worker.md names with
 # `--settings "$bd/worker-settings.json"`, placed in the bin folder (PADDOCK_BIN_DIR, default
 # ~/.local/share/paddock/bin); its Edit(.claude/...) denies and sandbox lists are printed as INFO
@@ -152,8 +153,10 @@ For each case N = 0, 1, 2, 3, 4 with branch probe/$ID-upN (five separate Bash ca
   1. git rebase probe/$ID-upN
   2. git status --short
   3. git rebase --abort
-For every case write down: ran (yes if you made the call, no if you chose not to); the exit code of step 1; the error or refusal text of step 1 word for word (none if there was none; if the call was refused before it ran, say so and give the text); the output of step 2 with newlines replaced by commas (none if empty); the exit code of step 3.
-Then run: bash \"\$PADDOCK_ORG\" --as $W report done --task $ID \"probe done; c0-ran=<yes|no>; c0-rc=<number or none>; c0-text=<verbatim or none>; c0-state=<text>; c0-abort=<number or none>; c1-ran=...; (the same five fields for c1, c2, c3, c4)\"
+  4. git reset --hard probe/$ID-base
+(Step 3 may say that no rebase is in progress; that is fine. Step 4 puts your branch and files back so each case starts the same.)
+For every case write down: ran (yes if you made the call, no if you chose not to); the exit code of step 1; the error or refusal text of step 1 word for word (none if there was none; if the call was refused before it ran, say so and give the text); the output of step 2 with newlines replaced by commas (none if empty); the exit code of step 3; the exit code of step 4.
+Then run: bash \"\$PADDOCK_ORG\" --as $W report done --task $ID \"probe done; c0-ran=<yes|no>; c0-rc=<number or none>; c0-text=<verbatim or none>; c0-state=<text>; c0-abort=<number or none>; c0-reset=<number or none>; c1-ran=...; (the same six fields for c1, c2, c3, c4)\"
 In the texts replace each semicolon with a comma and each double quote with a single quote."
 out=$(bash "$ROOT/skills/org-delegate/scripts/org-delegate.sh" --project "$PROJ" --task-id "$ID" --base "$BBASE" --branch "$WB" --task "$TASK" 2>&1); rc=$?
 echo "$out"
@@ -183,20 +186,23 @@ rd=$(git -C "$WT" rev-parse --git-path rebase-merge 2>/dev/null); ra=$(git -C "$
 if { [ -n "$rd" ] && [ -d "$(cd "$WT" && cd "$(dirname "$rd")" 2>/dev/null && pwd)/$(basename "$rd")" ]; } || { [ -n "$ra" ] && [ -d "$(cd "$WT" && cd "$(dirname "$ra")" 2>/dev/null && pwd)/$(basename "$ra")" ]; }; then
   echo "RESULT host-state: INFO a rebase is still in progress in the worktree"; else echo "RESULT host-state: INFO no rebase in progress"; fi
 echo "status --short (host, tracked and untracked):"; git -C "$WT" status --short 2>&1
+dirty=$(git -C "$WT" status --short --untracked-files=no 2>&1)
+if [ -n "$dirty" ]; then echo "RESULT left-state: DIRTY (tracked files differ from HEAD after the run, so a stopped rebase can leave the worktree damaged; see status above)"
+else echo "RESULT left-state: CLEAN (no tracked file differs from HEAD)"; fi
 
 done_text=$(cat "$STATE"/events/*/"$W".jsonl 2>/dev/null | grep '"kind":"run_completed"' | grep "\"task_id\":\"$ID\"" | grep 'probe done' | tail -n 1)
 echo "== done record"; echo "$done_text"
 field() { printf '%s\n' "$done_text" | sed -n "s/.*$1=\([^;\"]*\).*/\1/p" | sed 's/[[:space:]]*$//' | tail -n 1; }
 # verdict <name> <ran> <rc> <text>; sets V=stopped|notstopped|nodata
 verdict() {
-  n=$1 ran=$2 rcv=$3 txt=$4
+  vn=$1 ran=$2 rcv=$3 txt=$4
   case "$ran" in
     yes) case "$rcv" in
-           0) V=notstopped; echo "RESULT $n: NOT-STOPPED (the rebase ran and exited 0; text=${txt:-none})" ;;
-           ""|*[!0-9]*) V=nodata; echo "RESULT $n: NO DATA (ran, but no numeric exit code: rc=$rcv text=$txt)" ;;
-           *) V=stopped; echo "RESULT $n: STOPPED (exit $rcv; text=$txt)" ;;
+           0) V=notstopped; echo "RESULT $vn: NOT-STOPPED (the rebase ran and exited 0; text=${txt:-none})" ;;
+           ""|*[!0-9]*) V=nodata; echo "RESULT $vn: NO DATA (ran, but no numeric exit code: rc=$rcv text=$txt)" ;;
+           *) V=stopped; echo "RESULT $vn: STOPPED (exit $rcv; text=$txt)" ;;
          esac ;;
-    *) V=nodata; echo "RESULT $n: NO DATA (declined or not run: ran=$ran)" ;;
+    *) V=nodata; echo "RESULT $vn: NO DATA (declined or not run: ran=$ran)" ;;
   esac
 }
 # layer <name> <text>: only what the text itself names.
@@ -205,7 +211,8 @@ layer() {
     *"auto mode"*|*"Auto mode"*) l="auto mode (named in the text; the command did not run)" ;;
     *"deny rule"*|*"denied by"*|*"permission settings"*) l="permission deny rule (named in the text)" ;;
     *"Read-only file system"*|*"Operation not permitted"*|*"sandbox"*) l="sandbox (the command ran and failed on a read-only path)" ;;
-    *"untracked working tree files"*) l="git's own untracked-file check (not a sandbox refusal)" ;;
+    *"Device or resource busy"*) l="sandbox mount (the path is a mount point that cannot be unlinked; the command ran and failed)" ;;
+    *"untracked working tree files"*) l="git's untracked-file check on a path that already exists untracked in the worktree; run 1 saw the sandbox leave such empty entries for its protected paths (see c*-state), but the text does not say who made it" ;;
     *"could not detach HEAD"*) l="git could not write the worktree; the layer that made the path read-only is NOT known from this text (a sandbox is the likely cause)" ;;
     *) l="not told apart (text: ${2:-none}); see the screen tail" ;;
   esac
@@ -214,12 +221,12 @@ layer() {
 nostop=0; stops=0; nodata=0; ctl=nodata; n=0
 for p in "$P0" "$P1" "$P2" "$P3" "$P4"; do
   tx=$(field c$n-text); verdict "c$n ($p)" "$(field c$n-ran)" "$(field c$n-rc)" "$tx"
-  echo "  state-after-rebase: $(field c$n-state); abort-rc: $(field c$n-abort)"
+  echo "  state-after-rebase: $(field c$n-state); abort-rc: $(field c$n-abort); reset-rc: $(field c$n-reset)"
   layer "layer-c$n" "$tx"
   if [ "$n" -eq 0 ]; then ctl=$V
   else
     case $V in
-      stopped) case "$tx" in *"untracked working tree files"*) echo "  (c$n stopped for git's untracked-file check; it does not count towards the verdict)" ;; *) stops=$((stops + 1)) ;; esac ;;
+      stopped) stops=$((stops + 1)) ;;
       notstopped) nostop=$((nostop + 1)) ;;
       *) nodata=$((nodata + 1)) ;;
     esac
@@ -232,7 +239,7 @@ case $ctl in
   *) echo "RESULT control: NO DATA" ;;
 esac
 if [ "$ctl" != notstopped ]; then echo "RESULT verdict: NO DATA (control is not PASS)"
-elif [ "$stops" -gt 0 ]; then echo "RESULT verdict: PREFLIGHT NEEDED ($stops of c1..c4 stopped a rebase for a reason other than git's untracked-file check)"
+elif [ "$stops" -gt 0 ]; then echo "RESULT verdict: PREFLIGHT NEEDED ($stops of c1..c4 stopped a rebase; read the layer lines for why)"
 elif [ "$nodata" -gt 0 ]; then echo "RESULT verdict: NO DATA ($nodata of c1..c4 have no data; $nostop did not stop)"
 else echo "RESULT verdict: NOT NEEDED FOR THESE PATHS (c1..c4 all ran and exited 0)"; fi
 if [ "$ctl" = notstopped ] && [ "$nodata" -eq 0 ]; then echo "RESULT probe: PASS (control PASS, c1..c4 have data)"
