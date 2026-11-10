@@ -39,7 +39,8 @@
 #   reported     PASS = the worker's run_completed record for the task arrived within the wait.
 #   allowed-ok   PASS = allowlisted host: curl exit 0 and an http code. FAIL = the allowlist
 #                did not let the host through. SKIP = no allowlisted host to try.
-#   denied       PASS = non-allowlisted host: curl exit non-zero and http=000 (no response),
+#   denied       PASS = non-allowlisted host: curl exit non-zero, http=000 and the error text shows the
+#                proxy/sandbox denial (CONNECT tunnel failed, or network-outbound); INCONCLUSIVE if not,
 #                with the error text printed. FAIL = the host answered (the allowlist is not
 #                enforced from --settings scope).
 #   no-fallback  PASS = no unsandboxed retry was taken (worker says taken=no AND the screen
@@ -122,7 +123,7 @@ fi
 l=$(hostline "$DENIED")
 case "$l" in
   *"exit=0"*|"") echo "RESULT denied: FAIL (the host was not refused, or the worker did not report it: $l)" ;;
-  *"http=000"*) echo "RESULT denied: PASS ($l)" ;;
+  *"http=000"*) case "$l" in *"CONNECT tunnel failed"*|*"network-outbound"*) echo "RESULT denied: PASS ($l)" ;; *) echo "RESULT denied: INCONCLUSIVE (no proxy/sandbox denial in the error text, so a DNS, TLS or timeout failure is not ruled out: $l)" ;; esac ;;
   *) echo "RESULT denied: FAIL (non-zero exit but an http code came back: $l)" ;;
 esac
 r=$(echo "$text" | tr '|' '\n' | sed 's/^ *//' | grep '^RETRY')
