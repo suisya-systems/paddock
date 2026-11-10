@@ -65,7 +65,7 @@ gitc checkout -q -b feat/x
 gitc commit -q --allow-empty -m one
 head=$(git -C "$wt" rev-parse HEAD)
 
-ev=$tmp/events
+ev=$tmp/state/events
 month=$(date -u +%Y-%m)
 evfile=$ev/$month/secretary.jsonl
 calls=$tmp/stub/calls
@@ -75,7 +75,7 @@ reset() { # fresh stub state, empty events folder, empty origin refs
   git -C "$origin" for-each-ref --format='%(refname)' | while read -r r; do git -C "$origin" update-ref -d "$r"; done
 }
 run_script() { # run_script [args...]; extra env via ENVX (space separated)
-  env STUB="$tmp/stub" PADDOCK_EVENTS_DIR="$ev" PADDOCK_RUN_SLEEP=0 PADDOCK_RUN_TRIES=3 \
+  env -u PADDOCK_NOW STUB="$tmp/stub" PADDOCK_STATE_DIR="$tmp/state" PADDOCK_RUN_SLEEP=0 PADDOCK_RUN_TRIES=3 \
       PATH="$stubdir:$PATH" ${ENVX:-} bash "$script" --worktree "$wt" --repo o/r "$@" 2>&1
 }
 has() { grep -Eq -- "$1" "$calls"; }

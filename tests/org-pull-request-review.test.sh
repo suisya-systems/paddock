@@ -17,7 +17,7 @@ chmod +x "$stubdir/hc" "$stubdir/gh"
 git init -q --bare "$tmp/origin.git"; git clone -q "$tmp/origin.git" "$tmp/wt" 2>/dev/null
 git -C "$tmp/wt" checkout -q -b feat/x; git -C "$tmp/wt" -c user.name=t -c user.email=t@t commit -q --allow-empty -m one
 git -C "$tmp/wt" rev-parse HEAD > "$tmp/stub/head"
-run() { env STUB="$tmp/stub" PADDOCK_EVENTS_DIR="$tmp/ev" PADDOCK_RUN_SLEEP=0 PATH="$stubdir:$PATH" \
+run() { env -u PADDOCK_NOW STUB="$tmp/stub" PADDOCK_STATE_DIR="$tmp/st" PADDOCK_RUN_SLEEP=0 PATH="$stubdir:$PATH" \
   bash "$script" --worktree "$tmp/wt" --repo o/r --title t --body b "$@" 2>&1; }
 
 # A task id that would break the JSON line is refused before anything is pushed or called.
@@ -26,7 +26,7 @@ for bad in 'a"b' 'a\b' "$(printf 'a\nb')"; do
   [ "$rc" -eq 2 ] && [ ! -s "$calls" ] && [ -z "$(git -C "$tmp/origin.git" for-each-ref)" ]; check "task id with a quote, backslash or newline exits 2 before any call" $?
 done
 : > "$calls"; run --task-id t1.a_b-2 >/dev/null; rc=$?
-[ "$rc" -eq 0 ] && grep -q '"task_id":"t1.a_b-2"' "$tmp"/ev/*/secretary.jsonl; check "a plain task id is recorded as given" $?
+[ "$rc" -eq 0 ] && grep -q '"task_id":"t1.a_b-2"' "$tmp"/st/events/*/secretary.jsonl; check "a plain task id is recorded as given" $?
 
 # Acceptance mode waits for the other required checks of the head instead of refusing while they run.
 : > "$calls"; run --mode acceptance >/dev/null; rc=$?
