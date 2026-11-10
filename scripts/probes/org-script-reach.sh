@@ -4,14 +4,17 @@
 #
 # Run from the repo root on the host, after `bash skills/org-start/scripts/org-start.sh`
 # from THIS checkout (so the org script is placed where the new worker template points):
-#   sh scripts/probes/org-script-reach.sh
-# Needs a running core and secretary, hc, git, bash, the worker token file, and the
-# workers folder already trusted (org-delegate SKILL). Takes up to 180 s
+#   sh scripts/probes/org-script-reach.sh <trusted-git-project>
+# <trusted-git-project> is a git repository (with a branch `main`) that Claude Code already
+# trusts, so the new worktree raises no folder-trust dialog (Issue #133). If the dialog
+# shows anyway the probe prints "NEEDS-PERSON" and keeps the terminal; answer the dialog
+# and rerun. Needs a running core and secretary, hc, git, bash, the worker token file, and
+# the workers folder already trusted (org-delegate SKILL). Takes up to 180 s
 # (PADDOCK_PROBE_WAIT to change). It uses the real mailbox
 # (${PADDOCK_STATE_DIR:-~/.local/state/paddock}): the secretary gets one start and one
-# done record for task p128-<pid>. It creates a scratch repository in a temp folder and
-# one worktree w-p128-<pid> in the workers folder; the trap kills and removes that
-# terminal and that worktree. Nothing else is touched.
+# done record for task p128-<pid>. It creates one worktree + branch in <project> via
+# org-delegate and one terminal w-p128-<pid>; the trap removes the terminal and the
+# worktree (the branch work/p128-<pid> is deleted too). Nothing else is touched.
 #
 # Reading the output. Every verdict line starts with "RESULT <name>:".
 #   placed        PASS = the org script exists at the path the worker template
@@ -29,35 +32,40 @@ set -u
 ROOT=$(pwd)
 [ -f "$ROOT/skills/org-delegate/scripts/org-delegate.sh" ] || { echo "RESULT precondition-failed: run from the repo root"; exit 1; }
 for c in hc git bash; do command -v $c >/dev/null 2>&1 || { echo "RESULT precondition-failed: $c not on PATH"; exit 1; }; done
-ID=p128-$$; W=w-$ID; WAIT=${PADDOCK_PROBE_WAIT:-180}
+PROJ=${1:-}
+[ -n "$PROJ" ] && git -C "$PROJ" rev-parse --git-dir >/dev/null 2>&1 || { echo "RESULT precondition-failed: give an already trusted git project path as the argument"; exit 1; }
+ID=p128-$$-$(date +%s); W=w-$ID; WAIT=${PADDOCK_PROBE_WAIT:-180}
 ORGPATH=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}/org
-TMPD=$(mktemp -d) || exit 1
 # Known before delegating, so cleanup works on every exit (10 keeps the worktree and prints no path).
-# git removes it only if it is a worktree of the scratch repository.
 WT=${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}/$ID
+KEEP=
 cleanup() {
+  [ -n "$KEEP" ] && { echo "terminal $W and worktree $WT kept"; return; }
   hc kill "$W" >/dev/null 2>&1; hc rm "$W" >/dev/null 2>&1
-  git -C "$TMPD/proj" worktree remove --force "$WT" >/dev/null 2>&1
-  rm -rf "$TMPD"
+  git -C "$PROJ" worktree remove --force "$WT" >/dev/null 2>&1
+  git -C "$PROJ" branch -D "work/$ID" >/dev/null 2>&1
 }
+[ ! -e "$WT" ] && ! hc get "$W" >/dev/null 2>&1 || { echo "RESULT precondition-failed: $W or $WT already exists (leftover of an earlier run)"; exit 1; }
 trap cleanup EXIT INT TERM
+dialog() { case "$(hc read "$W" 2>/dev/null)" in *"Quick safety check"*|*"trust this folder"*) return 0 ;; esac; return 1; }
+needs_person() { echo "NEEDS-PERSON: folder-trust dialog in $W; answer it (or trust the project) and rerun"; KEEP=1; exit 1; }
 org() { bash "$ROOT/scripts/org" --as secretary "$@"; }
 
 if [ -f "$ORGPATH" ] && cmp -s "$ROOT/scripts/org" "$ORGPATH"; then echo "RESULT placed: PASS ($ORGPATH)"
 else echo "RESULT placed: FAIL ($ORGPATH missing or differs; rerun org-start from this checkout)"; fi
 
-git init -q -b main "$TMPD/proj" && git -C "$TMPD/proj" -c user.name=probe -c user.email=probe@invalid \
-  commit -q --allow-empty -m init || { echo "RESULT precondition-failed: scratch repository"; exit 1; }
 TASK="Probe for paddock Issue #128. Change nothing. Run exactly these two commands, then stop:
 1. : >> \"\$PADDOCK_ORG\"; echo write-rc=\$?
 2. bash \"\$PADDOCK_ORG\" --as $W report done --task $ID \"probe done write-rc=<the number printed by step 1>\""
-out=$(bash "$ROOT/skills/org-delegate/scripts/org-delegate.sh" --project "$TMPD/proj" --task-id "$ID" --task "$TASK" 2>&1); rc=$?
+out=$(bash "$ROOT/skills/org-delegate/scripts/org-delegate.sh" --project "$PROJ" --task-id "$ID" --task "$TASK" 2>&1); rc=$?
 echo "$out"
-[ "$rc" -eq 0 ] && echo "RESULT delegate: PASS" || { echo "RESULT delegate: FAIL (exit $rc)"; exit 1; }
+if [ "$rc" -eq 0 ]; then echo "RESULT delegate: PASS"
+else echo "RESULT delegate: FAIL (exit $rc)"; [ "$rc" -eq 10 ] && dialog && needs_person; exit 1; fi
 
 t=0; tab=$(printf '\t')
 while [ "$t" -lt "$WAIT" ]; do
   org list_runs 2>/dev/null | grep -q "^$ID$tab$W${tab}done$tab" && break
+  dialog && needs_person
   t=$((t + 3)); sleep 3
 done
 if [ "$t" -lt "$WAIT" ]; then echo "RESULT report-done: PASS (${t}s)"
