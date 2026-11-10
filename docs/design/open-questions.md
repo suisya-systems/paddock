@@ -15,6 +15,7 @@ Sources used below:
 - **Claude Code docs**: `claude --help` and the CHANGELOG of Claude Code 2.1.319 (used from Q10 on).
 - **Env probe**: [`scripts/probes/env-remove-var.sh`](../../scripts/probes/env-remove-var.sh), hc 0.1.18 on a running core, 2026-11-09 (used in Q17 only).
 - **Continue probe**: [`scripts/probes/continue-multi-conv.sh`](../../scripts/probes/continue-multi-conv.sh), hc 0.1.18 with Claude Code 2.1.319 on WSL2, core started from a login shell, 2026-11-10 (used in Q4 only).
+- **Claude Code sandbox docs**: the sandboxing page of the Claude Code documentation (code.claude.com/docs/en/sandboxing), read 2026-11-11 (used in Q7 only).
 - **Predecessor**: files of claude-org-ja, as listed in the [predecessor inventory](predecessor-inventory.md) (used from Q10 on).
 
 ## Q1. App mod or our own client?
@@ -183,6 +184,18 @@ A terminal that never reported status is never `blocked`, so the rule above does
 
 - **A. WSL2 only** for core and agents; the window may be native.
 - **B. Native Windows** as well, without the sandbox.
+
+**Draft recommendation** (2026-11-11, Issue #12; awaiting the owner, not decided).
+
+- **Pick: A, WSL2 only for core and agents; the window may be native.** The worker fence is Claude Code's sandbox, and the vendor says it does not run on native Windows: "The sandbox runs on macOS, Linux, and WSL2. On native Windows, Claude Code runs commands unsandboxed." (Claude Code sandbox docs). Every agent workflow of paddock that worked on a host ran with core and agents inside WSL2.
+- **What the repository has today.**
+  - The fence is the sandbox: [templates/worker-settings.json](../../templates/worker-settings.json) line 23 turns it on with write and read limits, and [org-delegate.sh](../../skills/org-delegate/scripts/org-delegate.sh) line 83 adds the core's socket folder to its read deny (L-N2). Measured sandbox refusals, both in WSL2: a write outside the worktree (L-K4) and a non-allowlisted host (PRM-6, Issue #44), in the [predecessor inventory](predecessor-inventory.md).
+  - Host runs: core and agents in WSL2 for the Core measurement, the Inventory probes, the Continue probe, Q16 and Q18, and [prototype 2](prototype-2.md) (window on Windows, core in WSL). The only native attempt, the Mod measurement, ran hc and the window natively and its Claude Code stopped at folder trust. Two probes read `/proc` and need Linux or WSL ([idle-secretary-wake.sh](../../scripts/probes/idle-secretary-wake.sh) line 8, [org-start-secretary.sh](../../scripts/probes/org-start-secretary.sh) line 10).
+  - The window: with a local core on Windows the mods reach `hc` through `pwsh` ([org-agents](../../mods/org-agents/main.js) line 17, [org-cockpit](../../mods/org-cockpit/main.js) line 36, [architecture 4.1](architecture.md#41-windows)); with the core in WSL the cockpit runs `sh` on that machine, after `hc machine add` and a `"secretary": "<machine>/secretary"` prop in the layout ([README](../../README.md) line 23).
+  - Scripts: org-start is Bash only, run from Git Bash on Windows ([SKILL.md](../../skills/org-start/SKILL.md) line 14). `hc connect` drops its answer at stdin EOF on Windows only ([upstream note](upstream/hc-connect-stdin-eof.md) lines 11-12); `scripts/org` and the mods hold stdin open 1 s as a work-around. The mailbox lock ([scripts/org](../../scripts/org) lines 96-105, Issue #145) was checked with Linux coreutils only; and a shell `>>` is not guaranteed atomic natively on Windows (Q8 point 1).
+- **A.** Cost: Windows users install WSL2, a distribution, and bubblewrap and socat in it (vendor docs). Needs that do not exist yet: a Windows setup note (WSL2, `hc machine add`, the layout prop); and, on any platform, `sandbox.failIfUnavailable` true and `allowUnsandboxedCommands` false in the worker settings, because by default Claude Code runs commands unsandboxed when the sandbox cannot start (vendor docs), and both are unset today. Feasible: measured for the write and network refusals; the sandbox read deny and the socket deny are not measured on their own (L-K1, L-N2, L-N9).
+- **B.** Cost, from the vendor docs, not tried: a native worker runs every command unsandboxed, so it loses the write limit (L-K4), the sandbox read deny (L-K1, L-N9 layer 2), the socket deny (L-N2) and the network proxy (PRM-6). Left are permission rules, which match a tool's path or a command's text, not what a program does (L-N1, L-N2). Needs: org-start and org-delegate checked under Git Bash, the folder-trust step on Windows (Q13), the mailbox lock measured on NTFS, and a fix for the `hc connect` EOF drop beyond the 1 s hold. Feasible with the fence: no, by the vendor docs. Without it: not measured; the measurement is a native worker launched through org-delegate that passes folder trust and reports done, plus the lock tests run under Git Bash.
+- **What would change it.** The vendor supporting the sandbox on native Windows; the owner accepting unfenced workers on Windows; or target machines that cannot run WSL2.
 
 **Decides.** The owner.
 
