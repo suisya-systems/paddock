@@ -169,7 +169,7 @@ EOF
      sh scripts/probes/prototype-2.sh watch --task-id $T
 3. Type this request into the secretary's pane in herdr-app (one paragraph, as it is):
 
-Delegate one task to a worker with the org-delegate skill: project $project, task id $T, base $base, branch $BR. The task text: "Add a file paddock-proto2.txt at the repository root holding the one line 'paddock prototype 2, task $T', and commit it on your branch. Before you create the file, report blocked with the question 'May I add paddock-proto2.txt at the repository root?'. Then wait for the answer: run check_messages every 15 seconds for up to 15 minutes, staying in your turn. Go on only if the answer is yes; on no, report done without changes." When the worker asks its question, do not answer it yourself: put it on the card with org-escalation ask, and when the ANSWER from the card is in your mailbox, forward it with org-escalation answer. When the worker reports done, open the pull request with the org-pull-request skill, --mode human --base $base --task-id $T, title "paddock prototype 2 run $T", and tell me its URL and the skill's exit code. Do not merge. This is a test run; the pull request goes to the throwaway repository $repo.
+Delegate one task to a worker with the org-delegate skill: project $project, task id $T, base $base, branch $BR. The task text: "Add a file paddock-proto2.txt at the repository root holding the one line 'paddock prototype 2, task $T', and commit it on your branch. Before you create the file, report blocked with the question 'May I add paddock-proto2.txt at the repository root?'. Then wait for the answer: run check_messages every 15 seconds for up to 15 minutes, staying in your turn. Go on only if the answer is yes; on no, report done without changes." When the worker asks its question, do not answer it yourself: put it on the card with org-escalation ask --answer-in secretary, and when the ANSWER from the card is in your mailbox, forward it with org-escalation answer. When the worker reports done, open the pull request with the org-pull-request skill, --mode human --base $base --task-id $T, title "paddock prototype 2 run $T", and tell me its URL and the skill's exit code. Do not merge. This is a test run; the pull request goes to the throwaway repository $repo.
 
 4. When watch prints "NOW: click Yes", click Yes on the card. Answer nothing else in any terminal;
    if you have to, do it, and record it: note --task-id $T --touch "<what and why>".
@@ -253,7 +253,7 @@ if [ "$phase" = watch ]; then
         res 6-card-answer PASS "ANSWER $AID in the person's mailbox"
         if acked person "$(seq_of "$aq")"; then res 7-secretary-read PASS "the secretary read the ANSWER"
         elif [ "$s" = done ] || [ "$s" = idle ]; then
-          once idle140 "NOW: the secretary is $s with the card's ANSWER unread (Issue #140). Wait a minute; if it does not move, type 'check your mailbox' into its conversation and record: note --task-id $T --touch \"nudged the secretary, #140\""
+          once idle140 "NOW: the secretary is $s with the card's ANSWER unread. It should be waiting in 'org wait', which returns on mail within seconds (Issue #140); this is a finding. Give it 90 s (one 60 s check-in and a turn); if it does not move, type 'check your mailbox' into its conversation and record: note --task-id $T --touch \"nudged the secretary, #140\""
         fi
         has "\"from\":\"secretary\",.*\"to\":\"$W\".*Answer to your question \\($AID\\)" && res 7-forwarded PASS "answer sent to $W"
         printf '%s' "$os" | grep -q "$AID" || { [ -f "$RUN/res.7-forwarded" ] && res 7-approval-removed PASS "$AID left org-state"; }
@@ -262,7 +262,7 @@ if [ "$phase" = watch ]; then
     # blocked status is Claude Code's own prompt or dialog: the worker waits for its answer by polling,
     # in its turn (working). A prompt is answered in that terminal (Issue #127), so each one is a finding.
     if [ $wb -eq 1 ]; then
-      echo "NOW: $W is blocked on a prompt or dialog in its own terminal (Issue #127). Answer it there, then: note --task-id $T --touch \"answered $W's prompt: <what it asked>\""
+      echo "NOW: $W is blocked on a prompt or dialog in its own terminal (Issue #127). The card's button for it opens that terminal if the secretary recorded it with --answer-in worker. Answer it there, then: note --task-id $T --touch \"answered $W's prompt: <what it asked>\""
       log "finding: $W blocked on its own prompt"
     fi
     if [ $sb -eq 1 ]; then
