@@ -310,14 +310,21 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 **Options.** A line in the secretary's template body; a value in paddock's own configuration that a skill reads at start; an environment variable passed at launch; detection from the environment only, with no stored value.
 
-**Decides.** The owner.
+**Decided (2026-11-11, owner, Issue #16): a value in paddock's configuration, added to the secretary's launch task.** The drafted recommendation, adopted as written. The value is one line, `conversation_language: <value>`, in Q14's `org-config.md`, with `auto` as the script default. Every script that launches the secretary reads it and, when it is not `auto`, puts `Conversation language: <value>` at the end of the launch's task, so it arrives in the first message with the template body. Workers get no language value.
 
-**Draft recommendation (2026-11-11, awaiting the owner; not decided).** A value in paddock's configuration: one line, `conversation_language: <value>`, in Q14's `org-config.md`, default `auto` in the scripts. Every script that launches the secretary reads it and, when it is not `auto`, puts `Conversation language: <value>` at the end of the launch's task, so it arrives in the first message with the template body. Workers get nothing.
+**Why.**
 
-- **Why:** the first message is the channel in use today (the body line), and a rule given only there held after `/compact` in one weak measurement (Q12). Reading the file at each launch, not once at `org-start`, means a change the person asks for reaches the next secretary after a renewal: `secretary-handover` launches from the installed template without `org-start` (its line 71), and `org-start` refuses to run inside an agent (lines 42 to 47), so the secretary could not refresh a value written into the template. The person changes the setting by telling the secretary, which switches language at once and edits the file, as for every Q14 setting.
-- **Does it simply follow Q14?** Where the value is kept, yes: Q14 left exactly this open ("The conversation language may go into `org-config.md` too", Q14 Consequences), and its file, its reader order (argument, `PADDOCK_*` variable, file, script default) and its default-in-script rule fit as they are. What Q14 does not settle is the path to the agent: Q14's other values are read by the scripts for themselves, while this one must reach a conversation. That path is what this draft adds.
-- **Rejected:** a line in the body alone, because `org-start` overwrites the installed template on every run (line 70), so a change is a repository edit, the same for everyone; detection only, because it is not a setting (principle 7) and a person whose locale is not the language they want has no lasting fix; an environment variable, because it lives in the core's environment, set in the login shell that starts the core ([`org-start` SKILL.md](../../skills/org-start/SKILL.md) line 50), which the secretary cannot change when the person asks. It stays only as the `PADDOCK_*` override in Q14's reader order.
-- **Variant considered:** `org-start` writes the value into the body line when it places the template. Rejected because a change would not reach a handover until the person reruns `org-start`.
+- The first message is the channel in use today (the body line), and a rule given only there held after `/compact` in one weak measurement (Q12).
+- Reading the file at each launch, not once at `org-start`, means a change the person asks for reaches the next secretary after a renewal: `secretary-handover` launches from the installed template without `org-start` (its line 71), and `org-start` refuses to run inside an agent (lines 42 to 47), so the secretary could not refresh a value written into the template.
+- The person changes the setting by telling the secretary, which switches language at once and edits the file, as for every Q14 setting.
+- **It follows Q14 for where the value is kept:** Q14 left exactly this open ("The conversation language may go into `org-config.md` too", Q14 Consequences), and its file, its reader order (argument, `PADDOCK_*` variable, file, script default) and its default-in-script rule fit as they are. Q14 did not settle the path to the agent, because its other values are read by the scripts for themselves, while this one must reach a conversation. The launch task is that path.
+
+**Rejected.**
+
+- **A line in the body alone:** `org-start` overwrites the installed template on every run (line 70), so a change is a repository edit, the same for everyone.
+- **`org-start` writes the value into the body line when it places the template:** a change would not reach a handover until the person reruns `org-start`.
+- **An environment variable:** it lives in the core's environment, set in the login shell that starts the core ([`org-start` SKILL.md](../../skills/org-start/SKILL.md) line 50), which the secretary cannot change when the person asks. It stays only as the `PADDOCK_*` override in Q14's reader order.
+- **Detection only:** it is not a setting (principle 7), and a person whose locale is not the language they want has no lasting fix.
 
 **What is in the repository today.**
 
@@ -332,15 +339,23 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 | Option | Cost | Needs what does not exist | Feasible? |
 | --- | --- | --- | --- |
 | A line in the template body (today) | Nothing to build. A change is a repository edit, the same for everyone. | Nothing. | Yes, it runs today. That the secretary obeys it is not measured (below). |
-| A value in paddock's configuration, added to the launch task (recommended) | One `sed` read of `org-config.md` in `org-start` and in `secretary-handover`; line 7 of the template says the value comes at the end of the first message, `auto` when absent. With `auto` or no line, the launches are unchanged, so the `org-start` test keeps its arguments. | `org-config.md` (Q14's task); the read in both launch scripts; the secretary's instruction to edit the line when asked. | Yes on the shell side: core appends the task after the body (Core docs), and both scripts already pass or can pass a task. |
+| A value in paddock's configuration, added to the launch task (picked) | One `sed` read of `org-config.md` in `org-start` and in `secretary-handover`; line 7 of the template says the value comes at the end of the first message, `auto` when absent. With `auto` or no line, the launches are unchanged, so the `org-start` test keeps its arguments. | `org-config.md` (Q14's task); the read in both launch scripts; the secretary's instruction to edit the line when asked. | Yes on the shell side: core appends the task after the body (Core docs), and both scripts already pass or can pass a task. |
 | An environment variable passed at launch | The template `command` turns it into prompt text (for example `--append-system-prompt`). The value comes from the core's environment, set where the core is started. | The variable and the command change. | Possible: a template `command` runs through `sh` (Core docs). How a running core picks up a changed variable is not measured. |
 | Detection only, no stored value | Nothing to build: `auto` does this today. | Nothing. | Yes, but it is not a setting. |
 
-**Workers.** No language value is passed: they write to the secretary, and the person sees their work through it. One line to add with the implementation: `worker-rules.md` asks for reports, messages and records in English, since nothing does today and a target's own instructions may say otherwise.
+**Consequences** (for the implementing task).
+
+- `org-start` and `secretary-handover` read `conversation_language` from `org-config.md` in Q14's order and, unless it is `auto`, end the launch task with `Conversation language: <value>`. `org-start` then passes a task where it passes none today.
+- [`templates/secretary.md`](../../templates/secretary.md) line 7 changes from a fixed `auto` to: the value is at the end of the first message, `auto` when absent. Line 9 (what `auto` means, English for agents) stays. The secretary's instructions for `org-config.md` (Q14) cover this line: when the person asks for another language, switch at once and edit the line.
+- Workers: no language value is passed; they write to the secretary, and the person sees their work through it. `templates/worker-rules.md` gains one line asking for reports, messages and records in English, since nothing does today and a target's own instructions may say otherwise. That line is part of the implementing task, not of this decision's pull request.
 
 **Not measured.** Whether the secretary follows the line, and what `auto` resolves to: no run has checked the language of its replies. Measurement, on a dedicated core (`HC_SESSION`) started from a shell whose `LANG` and `LC_ALL` are set for the run: (1) locale English, launch task ending `Conversation language: ja`, ask in English; the reply must be Japanese, before and after `/compact`; (2) `auto` with `LANG` and `LC_ALL` both `ja_JP.UTF-8`, have the secretary print `locale` first, ask in English, and record which language it answers in. Capture the replies with `hc read`, not a `grep` over the screen (the Q12 limit).
 
-**What would change the pick.** The measurement shows the first-message line is not followed, or not after compaction: the value goes by `--append-system-prompt` in the template `command`, as the worker rules do (Q12). The screen must show or change the setting: Q14's revisit (a core document). People often talk to workers in their terminals: `org-delegate` adds the line to the worker's task ([`org-delegate.sh`](../../skills/org-delegate/scripts/org-delegate.sh) line 149).
+**Revisit when.**
+
+- The measurement shows the first-message line is not followed, or not after compaction: the value goes by `--append-system-prompt` in the template `command`, as the worker rules do (Q12).
+- The screen must show or change the setting: Q14's revisit (a core document).
+- People often talk to workers in their terminals: `org-delegate` adds the line to the worker's task ([`org-delegate.sh`](../../skills/org-delegate/scripts/org-delegate.sh) line 149).
 
 ## Q10. Who distributes permissions, hooks and skills, and when?
 
@@ -525,7 +540,7 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 - Worker cap and projects registry: none. The secretary passes `--project <path>` on every delegation ([`org-delegate` SKILL.md](../../skills/org-delegate/SKILL.md) line 34).
 - Base branch: `--base`, default `main`, in both [`org-delegate.sh`](../../skills/org-delegate/scripts/org-delegate.sh) line 43 and [`org-pull-request.sh`](../../skills/org-pull-request/scripts/org-pull-request.sh) lines 40 and 77 (the PR's base). Nothing per project.
 - Merge approval mode: `--mode`, else a top-level `merge_approval_mode` in `org-state`, else `human` ([`org-pull-request.sh`](../../skills/org-pull-request/scripts/org-pull-request.sh) lines 118 to 120). Its SKILL.md calls this "the smallest reading" and notes that the prototype-1 shape has no such field ([`org-pull-request` SKILL.md](../../skills/org-pull-request/SKILL.md) line 49). So one setting already sits in a state document, as a stopgap.
-- Conversation language ([Q9](#q9-where-does-the-conversation-language-setting-live), open): the line `Conversation language: auto` in the secretary template body ([`templates/secretary.md`](../../templates/secretary.md) line 7), which is option (c) in use.
+- Conversation language ([Q9](#q9-where-does-the-conversation-language-setting-live), decided 2026-11-11 to move to `org-config.md`; this is the state before): the line `Conversation language: auto` in the secretary template body ([`templates/secretary.md`](../../templates/secretary.md) line 7), which is option (c) in use.
 - Allowed document names: `org-state` and `secretary-handover` only ([`scripts/org`](../../scripts/org) lines 249 to 251).
 
 **The options.**
@@ -549,7 +564,7 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 - The cap counts live terminals with the `task_id` label, whatever their status. Two launches at the same moment can both pass the count; the secretary runs launches one at a time, and that is a known limit, not a lock.
 - `org-pull-request` reads the approval mode from the file instead of `org-state`.
 - The worker settings gain a write deny for the config folder, as they have for the bin folder (`worker-settings.json` lines 18 and 38), and `org-delegate` refuses an `--allow-write` path inside it. Like every path in that file, the deny names the default folder only; with `APPDATA` or `XDG_CONFIG_HOME` set elsewhere it does not follow ([`org-start` SKILL.md](../../skills/org-start/SKILL.md) line 46, the same open limit).
-- The conversation language may go into `org-config.md` too, so a change survives `org-start`; that is Q9's to decide.
+- The conversation language goes into `org-config.md` too, so a change survives `org-start` ([Q9](#q9-where-does-the-conversation-language-setting-live), decided 2026-11-11).
 - The permission mode is not one of these settings: it belongs in each template's command (PRM-9). The shipped templates pass none today ([`templates/worker.md`](../../templates/worker.md) line 3, [`templates/secretary.md`](../../templates/secretary.md) line 3).
 
 **Revisit when.**
