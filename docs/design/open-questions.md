@@ -446,11 +446,7 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 **Options.** (a) Markdown files in a fixed folder on the primary host, read by skills; (b) a core document (needs a new name in decision 0004); (c) lines in the secretary's template body; (d) paddock's repository, for settings that are not personal.
 
-**Decides.** The owner.
-
-**Draft for the owner (2026-11-11). Not decided; the owner picks.**
-
-**Recommended pick: (a), with defaults in the scripts (d).** The worker folder, the worker cap, the merge approval mode and the projects registry (with each project's base branch) live in two plain files per machine, `org-config.md` and `projects.md`, in the paddock config folder: the folder `org-start` already resolves for the worker token file (`%APPDATA%` when set, else `$XDG_CONFIG_HOME`, else `~/.config`, plus `paddock`; [`org-start.sh`](../../skills/org-start/scripts/org-start.sh) lines 50, 51 and 82). The values used when a line is missing stay in the scripts, which is (d) for what is not personal. No new core document.
+**Decided (2026-11-11, owner): (a), with defaults in the scripts (d).** The drafted recommendation, adopted as written. The worker folder, the worker cap, the merge approval mode and the projects registry (with each project's base branch) live in two plain files per machine, `org-config.md` and `projects.md`, in the paddock config folder: the folder `org-start` already resolves for the worker token file (`%APPDATA%` when set, else `$XDG_CONFIG_HOME`, else `~/.config`, plus `paddock`; [`org-start.sh`](../../skills/org-start/scripts/org-start.sh) lines 50, 51 and 82). The values used when a line is missing stay in the scripts, which is (d) for what is not personal. No new core document.
 
 **Why.**
 
@@ -458,6 +454,12 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 - The projects table is read by the secretary only, as Markdown, without a parser ([inventory](predecessor-inventory.md) REG-1). The secretary passes the project's path and base branch as `--project` and `--base` to both `org-delegate` and `org-pull-request`, as it passes `--project` today, so no script parses the table.
 - The person never writes the format. They tell the secretary ("add this project", "merge on green CI"), and the secretary edits the file; `org-start` creates both files with the defaults when they are missing. The person can open either file to read it. A core document has no `hc` verb ([`org-pull-request.sh`](../../skills/org-pull-request/scripts/org-pull-request.sh) line 118), so under (b) only the secretary or a mod that does not exist could change it.
 - These are settings, not work in progress, and [decision 0004](../decisions/0004-records-documents-and-jsonl.md) gives core documents to in-progress state.
+
+**Rejected.**
+
+- **(b) a core document:** no `hc` verb lets a person change it, so only the secretary or a mod that does not exist could; every script would need a core round trip; and decision 0004 keeps documents for in-progress state. Decision 0004 is not changed.
+- **(c) lines in the secretary template body:** `org-start` overwrites the installed template on every run, so a lasting edit is a repository edit; and only the secretary would see the value, not the scripts.
+- **(d) alone:** personal values (paths, the person's projects) would be committed. (d) keeps only the defaults, in the scripts.
 
 **What is in the repository today.**
 
@@ -477,13 +479,13 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 | (c) Lines in the secretary template body | Edits the template. But `org-start` overwrites the installed template on every run ([`org-start.sh`](../../skills/org-start/scripts/org-start.sh) line 70), so a lasting edit goes into the repository copy, which is (d). | Only the secretary sees it, from its next start; the scripts would have to parse a template. | A template reader in each script. | Partly: templates are read fresh on each use, and the body is the first message (Core docs). That a body rule survives compaction has one weak measurement (Q12). |
 | (d) paddock's repository | Edits the file and opens a pull request. | The same value for everyone; personal values (paths, the person's projects) would be committed. | Nothing for the defaults: they are in the scripts today. | Yes, for values that are not personal only. |
 
-**If the owner picks (b) instead,** decision 0004's table gains this row (not sized against a real projects list; the predecessor's `registry/projects.md` was not measured):
+**Note on the rejected (b).** Decision 0004 is not changed. Had (b) been picked, its table would have gained this row (not sized against a real projects list; the predecessor's `registry/projects.md` was not measured):
 
 | Name | Writer | Holds | Cap | Pruning |
 | --- | --- | --- | --- | --- |
 | `org-config` | the secretary | the worker folder, the worker cap, the merge approval mode, and the projects with their base branches | 16 KiB | replaced whole on every write; a project leaves when the person drops it |
 
-**What follows if (a) is picked** (for the implementing task, not decided here).
+**Consequences** (for the implementing task).
 
 - Order: argument, then `PADDOCK_*` variable, then file, then the script's default. A missing cap line means no cap, as today.
 - The cap counts live terminals with the `task_id` label, whatever their status. Two launches at the same moment can both pass the count; the secretary runs launches one at a time, and that is a known limit, not a lock.
@@ -492,7 +494,7 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 - The conversation language may go into `org-config.md` too, so a change survives `org-start`; that is Q9's to decide.
 - The permission mode is not one of these settings: it belongs in each template's command (PRM-9). The shipped templates pass none today ([`templates/worker.md`](../../templates/worker.md) line 3, [`templates/secretary.md`](../../templates/secretary.md) line 3).
 
-**What would change the pick.**
+**Revisit when.**
 
 - If the screen must show or change these settings: a mod reads documents through `hc connect`; whether a mod can read a plain file was not checked here (the App docs were not read for it). Then (b), for the values the screen needs.
 - If several people must share the same settings: (d) for those values.
