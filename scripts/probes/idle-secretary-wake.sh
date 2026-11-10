@@ -5,7 +5,7 @@
 # Run from the repo root, on a host where herdr-core (hc) and claude run, in a plain login
 # shell (not inside an agent):
 #   sh scripts/probes/idle-secretary-wake.sh
-# Takes about 5-10 minutes. Needs hc, claude (logged in), sh, ps.
+# Takes about 5-10 minutes. Needs hc, claude (logged in), sh, ps and /proc (Linux or WSL).
 #
 # What it touches: its OWN core (HC_SESSION=p140-<pid>), XDG_CONFIG_HOME and PADDOCK_STATE_DIR
 # under a private temp folder, set before the first hc command so the core and every terminal
@@ -83,7 +83,14 @@ trust_dialog() { # answer Claude Code's folder-trust dialog (Enter), like probe 
   case "$(hc read $SEC 2>/dev/null)" in *"Quick safety check"*|*"trust this folder"*) echo "-- answering the folder-trust dialog"; hc keys $SEC enter >/dev/null 2>&1 ;; esac
 }
 state_of() { hc get --json "$1" 2>/dev/null | tr -d '\n' | grep -Eo '"status": *\{[^{}]*"state": *"[a-z]*"' | grep -Eo '"[a-z]*"$' | tr -d '"'; }
-wait_pids() { ps -eo pid=,args= 2>/dev/null | grep -E 'org --as secretary wait' | grep -v grep | awk '{print $1}'; }
+# wait_pids: top-level `org --as secretary wait` processes of THIS probe's core only: a match
+# whose parent is also a match is a subshell of the same call, and the process must carry this
+# probe's PADDOCK_STATE_DIR (read from /proc, so Linux/WSL only), so a real secretary's wait
+# on the same host is not counted.
+wait_pids() {
+  ps -eo pid=,ppid=,args= 2>/dev/null | awk '/org --as secretary wait/ && !/awk/ { m[$1] = $2 } END { for (p in m) if (!(m[p] in m)) print p }' \
+    | while read -r p; do tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -qx "PADDOCK_STATE_DIR=$PADDOCK_STATE_DIR" && echo "$p"; done
+}
 
 echo "== versions"; hc --version 2>&1; claude --version 2>&1
 echo "== temp core session $HC_SESSION; state dir under $WORK; org wait timeout ${WAIT_TIMEOUT}s"
@@ -109,15 +116,20 @@ printf '%s' "$out" | tr -d '\n' | grep -Eq '"sent": *true' && result secretary-s
   || result secretary-start FAIL "first_message.sent is not true: $out"
 
 echo "== steps 2-3: waiting up to ${SETUP_WAIT}s for the secretary's org wait, twice"
-t=0; seen=; said=0; t_first=
+# A second invocation counts only once the first one has ended (a new pid after the first is gone).
+t=0; said=0; t_first=; first=; n=0
 while [ $t -lt "$SETUP_WAIT" ]; do
   trust_dialog
-  for p in $(wait_pids); do case " $seen " in *" $p "*) ;; *) seen="$seen $p"; [ -n "$t_first" ] || t_first=$t ;; esac; done
-  [ $(echo $seen | wc -w) -ge 2 ] && break
+  cur=$(wait_pids)
+  if [ -z "$first" ]; then
+    for p in $cur; do first=$p; t_first=$t; n=1; break; done
+  elif ! kill -0 "$first" 2>/dev/null; then
+    for p in $cur; do [ "$p" != "$first" ] && { n=2; break; }; done
+  fi
+  [ $n -ge 2 ] && break
   if [ "$(state_of $SEC)" = blocked ] && [ $said -eq 0 ]; then said=1; echo "-- the secretary is blocked on a prompt: answer it with HC_SESSION=$HC_SESSION hc attach $SEC"; fi
   t=$((t + 2)); sleep 2
 done
-n=$(echo $seen | wc -w)
 if [ "$n" -ge 1 ]; then result wait-entered PASS "org wait seen ${t_first}s after the start, from the template alone"
 else result wait-entered FAIL "no 'org --as secretary wait' process within ${SETUP_WAIT}s"; fi
 if [ "$n" -ge 2 ]; then result wait-kept PASS "a second org wait after a check-in, ${t}s after the start"
