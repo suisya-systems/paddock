@@ -7,7 +7,10 @@
 #   sh scripts/probes/worker-rules-place.sh --project <git repo> [--base <ref>]
 # <git repo> must already be usable by org-delegate: a repository whose worktrees go to the
 # workers folder a person has trusted once (Issue #133; org-delegate SKILL), with no tracked
-# .claude/settings.local.json. --base is the start point of the probe branch (default main).
+# .claude/settings.local.json. --base is the start point of the probe branch (default main): give a
+# local branch name of <git repo> (for example main). org-delegate passes it to `git worktree add`;
+# a remote-tracking ref such as origin/main failed there on the host (2026-11-10), so it is not
+# the documented form.
 # Needs a running core and secretary, hc, git, bash and the worker token file. Takes up to
 # 180 s (PADDOCK_PROBE_WAIT to change). It uses the real mailbox: the secretary gets one start
 # and one done record for task p129-<pid>. It creates one worktree and branch work/p129-<pid>
@@ -18,8 +21,8 @@
 #   placed          PASS = worker-rules.md and worker-settings.json exist in the bin folder
 #                   (default ~/.local/share/paddock/bin) and equal the repo copies, and neither
 #                   is in the core templates folder.
-#   templates       PASS = `hc templates --json` names no worker-rules / worker-settings entry
-#                   and has no "error" (the output is printed).
+#   templates       PASS = `hc templates --json` has no entry *named* worker-rules / worker-settings
+#                   (the worker command naming the files does not count) and no "error" key.
 #   delegate        PASS = org-delegate exited 0.
 #   report-done     PASS = list_runs shows the task as done by w-<id> within the wait.
 #   rules-loaded    PASS = the worker named the rules section "Never touch the host", asked
@@ -47,7 +50,7 @@ done
 [ -n "$PROJECT" ] || { echo "RESULT precondition-failed: --project <already trusted git repo> is required (Issue #133)"; exit 2; }
 [ -f "$ROOT/skills/org-delegate/scripts/org-delegate.sh" ] || { echo "RESULT precondition-failed: run from the repo root"; exit 1; }
 for c in hc git bash; do command -v $c >/dev/null 2>&1 || { echo "RESULT precondition-failed: $c not on PATH"; exit 1; }; done
-git -C "$PROJECT" rev-parse --verify -q "$BASE^{commit}" >/dev/null || { echo "RESULT precondition-failed: $BASE is not a commit in $PROJECT"; exit 1; }
+git -C "$PROJECT" show-ref --verify -q "refs/heads/$BASE" || { echo "RESULT precondition-failed: --base $BASE is not a local branch of $PROJECT (give a branch name such as main)"; exit 1; }
 
 ID=p129-$$; W=w-$ID; WAIT=${PADDOCK_PROBE_WAIT:-180}
 CFG=${APPDATA:-${XDG_CONFIG_HOME:-$HOME/.config}}
@@ -67,8 +70,8 @@ if cmp -s "$ROOT/templates/worker-rules.md" "$BD/worker-rules.md" && cmp -s "$RO
 else echo "RESULT placed: FAIL (expected both files in $BD and neither in $TD; rerun org-start from this checkout)"; fi
 
 tj=$(hc templates --json 2>&1); echo "== hc templates --json"; echo "$tj"
-if printf '%s' "$tj" | grep -q 'worker-rules\|worker-settings'; then echo "RESULT templates: FAIL (a worker-rules or worker-settings entry is listed)"
-elif printf '%s' "$tj" | grep -q '"error"'; then echo "RESULT templates: FAIL (an entry has an error)"
+if printf '%s' "$tj" | grep -Eq '"name" *: *"worker-(rules|settings)"'; then echo "RESULT templates: FAIL (a worker-rules or worker-settings entry is listed)"
+elif printf '%s' "$tj" | grep -Eq '"error" *:'; then echo "RESULT templates: FAIL (an entry has an error)"
 else echo "RESULT templates: PASS"; fi
 
 TASK="Probe for paddock Issue #129. Change nothing. Do these steps in order and do not report blocked for a refused command in this probe; record it and go on.
@@ -78,7 +81,12 @@ TASK="Probe for paddock Issue #129. Change nothing. Do these steps in order and 
 3. bash \"\$PADDOCK_ORG\" --as $W report done --task $ID \"probe done section=<title from step 0>; hc=<value from step 1>; write=<value from step 2>\""
 out=$(bash "$ROOT/skills/org-delegate/scripts/org-delegate.sh" --project "$PROJECT" --base "$BASE" --task-id "$ID" --task "$TASK" 2>&1); rc=$?
 echo "$out"
-[ "$rc" -eq 0 ] && echo "RESULT delegate: PASS" || { echo "RESULT delegate: FAIL (exit $rc)"; exit 1; }
+if [ "$rc" -eq 0 ]; then echo "RESULT delegate: PASS"
+else
+  echo "RESULT delegate: FAIL (exit $rc)"; echo "== git state"
+  git -C "$PROJECT" worktree list 2>&1; git -C "$PROJECT" branch --list "work/$ID" 2>&1
+  [ -e "$WT" ] && echo "$WT exists" || echo "$WT does not exist"; exit 1
+fi
 
 t=0; tab=$(printf '\t')
 while [ "$t" -lt "$WAIT" ]; do
