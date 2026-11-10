@@ -78,7 +78,7 @@ echo "== versions"; hc --version 2>&1; claude --version 2>&1
 echo "== temp core session $HC_SESSION; terminal $NAME; folders under a private temp dir"
 
 # Run org-start in the background so this script can answer the trust dialog while it waits.
-( cd "$CWD" && PADDOCK_CORE_TEMPLATES_DIR="$TPLS" PADDOCK_APP_MODS_DIR="$MODS" \
+( cd "$CWD" && PADDOCK_CORE_TEMPLATES_DIR="$TPLS" PADDOCK_APP_MODS_DIR="$MODS" PADDOCK_BIN_DIR="$WORK/bin" \
   PADDOCK_SECRETARY_NAME=$NAME PADDOCK_READY_TRIES=90 \
   bash "$ROOT/skills/org-start/scripts/org-start.sh" > "$WORK/os.out" 2>&1; echo $? > "$WORK/os.rc" ) &
 OSPID=$!
