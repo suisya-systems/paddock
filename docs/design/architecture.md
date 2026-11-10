@@ -111,12 +111,15 @@ The screen is not an admin console. It is drawn by herdr-app mods ([decision 000
 
 ### 7.1 Approvals
 
-An approval is a worker's question the secretary cannot decide, or a worker blocked on a permission prompt or dialog. Nobody types the answer for the person into a blocked terminal ([L-N3](predecessor-inventory.md)):
+An approval is one of two kinds, and its `answer_in` field says which, so the card offers only the way that works. Nobody types the answer for the person into a blocked terminal ([L-N3](predecessor-inventory.md)):
 
-1. The worker asks the secretary through the mailbox, or its terminal reports `blocked`; the secretary adds an `org-state.approvals` entry (`task_id`, `question`, `asked_at`).
-2. The mod shows the entry as a card, and the tile as "Needs you" when the terminal is blocked.
-3. The person answers a question yes or no on the card; a permission prompt or dialog only in the worker's own terminal (`hc attach`, or the terminal in herdr-app), since the card's answer reaches the worker's mailbox, not its prompt. The card's answer is one mailbox message, `org --as person send_message secretary "ANSWER <approval id> yes|no"`, run on the secretary's machine; the card never writes `org-state` ([L-N8](predecessor-inventory.md)). It sends one answer per approval, then shows it as a quiet line and the next approval as the card.
-4. The secretary passes the answer on to the worker's mailbox and removes the entry, or, for a prompt, removes it once the terminal is no longer blocked. The card disappears on the next refresh.
+- `answer_in: "secretary"`: a question the secretary cannot decide (a worker's question, or its own). The person answers the secretary: Yes / No on the card, or in words in the secretary's pane (the card's link focuses it). The card never opens the worker's terminal for it. An entry without `answer_in` is read as this kind.
+- `answer_in: "worker"`: a worker blocked on its own permission prompt or dialog. Only the person, in the worker's own terminal (`hc attach`, or the terminal in herdr-app), can unblock it: an answer from the card would reach the worker's mailbox, not its prompt. The card offers no Yes / No; its one button opens that terminal.
+
+1. The worker asks the secretary through the mailbox, or its terminal reports `blocked`; the secretary adds an `org-state.approvals` entry (`task_id`, `question`, `asked_at`, `answer_in`).
+2. The mod shows the entry as a card, and the tile as "Needs you" when the terminal is blocked. An entry without a `question` shows its id and task instead of a blank line.
+3. The person answers as its kind says. For `secretary`, the card's answer is one mailbox message, `org --as person send_message secretary "ANSWER <approval id> yes|no"`, run on the secretary's machine; the card never writes `org-state` ([L-N8](predecessor-inventory.md)). It sends one answer per approval, then shows it as a quiet line and the next approval as the card.
+4. For a question, the secretary passes the answer on to the worker's mailbox and removes the entry (`org-escalation answer`), or, when the question was its own, acts on it and runs `remove`. For a prompt it runs `remove` once the terminal is no longer blocked. The card disappears on the next refresh.
 
 `hc send` refuses a blocked terminal unless `--force`; `hc keys` has no such refusal, so for it the rule is the secretary's template only.
 

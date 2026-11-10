@@ -24,7 +24,7 @@ Also built after this prototype: the delegation skill [`skills/org-delegate`](..
     { "task_id": "demo-working", "title": "Draft the worker template", "since": "2026-11-09T02:58:00Z" }
   ],
   "approvals": [
-    { "id": "a1", "task_id": "demo-blocked", "question": "Let demo-blocked run npm publish to the internal registry?", "asked_at": "2026-11-09T03:31:00Z" }
+    { "id": "a1", "task_id": "demo-blocked", "question": "Let demo-blocked run npm publish to the internal registry?", "asked_at": "2026-11-09T03:31:00Z", "answer_in": "secretary" }
   ]
 }
 ```
@@ -33,7 +33,7 @@ Also built after this prototype: the delegation skill [`skills/org-delegate`](..
 | --- | --- |
 | `updated_at` | When the secretary last wrote the document. |
 | `work[]` | One entry per task in progress. `task_id` is the same value as the worker terminal's `task_id` label; `title` is a few words for people; `since` is when the task started. |
-| `approvals[]` | One entry per decision waiting for the person. `id` is unique within the document; `task_id` names the task it belongs to; `question` is one sentence that can be answered yes or no; `asked_at` is when it was asked. |
+| `approvals[]` | One entry per decision waiting for the person. `id` is unique within the document; `task_id` names the task it belongs to; `question` is one sentence that can be answered yes or no; `asked_at` is when it was asked; `answer_in` says who the person answers: `"worker"` for a worker blocked on its own permission prompt or dialog (answered only in that worker's terminal), `"secretary"` for a question answered through the secretary (the card's Yes / No, or words in its pane). A missing `answer_in` is read as `"secretary"` ([architecture 7.1](architecture.md#71-approvals)). |
 
 Times are UTC in ISO 8601. The cap is 64 KiB. A task leaves `work` when it finishes or is dropped, and an approval leaves `approvals` when it is answered ([decision 0004](../decisions/0004-records-documents-and-jsonl.md)). A value of `null`, or a document never written (version 0), means there is nothing to show yet.
 
