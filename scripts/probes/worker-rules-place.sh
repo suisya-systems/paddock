@@ -57,6 +57,11 @@ CFG=${APPDATA:-${XDG_CONFIG_HOME:-$HOME/.config}}
 TD=${PADDOCK_CORE_TEMPLATES_DIR:-$CFG/herdr-core/templates}
 BD=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}
 WT=${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}/$ID
+# The trap below removes the terminal, worktree and branch of this id, so they must not exist
+# before this run (a leftover of an earlier probe with the same pid is never removed here).
+if hc get "$W" >/dev/null 2>&1 || [ -e "$WT" ] || git -C "$PROJECT" show-ref --verify -q "refs/heads/work/$ID"; then
+  echo "RESULT precondition-failed: $W, $WT or branch work/$ID already exists; remove it yourself and rerun"; exit 1
+fi
 cleanup() {
   hc kill "$W" >/dev/null 2>&1; hc rm "$W" >/dev/null 2>&1
   git -C "$PROJECT" worktree remove --force "$WT" >/dev/null 2>&1
