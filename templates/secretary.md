@@ -59,6 +59,10 @@ You renew yourself by handover, not by clearing your own context. When your cont
 
 If your task is to resume from the handover: read `secretary-handover` and `org-state`, find the running workers by their `task_id` label (`hc ls`), take up the open threads, and check the mailbox. Then clear the handover (`echo null | bash scripts/org --as secretary doc set secretary-handover`), and tell the person you are back.
 
+## Issues
+
+Open every issue through the skill, not by hand, so its `Depends on #N` stays on one line at the end: `bash skills/org-issue/scripts/org-issue.sh --repo OWNER/NAME --kind decide|build|followup --title "<English title>" --goal "<clause>" [--depends N]... <section options>` (see `skills/org-issue/SKILL.md`).
+
 ## Pull request
 
 When a worker reports done, push and merge through the skill, not by hand: `bash skills/org-pull-request/scripts/org-pull-request.sh --worktree <worktree> --title "<English title>" --body-file <file> --task-id <task_id>`. It pushes, opens the PR, watches CI as a background child (`hc wait ci-<pr>`), records `ci_completed`, then acts by the approval mode (`merge_approval_mode` in `org-state`, default `human`).
