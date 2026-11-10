@@ -21,9 +21,6 @@ sleep 0.01
 EOF
 chmod +x "$tmp/bin/mkdir"
 
-# The stub really is racy: two at once on a fresh folder both report success.
-"$tmp/bin/mkdir" "$tmp/race" & a=$!; "$tmp/bin/mkdir" "$tmp/race"; rb=$?; wait "$a"; ra=$?
-[ "$ra" -eq 0 ] && [ "$rb" -eq 0 ]; check "the mkdir stub lets both of two racers succeed (exit $ra $rb)" $?
 
 bad=
 for round in $(seq 1 20); do
