@@ -71,7 +71,7 @@ paddock adds the components below. Each must be written in an environment herdr 
 | Component | What it must do | Written in |
 | --- | --- | --- |
 | `org` shell commands (`scripts/org`) | Give every agent the mailbox operations (`send_message`, `check_messages`, `set_summary`, `report`, `list_runs`) as commands the skills call, with no resident process, so they work whether or not a window is open. | Built (Issue #60), shell commands |
-| Events bridge | Follow `hc events --json` and append runs and events to `state.db`, as a kept herdr-core terminal. It does not wake agents: the secretary waits with `hc wait` and reads the mailbox on each return ([Q18](open-questions.md#q18-how-does-anything-reach-an-idle-agent), decided (c)). | Open (Q8) |
+| Events bridge | Follow `hc events --json` and append runs and events to `state.db`, as a kept herdr-core terminal. It does not wake agents: the secretary waits with `org wait --children`, which returns on its unread mail as well as on a child ending, and reads the mailbox on each return ([Q18](open-questions.md#q18-how-does-anything-reach-an-idle-agent), decided (c); Issue #140). | Open (Q8) |
 | `state.db` | Hold runs, events and messages durably. The name is kept for the record store whatever its format. | Core documents and JSON-lines files ([decision 0004](../decisions/0004-records-documents-and-jsonl.md)), reached through `hc connect` and the shell |
 | Window | Draw the screen in [section 7](#7-the-screen). | herdr-app mods (JavaScript) ([decision 0003](../decisions/0003-screen-as-app-mods.md)) |
 
@@ -83,7 +83,7 @@ paddock adds the components below. Each must be written in an environment herdr 
 2. The secretary's delegation skill creates a worktree and launches a worker from the `worker` template with `hc run --bg`, putting the task in the launch and `task_id` in a label.
 3. herdr-core waits for the worker's first status report before sending the opening message, and reports whether it was sent. Outside a trusted folder the report does not come until Claude Code's folder-trust dialog is answered, so the message is not sent; worktrees under the trusted workers folder do not stop there ([Q13](open-questions.md#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog)).
 4. The worker works. Its status flows through OSC 7501 into herdr-core, and from there to the window and the events bridge.
-5. The worker reports with the `org` command `report` (or `send_message`). The secretary reads it with `check_messages` each time its `hc wait` returns and at the end of its turn ([Q18](open-questions.md#q18-how-does-anything-reach-an-idle-agent)).
+5. The worker reports with the `org` command `report` (or `send_message`). The secretary reads it with `check_messages` each time its `org wait` returns (at once on new mail) and at the end of its turn ([Q18](open-questions.md#q18-how-does-anything-reach-an-idle-agent)).
 
 ### 6.2 A worker is stuck
 
