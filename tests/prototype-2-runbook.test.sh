@@ -24,6 +24,6 @@ clean watch >/dev/null 2>&1; [ $? -eq 2 ]; check "watch without --task-id exits 
 clean watch --task-id 'Bad Id' >/dev/null 2>&1; [ $? -eq 2 ]; check "bad task id exits 2" $?
 clean collect --task-id p2-none >/dev/null 2>&1; [ $? -eq 6 ]; check "unknown run exits 6" $?
 mkdir -p "$tmp/paddock-proto2/p2-x" && : > "$tmp/paddock-proto2/p2-x/run.env"
-clean note --task-id p2-x --touch "typed into w-p2-x" >/dev/null 2>&1 && grep -q "	touch	typed into" "$tmp/paddock-proto2/p2-x/notes.tsv"
+clean note --task-id p2-x --touch "typed into w-p2-x" >/dev/null 2>&1 && grep -q "$(printf '\ttouch\ttyped into')" "$tmp/paddock-proto2/p2-x/notes.tsv"
 check "note --touch records a touch" $?
 exit $fail

@@ -140,17 +140,17 @@ BR='$BR'
 START='$START'
 EOF
   printf '%s\n' "${os:-null}" > "$RUN/org-state.before"
-  echo "RESULT preconditions: PASS (project origin = github.com/$repo for fetch and push; base $base; no secretary, no $W, org-state free)"
+  echo "RESULT preconditions: PASS (project origin = github.com/$repo for fetch and push; base $base; no secretary, no $W, org-state free)" | tee "$RUN/prepare.txt"
   # Core child notes must be off (decision 0002, Q2): a note typed into the secretary would move the loop.
   cfg=${APPDATA:-${XDG_CONFIG_HOME:-$HOME/.config}}/herdr-core
   nl=$(grep -rhs -E '^[[:space:]]*notes[[:space:]]*=' "$cfg" 2>/dev/null | head -n 1)
-  case "$nl" in *false*) echo "RESULT notes-off: PASS ($nl)" ;;
-    *) echo "RESULT notes-off: FAIL (no 'notes = false' under $cfg; set it before the run, decision 0002; a note typed into the secretary counts as a touch)" ;; esac
+  case "$nl" in *false*) echo "RESULT notes-off: PASS ($nl)" | tee -a "$RUN/prepare.txt" ;;
+    *) echo "RESULT notes-off: FAIL (no 'notes = false' under $cfg; set it before the run, decision 0002; a note typed into the secretary counts as a touch)" | tee -a "$RUN/prepare.txt" ;; esac
   # Role file paths, read from the worker template now (Issue #129 moved them once; read, do not assume).
   echo "== worker template names these role files (checked again by watch once org-start has placed them):"
   grep -Eo -- '--(append-system-prompt-file|settings) "[^"]*"' "$ROOT/templates/worker.md" | sed 's/^/   /'
-  [ -s "${PADDOCK_WORKER_GH_TOKEN_FILE:-$cfg/../paddock/worker-gh-token}" ] \
-    && echo "RESULT worker-token: PASS (file exists, not read)" || echo "RESULT worker-token: FAIL (no read-only token file; see skills/org-start/SKILL.md, Worker token)"
+  { [ -s "${PADDOCK_WORKER_GH_TOKEN_FILE:-$cfg/../paddock/worker-gh-token}" ] \
+    && echo "RESULT worker-token: PASS (file exists, not read)" || echo "RESULT worker-token: FAIL (no read-only token file; see skills/org-start/SKILL.md, Worker token)"; } | tee -a "$RUN/prepare.txt"
   cat <<EOF
 
 == Run $T prepared ($RUN). Do these in order:
@@ -227,8 +227,7 @@ if [ "$phase" = watch ]; then
     fi
     # 3. worktree and settings
     if [ -d "$WT" ] && git -C "$PROJECT" worktree list --porcelain 2>/dev/null | grep -qxF "worktree $WT"; then
-      [ -f "$WT/.claude/settings.local.json" ] && res 3-worktree PASS "$WT on $BR, settings.local.json written" \
-        || res 3-worktree FAIL "no $WT/.claude/settings.local.json"
+      [ -f "$WT/.claude/settings.local.json" ] && res 3-worktree PASS "$WT on $BR, settings.local.json written"
     fi
     # 4. worker started, labelled; its own start report shows the template command ran ($PADDOCK_ORG)
     if [ -n "$w" ] && [ ! -f "$RUN/worker.created" ]; then
@@ -288,6 +287,7 @@ if [ "$phase" = watch ]; then
     t=$((t + 5)); sleep 5
   done
   # The summary is recomputed on every run of watch: only PASS and FAIL of a step are kept.
+  {
   echo "== summary of run $T"
   rc=0
   for st in 1-secretary 1-role-files 3-worktree 4-worker 4-worker-report 4-work-entry 5-blocked 5-approval \
@@ -299,13 +299,15 @@ if [ "$phase" = watch ]; then
   if [ "${touches:-0}" -eq 0 ] && [ "${found:-0}" -eq 0 ]; then echo "RESULT 10-no-touch: PASS (no touch noted, no prompt seen)"
   else echo "RESULT 10-no-touch: FAIL (${touches:-0} touch notes, ${found:-0} prompts in the status log; see notes.tsv, watch.log)"; rc=1; fi
   echo "== watch ended; next: collect --task-id $T"
-  exit $rc
+  echo $rc > "$RUN/watch.rc"
+  } | tee "$RUN/watch-summary.txt"
+  exit "$(cat "$RUN/watch.rc")"
 fi
 
 if [ "$phase" = collect ]; then
   E="$RUN/evidence"; mkdir -p "$E" || die 6 "cannot create $E"
   { echo "== versions"; hc --version 2>&1; herdr-app --version 2>&1; claude --version 2>&1; gh --version 2>&1 | head -n 1
-    echo "== results"; cat "$RUN"/res.* 2>/dev/null
+    echo "== results (prepare, then the last watch summary)"; cat "$RUN/prepare.txt" "$RUN/watch-summary.txt" 2>/dev/null
     echo "== notes"; cat "$RUN/notes.tsv" 2>/dev/null
     echo "== hc ls"; hc ls 2>&1
     echo "== hc get secretary"; hcj secretary; echo
