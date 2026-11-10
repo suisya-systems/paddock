@@ -52,6 +52,18 @@ async function readDoc(on) {
   return msg.result; // { value, version }; version 0: never written
 }
 
+// The org commands, where org-start places them (Issue #128: PADDOCK_BIN_DIR, default
+// ${XDG_DATA_HOME:-~/.local/share}/paddock/bin). A machine whose org-start predates #128 has them
+// beside the herdr-core templates instead (APPDATA on Windows Git Bash).
+// The card answers through them, on the secretary's machine; it never writes org-state (L-N8).
+const ORG = 'o=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}/org; ' +
+  '[ -f "$o" ] || o=${PADDOCK_CORE_TEMPLATES_DIR:-${APPDATA:-${XDG_CONFIG_HOME:-$HOME/.config}}/herdr-core/templates}/org';
+// ponytail: needs sh on that machine; a native Windows one without it shows "Not sent".
+async function sendAnswer(on, id, word) {
+  const r = await exec("sh", ["-c", `${ORG}; exec bash "$o" --as person send_message secretary "$1"`, "sh", `ANSWER ${id} ${word}`], { on });
+  if (r.code !== 0) throw new Error(r.stderr.trim() || `org exited with ${r.code}`);
+}
+
 function duration(ms) {
   const m = Math.floor(ms / 60000);
   if (!(m >= 1)) return "<1m";
@@ -85,6 +97,8 @@ export default class Cockpit extends View {
     this.doc = null; // { value, version } once read
     this.error = null;
     this.lines = new Map(); // address -> last lines
+    this.sent = new Map(); // approval id -> { word, state: "sending" | "sent" | "failed", at }
+    this.cx = cx; // init's cx is an AsyncContext: valid after init, used by the card's clicks
     if (this.role === "consult") {
       // The centre is the layout's active-tab block. The secretary joins it as a pane: herdr-app
       // adopts any terminal labelled herdr.space / herdr.tab, so a renewed secretary is adopted
@@ -103,13 +117,21 @@ export default class Cockpit extends View {
     }
   }
 
+  // One read at a time, so a slow older answer never replaces a newer one.
   refresh(cx) {
+    if (this.loading) return;
+    this.loading = true;
     cx.spawn(async (cx) => {
       try {
         this.doc = await readDoc(this.secretaryMachine());
         this.error = null;
+        // An answered approval leaves org-state when the secretary has passed it on.
+        const ids = new Set((this.value()?.approvals ?? []).map((a) => a.id));
+        for (const id of this.sent.keys()) if (!ids.has(id)) this.sent.delete(id);
       } catch (e) {
         this.error = String(e?.message ?? e);
+      } finally {
+        this.loading = false;
       }
       cx.notify();
     });
@@ -251,15 +273,48 @@ export default class Cockpit extends View {
 
   // ---- approval -------------------------------------------------------------
 
+  // One answer per approval: a second click, or the other button, does nothing unless the send failed.
+  answer(a, word) {
+    const s = this.sent.get(a.id);
+    if (s && s.state !== "failed") return;
+    this.sent.set(a.id, { word, state: "sending" });
+    this.cx.spawn(async (cx) => {
+      cx.notify();
+      try {
+        await sendAnswer(this.secretaryMachine(), a.id, word);
+        this.sent.set(a.id, { word, state: "sent", at: Date.now() });
+      } catch {
+        this.sent.set(a.id, { word, state: "failed" });
+      }
+      cx.notify();
+    });
+  }
+
+  // Yes is the one filled amber control on the screen; No is the same size, only unfilled.
+  choice(t, a, word, label, primary) {
+    const s = this.sent.get(a.id);
+    const busy = s?.state === "sending";
+    const mine = busy && s.word === word;
+    const c = t.blocked;
+    return div().id(`${word}-${a.id}`).flex_1().h(36).rounded(8).flex().items_center().justify_center()
+      .text_size(13).font_semibold().bg(primary ? c : t.raised).text_color(primary ? t.background : t.foreground)
+      .when(busy, (el) => el.opacity(mine ? 0.6 : 0.35))
+      .when(!busy, (el) => el.cursor_pointer().hover((st) => st.bg(primary ? c + "d9" : t.hover)))
+      .on_click(() => this.answer(a, word))
+      .child(mine ? "Sending…" : label);
+  }
+
   card(t, a, more, now) {
     const term = terminals().find((x) => x.state === "live" && x.labels?.task_id === a.task_id);
     const c = t.blocked;
-    const button = div().id("open").h(36).px(14).rounded(8).flex().items_center().justify_center()
-      .text_size(13).font_semibold()
-      .when(Boolean(term), (el) => el.bg(c).text_color(t.background).cursor_pointer().hover((s) => s.bg(c + "d9"))
+    const failed = this.sent.get(a.id)?.state === "failed";
+    // An approval without an id cannot be answered here (the secretary matches answers by id).
+    const answerable = typeof a.id === "string" && a.id !== "";
+    const open = div().id("open").truncate().text_size(12)
+      .when(Boolean(term), (el) => el.text_color(t.muted).cursor_pointer().hover((s) => s.text_color(t.foreground))
         .on_click(() => run("terminal.peek", { terminal: term.address })))
-      .when(!term, (el) => el.bg(t.raised).text_color(t.dim).truncate())
-      .child(term ? `Open ${a.task_id}` : `No terminal for ${a.task_id}`);
+      .when(!term, (el) => el.text_color(t.dim))
+      .child(term ? `Open ${a.task_id} to answer in words` : `No terminal for ${a.task_id}`);
     // The secretary removes an answered approval; until it does, the card says it may be answered.
     const meta = `waiting ${since(a.asked_at, now)}` + (term && term.status !== "blocked" ? " · answered?" : "");
     return v_flex().gap(8)
@@ -271,8 +326,19 @@ export default class Cockpit extends View {
             .child(this.label(t, "NEEDS YOUR ANSWER", c)))
           .child(div().text_size(16).font_semibold().line_height(1.3).text_color(t.foreground).whitespace_normal().max_h(63).overflow_hidden().child(a.question ?? ""))
           .child(div().text_size(11).text_color(t.muted).child(meta))
-          .child(button)))
+          .when(failed, (el) => el.child(div().text_size(12).text_color(c).child("Not sent. Try again.")))
+          .when(answerable, (el) => el.child(h_flex().gap(8)
+            .child(this.choice(t, a, "yes", "Yes", true))
+            .child(this.choice(t, a, "no", "No", false))))
+          .child(open)))
       .when(more > 0, (el) => el.child(div().px(4).text_size(12).text_color(t.muted).child(`and ${more} more waiting`)));
+  }
+
+  // A sent answer, quiet, until the secretary removes the approval; loud again after 2 minutes.
+  sentRow(t, a, s, now) {
+    const late = now - s.at > 120000;
+    const text = `${s.word === "yes" ? "Yes" : "No"} · ${a.task_id} · ${late ? `not passed on yet, ${duration(now - s.at)}` : "passing on"}`;
+    return div().px(4).truncate().text_size(11).text_color(late ? t.blocked : t.muted).child(text);
   }
 
   renderApproval(t) {
@@ -281,9 +347,18 @@ export default class Cockpit extends View {
     else if (!this.doc) body = div();
     else if (!this.value()) body = this.quiet(t, "The secretary has not written anything yet.");
     else {
-      // Oldest first: the one that has waited longest is answered first.
+      // Oldest first: the one that has waited longest is answered first. The loud card is the
+      // oldest not yet answered here, so a queue can be answered one click after another.
       const approvals = [...(this.value().approvals ?? [])].sort((x, y) => Date.parse(x.asked_at) - Date.parse(y.asked_at));
-      body = approvals.length ? this.card(t, approvals[0], approvals.length - 1, Date.now()) : this.quiet(t, "Nothing waiting for you.");
+      const isSent = (a) => this.sent.get(a.id)?.state === "sent";
+      const waiting = approvals.filter((a) => !isSent(a));
+      const sent = approvals.filter(isSent);
+      const now = Date.now();
+      body = v_flex().gap(8)
+        .children(sent.slice(0, 2).map((a) => this.sentRow(t, a, this.sent.get(a.id), now)))
+        .when(sent.length > 2, (el) => el.child(div().px(4).text_size(11).text_color(t.muted).child(`+${sent.length - 2} answered`)))
+        .child(waiting.length ? this.card(t, waiting[0], waiting.length - 1, now)
+          : this.quiet(t, sent.length ? "Nothing else waiting for you." : "Nothing waiting for you."));
     }
     return v_flex().size_full().min_h(0).justify_end().pb(4).child(body);
   }
