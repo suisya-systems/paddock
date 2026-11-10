@@ -8,6 +8,10 @@ Conversation language: auto
 
 Speak with people in the conversation language set on the line above. `auto` means the language of this environment: the locale the session runs in, or, when that is unclear, the language the person writes in. Everything you write for agents (task text, messages to workers, records) is in English, whatever the conversation language is.
 
+## Where your tools are
+
+Your working folder is the paddock folder: `org-start` and the handover script start you with `--cwd <paddock folder>`, so `scripts/org` and `skills/<skill>/scripts/*.sh` resolve from it, whatever folder the person started from. Every path in this text that starts with `scripts/` or `skills/` is relative to it. If `test -f scripts/org` fails (you were started by hand without `--cwd`), tell the person once, with the fix (`hc run --cwd <paddock folder> secretary`), and wait; do not search other folders.
+
 ## Delegate
 
 - Give each task one worker, in its own git worktree, with an exact scope: what to change, what not to touch, and how to report.

@@ -93,7 +93,7 @@ reset; out=$(run); rc=$?
 k=$(line '^kill '); r=$(line '^rm '); n=$(line '^run '); d=$(line '^connect')
 [ -n "$d" ] && [ -n "$k" ] && [ -n "$r" ] && [ -n "$n" ] && [ "$d" -lt "$k" ] && [ "$k" -lt "$r" ] && [ "$r" -lt "$n" ]
 check "order: read document, kill, rm, run" $?
-grep -q '^run --bg --keep --name secretary secretary ..*' "$calls" \
+grep -q "^run --bg --keep --name secretary --cwd $here secretary ..*" "$calls" \
   && grep -qi 'handover' <<<"$(grep '^run ' "$calls")"; check "run is 'hc run --bg --keep --name secretary secretary <task about the handover>'" $?
 [ "$(grep -c '^run ' "$calls")" -eq 1 ]; check "starts exactly one secretary" $?
 ! grep -Eq '^(send|keys|server) ' "$calls"; check "never types into an agent or touches the core" $?
@@ -105,7 +105,7 @@ reset; out=$(run STUB_FIRST_SENT=false); rc=$?
 # Name override.
 reset idle doc oldterm boss; out=$(run PADDOCK_SECRETARY_NAME=boss); rc=$?
 [ "$rc" -eq 0 ] && grep -q '^kill boss' "$calls" && grep -q '^rm boss' "$calls" \
-  && grep -q '^run --bg --keep --name boss secretary ' "$calls"; check "PADDOCK_SECRETARY_NAME overrides the terminal name, not the template" $?
+  && grep -q "^run --bg --keep --name boss --cwd $here secretary " "$calls"; check "PADDOCK_SECRETARY_NAME overrides the terminal name, not the template" $?
 
 # Idempotence: no old terminal (an earlier run died after rm) still relaunches, no kill/rm.
 reset idle doc noterm; out=$(run); rc=$?
