@@ -53,7 +53,7 @@ The mod reads `org-state` every 5 seconds. `hc` has no CLI verb for documents an
 
 1. Copy `mods/org-agents/main.js` and `mods/org-agents/mod.json` into herdr-app's `mods/org-agents/` folder (create the folder with `herdr-app do mod.clone '{"name":"agents","as":"org-agents"}'` the first time, so it gets the type files).
 2. `herdr-app check <herdr-app folder>/mods/org-agents` must pass.
-3. Copy `templates/secretary.md` into herdr-core's `templates/` folder (on Windows, under `%APPDATA%\herdr-core\templates`). Start the secretary with `hc run --bg --keep --name secretary secretary`. Templates run their command through `sh`, so on Windows `sh` must be on `PATH`.
+3. Copy `templates/secretary.md` into herdr-core's `templates/` folder (on Windows, under `%APPDATA%\herdr-core\templates`). Start the secretary with `hc run --bg --keep --name secretary --cwd <absolute path of the paddock folder> secretary` (`--cwd` is where it finds `scripts/org` and the skill scripts). Templates run their command through `sh`, so on Windows `sh` must be on `PATH`.
 4. Open the mod: `herdr-app do mod.open '{"name":"org-agents"}'`. Running it again closes it.
 
 ## Check it

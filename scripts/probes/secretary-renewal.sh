@@ -142,7 +142,7 @@ mkdir -p "$XDG/herdr-core/templates" && cp -f "$ROOT/templates/secretary.md" "$X
 TASK="This is probe 116 of the paddock organization; do exactly these steps, then stop and wait. 1) Start one worker stand-in: hc run --bg --outlive-parent --name $WK --label task_id=$WK -- sleep 3600 (check first_message is not needed here). 2) Write the core document org-state (doc.get then doc.set through hc connect) with a work list holding one entry {task_id: $WK, title: probe worker, since: <now, UTC ISO 8601>}, an empty approvals list and updated_at. 3) Write the core document secretary-handover with last_exchange \"$MARK: probe 116 asked for a handover test\", unrecorded_decisions an empty list, open_threads one entry {task_id: $WK, promised: nothing, expect: nothing}, and written_at. 4) Say 'handover ready' and stop. Do not end your own terminal and do not run any script from skills/."
 echo "== start the secretary"
 # hc run waits for the status before the first message, so the trust dialog is answered while it is pending.
-( cd "$CWD" && hc run --bg --keep --name $SEC secretary "$TASK" > "$WORK/run.out" 2>&1; echo $? > "$WORK/run.rc" ) &
+( cd "$CWD" && hc run --bg --keep --name $SEC --cwd "$ROOT" secretary "$TASK" > "$WORK/run.out" 2>&1; echo $? > "$WORK/run.rc" ) &
 t=0; while [ ! -f "$WORK/run.rc" ] && [ $t -lt 120 ]; do trust_dialog; t=$((t + 2)); sleep $((TICK > 0 ? 2 : 0)); done
 out=$(cat "$WORK/run.out" 2>/dev/null); [ "$(cat "$WORK/run.rc" 2>/dev/null)" = 0 ] || { result secretary-start FAIL "hc run failed or hung: $out"; exit 1; }
 printf '%s' "$out" | one_line | grep -Eq '"sent": *true' && result secretary-start PASS "first_message.sent true" \

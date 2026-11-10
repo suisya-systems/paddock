@@ -69,7 +69,7 @@ out=$(run STUB_CORE_DOWN=1); rc=$?
 out=$(run); rc=$?
 [ "$rc" -eq 0 ]; check "first run exits 0 ($out)" $?
 [ "$(grep -c '^run ' "$tmp/stub/calls")" -eq 1 ] \
-  && grep -qx 'run --bg --keep --name secretary secretary' "$tmp/stub/calls"; check "starts the secretary once with --keep" $?
+  && grep -qx "run --bg --keep --name secretary --cwd $here secretary" "$tmp/stub/calls"; check "starts the secretary once with --keep" $?
 cmp -s "$here/templates/secretary.md" "$tmp/core/templates/secretary.md"; check "template placed in core templates folder" $?
 cmp -s "$here/mods/org-agents/main.js" "$tmp/app/mods/org-agents/main.js" \
   && cmp -s "$here/mods/org-agents/mod.json" "$tmp/app/mods/org-agents/mod.json"; check "mod files placed" $?
@@ -79,7 +79,7 @@ cmp -s "$here/scripts/org" "$tmp/bin-org/org" && [ ! -e "$tmp/core/templates/org
 # Name override: the terminal gets the given name; the template stays "secretary".
 : > "$tmp/stub/calls"; rm -f "$tmp/stub/secretary"
 out=$(run PADDOCK_SECRETARY_NAME=probe-sec); rc=$?
-[ "$rc" -eq 0 ] && grep -qx 'run --bg --keep --name probe-sec secretary' "$tmp/stub/calls" \
+[ "$rc" -eq 0 ] && grep -qx "run --bg --keep --name probe-sec --cwd $here secretary" "$tmp/stub/calls" \
   && grep -qx 'get probe-sec' "$tmp/stub/calls"; check "PADDOCK_SECRETARY_NAME names the terminal" $?
 rm -f "$tmp/stub/secretary"; run >/dev/null # back to the first-run state for the next checks
 
