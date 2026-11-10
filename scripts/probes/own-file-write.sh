@@ -153,13 +153,15 @@ has "$OWN" "$BASE_OWN" && own=intact || own=base-line-missing
 echo "== files: own=$own own-markA=$(has "$OWN" "$MA" && echo yes || echo no) own-markB=$(has "$OWN" "$MB" && echo yes || echo no) sibling=$sib new=$new"
 echo "RESULT mount: INFO $(field mount)"
 
-fs_err() { case "$1" in *"Read-only file system"*|*"Operation not permitted"*|*"Permission denied"*) return 0 ;; esac; return 1; }
+# Error texts are matched in lower case: zsh prints "read-only file system", bash "Read-only file system".
+lc() { printf %s "$1" | tr "[:upper:]" "[:lower:]"; }
+fs_err() { case "$(lc "$1")" in *"read-only file system"*|*"operation not permitted"*|*"permission denied"*) return 0 ;; esac; return 1; }
 layer() { # name text
-  case "$2" in
-    *"auto mode"*|*"Auto mode"*) l="Claude Code auto mode (named in the text)" ;;
+  case "$(lc "$2")" in
+    *"auto mode"*) l="Claude Code auto mode (named in the text)" ;;
     *"deny rule"*|*"permission settings"*) l="settings permission rule (named in the text)" ;;
     *"has been denied"*|*"was denied"*) l="Claude Code permission check, not the OS sandbox (rule or mode not named; text: $2)" ;;
-    *"Read-only file system"*|*"Operation not permitted"*) l="sandbox (OS error text: $2)" ;;
+    *"read-only file system"*|*"operation not permitted"*) l="sandbox (OS error text: $2)" ;;
     *) l="not told apart (text: ${2:-none}); see the screen tail" ;;
   esac
   echo "RESULT layer-$1: INFO $l"
@@ -172,7 +174,7 @@ else ownb=NODATA; echo "RESULT own-bash: NO DATA (ran=${ar:-not reported})"; fi
 
 # An Edit counts as refused only when Claude Code refused it before it ran, or its text says a
 # permission or the filesystem refused it; any other failure (no match, no prior Read) is FAILED.
-perm_err() { case "$1" in *denied*|*Denied*|*ermission*|*"not allowed"*|*"Read-only file system"*|*"Operation not permitted"*) return 0 ;; esac; return 1; }
+perm_err() { case "$(lc "$1")" in *denied*|*permission*|*"not allowed"*|*"read-only file system"*|*"operation not permitted"*) return 0 ;; esac; return 1; }
 editstep() { # name ran err -> v
   if [ "$2" = refused ] || { [ "$2" = yes ] && perm_err "$3"; }; then v=REFUSED; echo "RESULT $1: REFUSED (ran=$2 err=$3)"; layer "$1" "$3"
   elif [ "$2" = yes ]; then v=FAILED; echo "RESULT $1: FAILED, not a permission refusal (err=${3:-none})"
@@ -207,7 +209,7 @@ m=$(field mount); mo=$(printf %s "$m" | sed -n 's/.*m-own=\([0-9]*\).*/\1/p'); m
 # A mount of OWN or of the whole decoy folder (the entry widened to its folder) shows the sandbox ran.
 active=no; { [ "${mo:-0}" -gt 0 ] || [ "${md:-0}" -gt 0 ] || [ "$sibb" = SANDBOX ] || [ "$newb" = SANDBOX ]; } && active=yes
 if [ "$ownb" = PASS ] && [ "$sibb" = SANDBOX ] && [ "$newb" = SANDBOX ] && [ "$own" = intact ]; then
-  echo "RESULT bash-file-entry: HOLDS (OWN written; SIBLING and NEW refused by the sandbox, files unchanged)"
+  echo "RESULT bash-file-entry: HOLDS (OWN written; SIBLING and NEW refused by the sandbox: SIBLING byte-identical apart from a markE line of the Edit step, NEW absent)"
 elif [ "$ownb" = PASS ] && [ "$active" = yes ] && { [ "$sibb" = WROTE ] || [ "$newb" = WROTE ]; }; then
   echo "RESULT bash-file-entry: DOES NOT HOLD (sandbox active, yet sibling=$sib new=$new)"
 elif [ "$ownb" = FAIL ] && fs_err "$ae"; then
