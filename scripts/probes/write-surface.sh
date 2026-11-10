@@ -75,6 +75,7 @@ WT=${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}/$ID
 STATE=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
 OUT=$HOME/paddock-probe-$ID-outside
 MO=p42-org-$ID; MD=p42-direct-$ID
+case "$OUT$STATE" in *[[:space:]]*) echo "RESULT precondition-failed: HOME and the state dir must not contain whitespace (the worker commands are not quoted for it)"; exit 1 ;; esac
 KEEP=
 cleanup() {
   [ -n "$KEEP" ] && { echo "terminal $W and worktree $WT kept"; return; }
