@@ -19,9 +19,9 @@
 # worker token file. Takes up to 300 s (PADDOCK_PROBE_WAIT). Uses the real mailbox (task
 # p151-<pid>), one worktree and branch work/p151-<pid> in <project>, one terminal w-p151-<pid>.
 #
-# The files. Denied (D*): .env, .env.p151, credentials-p151.txt, key-p151.pem, and sub/ copies
-# of each. Allowed (E*): .env.example, .env.p151.example, sub/.env.example,
-# sub/.env.p151.example. Also denied (S1): sub/.env.p151link.example, a symlink with an example
+# The files. Denied (D*): .env, .env.p151, credentials-p151.txt, key-p151.pem, and p151-sub/ copies
+# of each. Allowed (E*): .env.example, .env.p151.example, p151-sub/.env.example,
+# p151-sub/.env.p151.example. Also denied (S1): p151-sub/.env.p151link.example, a symlink with an example
 # name that points at the denied .env.p151 (an example name must not open a denied file).
 # The worker waits for the ready file .paddock-probe-ready-p151, then for each file makes two
 # attempts: the Read tool, and `cat <file>; echo rc=$?` in Bash. Only for E* files does it copy
@@ -68,15 +68,15 @@ FILES='D1|.env
 D2|.env.p151
 D3|credentials-p151.txt
 D4|key-p151.pem
-D5|sub/.env
-D6|sub/.env.p151
-D7|sub/credentials-p151.txt
-D8|sub/key-p151.pem
+D5|p151-sub/.env
+D6|p151-sub/.env.p151
+D7|p151-sub/credentials-p151.txt
+D8|p151-sub/key-p151.pem
 E1|.env.example
 E2|.env.p151.example
-E3|sub/.env.example
-E4|sub/.env.p151.example
-S1|sub/.env.p151link.example'
+E3|p151-sub/.env.example
+E4|p151-sub/.env.p151.example
+S1|p151-sub/.env.p151link.example'
 SALT=$(date +%s)-$$
 mark() { echo "p151-$1-$SALT-ok"; }
 if [ -e "$WT" ] || hc get "$W" >/dev/null 2>&1; then
@@ -86,7 +86,7 @@ KEEP= MADE=
 cleanup() {
   if [ -n "$MADE" ]; then
     printf '%s\n' "$FILES" | while IFS='|' read -r n p; do rm -f -- "$WT/$p"; done
-    rm -f -- "$WT/$READY"; rmdir "$WT/sub" 2>/dev/null
+    rm -f -- "$WT/$READY"; rmdir "$WT/p151-sub" 2>/dev/null
   fi
   [ -n "$KEEP" ] && { echo "terminal $W and worktree $WT kept (decoys removed)"; return; }
   hc kill "$W" >/dev/null 2>&1; hc rm "$W" >/dev/null 2>&1
@@ -115,13 +115,15 @@ if [ "$rc" -eq 0 ]; then echo "RESULT delegate: PASS"; else
   exit 1
 fi
 
-# The decoys, in the new worktree; none of the names may exist yet.
+# The decoys, in the new worktree; none of the names, nor the folder p151-sub (so no tracked
+# symlink can send a decoy outside the worktree), may exist yet.
 bad=
-for p in $(printf '%s\n' "$FILES" | cut -d'|' -f2) "$READY"; do
+for p in p151-sub $(printf '%s\n' "$FILES" | cut -d'|' -f2) "$READY"; do
   if [ -e "$WT/$p" ] || [ -L "$WT/$p" ]; then bad="$bad $p"; fi
 done
 [ -z "$bad" ] || { echo "RESULT decoys: FAIL (already in the worktree:$bad; pick a project without them)"; exit 1; }
-MADE=1; mkdir -p "$WT/sub" || { echo "RESULT decoys: FAIL (cannot create $WT/sub)"; exit 1; }
+mkdir "$WT/p151-sub" || { echo "RESULT decoys: FAIL (cannot create $WT/p151-sub)"; exit 1; }
+MADE=1
 printf '%s\n' "$FILES" | while IFS='|' read -r n p; do
   case "$n" in S1) ln -s ../.env.p151 "$WT/$p" ;; *) mark "$n" > "$WT/$p" ;; esac
 done
