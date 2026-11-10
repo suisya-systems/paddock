@@ -53,7 +53,7 @@ cleanup() {
   git -C "$PROJ" worktree remove --force "$WT" >/dev/null 2>&1
   git -C "$PROJ" branch -D "work/$ID" >/dev/null 2>&1
 }
-trap cleanup EXIT INT TERM
+[ ! -e "$WT" ] && ! hc get "$W" >/dev/null 2>&1 || { echo "RESULT precondition-failed: $W or $WT already exists (leftover of an earlier run)"; exit 1; }
 org() { bash "$ROOT/scripts/org" --as secretary "$@"; }
 # The worker's own events (not the unread cursor: only that file proves who wrote it).
 mine() { cat "$STATE"/events/*/"$W".jsonl 2>/dev/null; }
@@ -63,7 +63,7 @@ TASK="Probe for paddock Issue #58. Change nothing. Run exactly these two command
 2. bash \"\$PADDOCK_ORG\" --as $W report done --task $ID \"probe done\""
 out=$(bash "$ROOT/skills/org-delegate/scripts/org-delegate.sh" --project "$PROJ" --task-id "$ID" --task "$TASK" 2>&1); rc=$?
 echo "$out"
-[ "$rc" -eq 0 ] && echo "RESULT delegate: PASS" || { echo "RESULT delegate: FAIL (exit $rc)"; [ "$rc" -eq 10 ] && KEEP=1; exit 1; }
+if [ "$rc" -eq 0 ]; then echo "RESULT delegate: PASS"; trap cleanup EXIT INT TERM; else echo "RESULT delegate: FAIL (exit $rc)"; exit 1; fi
 echo "RESULT hc-first-msg: INFO $(hc get --json "$W" 2>&1 | tr -d '\n' | sed -n 's/.*"first_message" *: *\({[^}]*}\).*/\1/p')"
 
 t=0
@@ -84,10 +84,10 @@ t=0; while [ "$t" -lt 60 ] && ! mine | grep -q '"kind":"run_completed"'; do t=$(
 [ -n "$(runs)" ] && echo "RESULT in-box: PASS ($(runs))" || echo "RESULT in-box: FAIL"
 
 hc kill "$W" >/dev/null 2>&1; hc rm "$W" >/dev/null 2>&1
-after=$(hc get --json "$W" 2>&1 | tr -d '\n' | cut -c1-200)
-echo "RESULT hc-after-rm: INFO $after"
-gone=; case "$after" in *"first_message"*) ;; *) gone=1 ;; esac
+after=$(hc get --json "$W" 2>&1 | tr -d "\n")
+echo "RESULT hc-after-rm: INFO $(printf %s "$after" | cut -c1-200)"
+gone=; case "$after" in *not_found*) gone=1 ;; esac
 if mine | grep -qF "$line" && [ -n "$(runs)" ]; then
   echo "RESULT after-rm: PASS"
-  [ -n "$gone" ] && echo "RESULT survives-hc: PASS" || echo "RESULT survives-hc: FAIL (hc get still shows first_message after rm)"
+  [ -n "$gone" ] && echo "RESULT survives-hc: PASS" || echo "RESULT survives-hc: FAIL (hc get did not answer not_found after rm)"
 else echo "RESULT after-rm: FAIL (record missing from the file or from list_runs)"; fi
