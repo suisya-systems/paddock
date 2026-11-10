@@ -202,8 +202,9 @@ if grep -qxF "$ME" "$SIB" 2>/dev/null; then sibe=WROTE; echo "RESULT sib-edit: W
 elif [ "$sib" = changed ] && [ "$wc" = no ]; then sibe=CHANGED; echo "RESULT sib-edit: INCONCLUSIVE (SIBLING changed without a known marker)"
 else editstep sib-edit "$er" "$ee"; sibe=$v; fi
 
-m=$(field mount); mo=$(printf %s "$m" | sed -n 's/.*m-own=\([0-9]*\).*/\1/p')
-active=no; { [ "${mo:-0}" -gt 0 ] || [ "$sibb" = SANDBOX ] || [ "$newb" = SANDBOX ]; } && active=yes
+m=$(field mount); mo=$(printf %s "$m" | sed -n 's/.*m-own=\([0-9]*\).*/\1/p'); md=$(printf %s "$m" | sed -n 's/.*m-dir=\([0-9]*\).*/\1/p')
+# A mount of OWN or of the whole decoy folder (the entry widened to its folder) shows the sandbox ran.
+active=no; { [ "${mo:-0}" -gt 0 ] || [ "${md:-0}" -gt 0 ] || [ "$sibb" = SANDBOX ] || [ "$newb" = SANDBOX ]; } && active=yes
 if [ "$ownb" = PASS ] && [ "$sibb" = SANDBOX ] && [ "$newb" = SANDBOX ] && [ "$own" = intact ]; then
   echo "RESULT bash-file-entry: HOLDS (OWN written; SIBLING and NEW refused by the sandbox, files unchanged)"
 elif [ "$ownb" = PASS ] && [ "$active" = yes ] && { [ "$sibb" = WROTE ] || [ "$newb" = WROTE ]; }; then
