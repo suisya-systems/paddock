@@ -14,7 +14,7 @@ Idempotent: a second run starts no second secretary and copies the same files.
 Environment overrides:
   PADDOCK_CORE_TEMPLATES_DIR  herdr-core templates folder
   PADDOCK_APP_MODS_DIR        herdr-app mods folder
-  PADDOCK_BIN_DIR             folder of the org script workers run (absolute;
+  PADDOCK_BIN_DIR             folder of the org script and the worker rules and settings (absolute;
                               default ${XDG_DATA_HOME:-~/.local/share}/paddock/bin)
   PADDOCK_READY_TRIES         seconds to wait for a status (default 15)
   PADDOCK_WORKER_GH_TOKEN_FILE  read-only GitHub token file for workers (default $cfg/paddock/worker-gh-token)
@@ -62,14 +62,22 @@ hc ls >/dev/null 2>&1 || die 5 "cannot reach the herdr core (hc ls failed)"
 
 # 2. Place the template and the mods. Plain copies: re-running changes nothing.
 mkdir -p "$templates" || die 6 "cannot create $templates"
+mkdir -p "$orgbin" || die 6 "cannot create $orgbin"
+# The bin folder must not be the templates folder or inside it: the stale cleanup below would remove
+# the new copies, and hc would list the rules file. Both exist now, so cd -P resolves symlinks and "..".
+pt=$(cd -P "$templates" && pwd) && pb=$(cd -P "$orgbin" && pwd) || die 6 "cannot resolve $templates or $orgbin"
+case "$pb/" in "$pt"/*) die 2 "PADDOCK_BIN_DIR must not be the templates folder or inside it: $orgbin" ;; esac
 cp -f "$root/templates/secretary.md" "$templates/secretary.md" || die 6 "cannot copy the secretary template"
-# The worker template, and the rules and settings files its command names (Q10, Q12): same folder.
-for f in worker.md worker-rules.md worker-settings.json; do
-  cp -f "$root/templates/$f" "$templates/$f" || die 6 "cannot copy $f"
+cp -f "$root/templates/worker.md" "$templates/worker.md" || die 6 "cannot copy the worker template"
+# The org commands (Issue #60), and the worker's rules and settings files its template command names
+# (Q10, Q12): a worker may read this folder and may not write it (worker-settings.json, Issue #128).
+# Not in the templates folder: hc lists every *.md there as a template (Issue #129).
+for f in scripts/org templates/worker-rules.md templates/worker-settings.json; do
+  cp -f "$root/$f" "$orgbin/${f##*/}" || die 6 "cannot copy $f to $orgbin"
 done
-# The org commands (Issue #60): a worker reaches them as $PADDOCK_ORG (set by its template), outside the
-# herdr-core folder its settings deny reading (Issue #128).
-mkdir -p "$orgbin" && cp -f "$root/scripts/org" "$orgbin/org" || die 6 "cannot copy scripts/org to $orgbin"
+# Copies an older org-start placed beside the templates (Issue #129).
+rm -f "$templates/worker-rules.md" "$templates/worker-settings.json" \
+  || die 6 "cannot remove the old worker-rules.md / worker-settings.json from $templates"
 # Q20: a worker will not start without the read-only GitHub token file. Warn only; never read it.
 tokfile=${PADDOCK_WORKER_GH_TOKEN_FILE:-$cfg/paddock/worker-gh-token}
 [ -s "$tokfile" ] || echo "org-start: warning: no read-only GitHub token in $tokfile; workers will refuse to start until you create it (see skills/org-start/SKILL.md)" >&2

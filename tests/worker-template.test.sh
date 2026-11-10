@@ -70,8 +70,8 @@ chmod +x "$stub/claude"
 cfg=$tmp/cfg; mkdir -p "$cfg/paddock"
 launch() { # launch <out file> [extra env...]; runs the header command as hc would, through sh
   local out=$1; shift
-  env -u APPDATA -u PADDOCK_WORKER_GH_TOKEN_FILE -u PADDOCK_CORE_TEMPLATES_DIR \
-      XDG_CONFIG_HOME="$cfg" PATH="$stub:$PATH" CLAUDE_OUT="$out" \
+  env -u APPDATA -u PADDOCK_WORKER_GH_TOKEN_FILE -u PADDOCK_CORE_TEMPLATES_DIR -u PADDOCK_BIN_DIR \
+      XDG_CONFIG_HOME="$cfg" XDG_DATA_HOME="$tmp/data" PATH="$stub:$PATH" CLAUDE_OUT="$out" \
       CLAUDE_CODE_SESSION_ID=abc CLAUDE_CODE_CHILD_SESSION=1 GH_TOKEN=person-write-token "$@" \
       sh -c "$cmd" 2>&1
 }
@@ -90,13 +90,13 @@ gd=$(sed -n 's/^GH_CONFIG_DIR=//p' "$tmp/o2" 2>/dev/null)
 [ -n "$cmd" ] && launch "$tmp/o3" >/dev/null
 [ -n "$gd" ] && [ "$gd" != "$(sed -n 's/^GH_CONFIG_DIR=//p' "$tmp/o3" 2>/dev/null)" ]; check "GH_CONFIG_DIR differs per launch" $?
 grep -qx 'SESSION=unset' "$tmp/o2" 2>/dev/null && grep -qx 'CHILD=unset' "$tmp/o2"; check "session-bound variables are removed before claude" $?
-td=$cfg/herdr-core/templates
-grep -qx "ARG:--append-system-prompt-file" "$tmp/o2" 2>/dev/null && grep -qx "ARG:$td/worker-rules.md" "$tmp/o2"; check "claude gets the rules file next to the templates" $?
-grep -qx "ARG:--settings" "$tmp/o2" 2>/dev/null && grep -qx "ARG:$td/worker-settings.json" "$tmp/o2"; check "claude gets the settings file next to the templates" $?
+td=$tmp/data/paddock/bin # Issue #129: beside the org script, not in the core templates folder
+grep -qx "ARG:--append-system-prompt-file" "$tmp/o2" 2>/dev/null && grep -qx "ARG:$td/worker-rules.md" "$tmp/o2"; check "claude gets the rules file from the paddock bin folder" $?
+grep -qx "ARG:--settings" "$tmp/o2" 2>/dev/null && grep -qx "ARG:$td/worker-settings.json" "$tmp/o2"; check "claude gets the settings file from the paddock bin folder" $?
 # 6c. Overrides.
-printf 'other-token\n' > "$tmp/tok"; mkdir -p "$tmp/tdir"
-[ -n "$cmd" ] && launch "$tmp/o4" PADDOCK_WORKER_GH_TOKEN_FILE="$tmp/tok" PADDOCK_CORE_TEMPLATES_DIR="$tmp/tdir" >/dev/null
-grep -qx 'GH_TOKEN=other-token' "$tmp/o4" 2>/dev/null && grep -qx "ARG:$tmp/tdir/worker-rules.md" "$tmp/o4"; check "PADDOCK_* overrides move the token file and the templates folder" $?
+printf 'other-token\n' > "$tmp/tok"; mkdir -p "$tmp/bdir"
+[ -n "$cmd" ] && launch "$tmp/o4" PADDOCK_WORKER_GH_TOKEN_FILE="$tmp/tok" PADDOCK_BIN_DIR="$tmp/bdir" >/dev/null
+grep -qx 'GH_TOKEN=other-token' "$tmp/o4" 2>/dev/null && grep -qx "ARG:$tmp/bdir/worker-rules.md" "$tmp/o4" && grep -qx "ARG:$tmp/bdir/worker-settings.json" "$tmp/o4"; check "PADDOCK_* overrides move the token file and the rules and settings folder" $?
 : > "$tmp/empty"
 [ -n "$cmd" ] && launch "$tmp/o5" PADDOCK_WORKER_GH_TOKEN_FILE="$tmp/empty" >/dev/null; rc=$?
 [ -n "$cmd" ] && [ "$rc" -ne 0 ] && [ ! -e "$tmp/o5" ]; check "an empty token file also fails the launch" $?
@@ -126,7 +126,7 @@ js 'process.exit(/herdr-app/.test(t(s.sandbox.filesystem&&s.sandbox.filesystem.d
 js 'process.exit(/herdr-core/.test(t(s.sandbox.filesystem&&s.sandbox.filesystem.denyWrite))?0:1)'; check "sandbox denyWrite covers herdr-core (L-N1)" $?
 js 'process.exit(!("defaultMode" in (s.permissions||{}))?0:1)'; check "settings sets no defaultMode (ignored there, Q10)" $?
 
-# 9. org-start places the three files next to the secretary template and warns when the token is missing.
+# 9. org-start places the template with the secretary template, the rules and settings in the bin folder, and warns when the token is missing.
 hcstub=$tmp/hcbin; mkdir -p "$hcstub"
 cat > "$hcstub/hc" <<'EOF3'
 #!/bin/sh
@@ -149,8 +149,9 @@ startrun() { # startrun [extra env...]
 }
 out=$(startrun); rc=$?
 [ "$rc" -eq 0 ]; check "org-start still exits 0 when the token file is missing" $?
-for f in worker.md worker-rules.md worker-settings.json; do
-  [ -f "$here/templates/$f" ] && cmp -s "$here/templates/$f" "$tmp/placed/$f"; check "org-start placed $f" $?
+[ -f "$tpl" ] && cmp -s "$tpl" "$tmp/placed/worker.md"; check "org-start placed worker.md" $?
+for f in worker-rules.md worker-settings.json; do # Issue #129: beside the org script, not with the templates
+  [ -f "$here/templates/$f" ] && cmp -s "$here/templates/$f" "$tmp/placed-bin/$f" && [ ! -e "$tmp/placed/$f" ]; check "org-start placed $f in the bin folder, not the templates folder" $?
 done
 cmp -s "$sec" "$tmp/placed/secretary.md"; check "org-start still places secretary.md" $?
 grep -qi 'warn' <<<"$out" && grep -q "$xdg/paddock/worker-gh-token" <<<"$out"; check "missing token file: warning names the default path" $?
