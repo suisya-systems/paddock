@@ -159,10 +159,28 @@ A terminal that never reported status is never `blocked`, so the rule above does
 
 **What we know.**
 
-- The older Herdr TUI (`herdrdev/herdr`) does not share agents with herdr-core or herdr-app, so its adapter does not carry over. (App docs and the three repositories' descriptions)
-- If Q1 picks option B, renga's client side is reused on top of herdr-core.
+**Draft recommendation (Issue #11; awaiting the owner, not decided).**
 
-**Options.** Declare maintenance mode for both; state that the Herdr adapter is for the older TUI only; archive after paddock replaces them in daily use. The answer depends partly on Q1.
+- **renga: maintenance mode now, archive later.** Only fixes the predecessor needs to keep running; no new features. Archive it when the replacement criterion below is met. Why: paddock does not use it, and the one way it came back (Q1 option B) is closed.
+- **claude-org-runtime: maintenance mode now, with its Herdr adapter stated as for the older TUI only; archive later on the same criterion.** Why: the predecessor still runs on it, and the statement stops anyone from reading the adapter as a route to herdr-core.
+
+**What we know.**
+
+- No paddock file uses either piece: neither name appears in `scripts/`, `skills/`, `templates/`, `mods/`, `layouts/` or `tests/`. Both are on the retired list ([architecture §4](architecture.md#4-where-each-part-goes), "Retired"; [inventory](predecessor-inventory.md) RET-1, GT-9).
+- Q1 is decided as option A; our own TUI is not pursued now ([decision 0003](../decisions/0003-screen-as-app-mods.md), Consequences). So renga's client side is not reused.
+- The older Herdr TUI (`herdrdev/herdr`) does not share agents with herdr-core or herdr-app, so its adapter does not carry over. (App docs and the three repositories' descriptions; README, "What paddock is not")
+- claude-org-ja keeps running as it is (README, "What paddock is not"), and fixes to shared ideas may be made twice until it is wound down ([decision 0001](../decisions/0001-separate-repository.md), Consequences).
+- paddock has run one full loop on a host: request, worker in its own worktree, an approval answered on the screen, completion, a pull request ([prototype 2](prototype-2.md#result), 2026-11-10). That run had no CI and did not merge, and the CI job behind the merge rule is not built ([inventory](predecessor-inventory.md) L-K9, HK-15).
+
+**Options.**
+
+- **Maintenance mode for both.** Cost: a notice in each repository, and fixes keep being made, sometimes twice. Needs nothing new. Feasible: a text change.
+- **State that the Herdr adapter is for the older TUI only.** Applies to claude-org-runtime only. Cost: one line in its documentation. Needs nothing new. Feasible: a text change.
+- **Archive after paddock replaces them in daily use.** Cost: one repository setting each; an archived GitHub repository is read-only and can be unarchived (GitHub Docs, "Archiving repositories"). Needs what does not exist yet: a written replacement criterion and the acceptance CI job. Archiving now is possible but closes the repositories to the fixes the predecessor still needs.
+
+**Not measured:** whether paddock carries the owner's daily work. Proposed criterion and measurement: (1) the merge rule's CI job exists and has passed and blocked one real pull request each; (2) one working week on paddock alone, with neither piece started, covering delegation, review, CI and merge, and every fallback to the predecessor logged; zero fallbacks. Both must hold before archiving.
+
+**What would change the pick.** Q1 reopened toward our own TUI (renga's client comes back into play); a user of the older Herdr TUI or of claude-org-runtime outside the predecessor (none is recorded in `docs/design/`); paddock stalling (maintenance stays, no archive).
 
 **Decides.** The owner.
 
