@@ -18,7 +18,7 @@ Usage: org [--as <id>] <command> [args]
   wait [--timeout S] [--children]               hold until you have unread mail (prints
                                                 {"reason":"mail","unread":N}; marks nothing read)
                                                 or S seconds pass ({"reason":"timeout"}; default
-                                                $PADDOCK_WAIT_TIMEOUT, else 170); --children also
+                                                $PADDOCK_WAIT_TIMEOUT, else 60); --children also
                                                 ends on hc wait --children any's children line
   doc get <name>                                print a core document's value
   doc set <name>                                set it from stdin (secretary only)
@@ -168,7 +168,7 @@ case "$cmd" in
     # Issue #140: the secretary ends its turns here while work or approvals are in progress,
     # so a mailbox message (the card's ANSWER, a worker's report) starts its next turn.
     # ponytail: polls the files every PADDOCK_WAIT_POLL s; a file-change wait if they grow large.
-    timeout=${PADDOCK_WAIT_TIMEOUT:-170}; children=
+    timeout=${PADDOCK_WAIT_TIMEOUT:-60}; children=
     while [ $# -gt 0 ]; do
       case "$1" in
         --timeout) [ $# -ge 2 ] || die 2 "--timeout needs a value"; timeout=$2; shift 2 ;;
