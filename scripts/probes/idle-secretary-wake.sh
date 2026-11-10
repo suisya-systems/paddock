@@ -89,7 +89,7 @@ state_of() { hc get --json "$1" 2>/dev/null | tr -d '\n' | grep -Eo '"status": *
 # on the same host is not counted.
 wait_pids() {
   ps -eo pid=,ppid=,args= 2>/dev/null | awk '/org --as secretary wait/ && !/awk/ { m[$1] = $2 } END { for (p in m) if (!(m[p] in m)) print p }' \
-    | while read -r p; do tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -qx "PADDOCK_STATE_DIR=$PADDOCK_STATE_DIR" && echo "$p"; done
+    | while read -r p; do tr '\0' '\n' 2>/dev/null < "/proc/$p/environ" | grep -qx "PADDOCK_STATE_DIR=$PADDOCK_STATE_DIR" && echo "$p"; done
 }
 
 echo "== versions"; hc --version 2>&1; claude --version 2>&1
