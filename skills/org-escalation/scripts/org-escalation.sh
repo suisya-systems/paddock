@@ -169,7 +169,7 @@ case $cmd in
     valid_id "$wtask" || die 5 "entry $id has no usable task_id"
     secretary send_message "w-$wtask" "Answer to your question ($id): $t" >/dev/null \
       || die 8 "the answer could not be put in the mailbox of w-$wtask; entry $id kept"
-    update remove "$id" 2>/dev/null || die 9 "answer sent to w-$wtask but entry $id could not be removed; run: remove --id $id"
+    ( update remove "$id" ) || die 9 "answer sent to w-$wtask but entry $id could not be removed; run: remove --id $id"
     echo "ANSWERED $id -> w-$wtask" ;;
 
   remove)
