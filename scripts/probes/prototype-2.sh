@@ -154,7 +154,7 @@ EOF
   grep -Eo -- '--(append-system-prompt-file|settings) "[^"]*"' "$ROOT/templates/worker.md" | sed 's/^/   /'
   { [ -s "${PADDOCK_WORKER_GH_TOKEN_FILE:-$cfg/../paddock/worker-gh-token}" ] \
     && echo "RESULT worker-token: PASS (file exists, not read)" || echo "RESULT worker-token: FAIL (no read-only token file; see skills/org-start/SKILL.md, Worker token)"; } | tee -a "$RUN/prepare.txt"
-  cat <<EOF
+  tee "$RUN/steps.txt" <<EOF
 
 == Run $T prepared ($RUN). Do these in order:
 
@@ -296,7 +296,7 @@ if [ "$phase" = watch ]; then
   for st in 1-secretary 1-role-files 3-worktree 4-worker 4-worker-report 4-work-entry 5-blocked 5-approval \
     6-card-answer 7-secretary-read 7-forwarded 7-approval-removed 8-done 8-secretary-read 9-pull-request 9-ci-record; do
     if [ -f "$RUN/res.$st" ]; then cat "$RUN/res.$st"; grep -q ': PASS' "$RUN/res.$st" || rc=1
-    else echo "RESULT $st: NO DATA (not seen while watch ran, or not reached)"; rc=1; fi
+    else echo "RESULT $st: NO DATA (not seen while watch ran, or not reached)"; [ "$st" = 9-ci-record ] || rc=1; fi
   done
   touches=$(grep -c "$(printf '\ttouch\t')" "$RUN/notes.tsv" 2>/dev/null); found=$(grep -c "finding:" "$RUN/watch.log" 2>/dev/null)
   if [ "${touches:-0}" -eq 0 ] && [ "${found:-0}" -eq 0 ]; then echo "RESULT 10-no-touch: PASS (no touch noted, no prompt seen)"
@@ -322,7 +322,7 @@ if [ "$phase" = collect ]; then
     echo "== status log"; cat "$RUN/watch.log" 2>/dev/null
     echo "== role files (path, cksum)"; cat "$RUN/role-files.txt" 2>/dev/null
     echo "== $BR"; git -C "$PROJECT" log --oneline "$BASE..$BR" 2>&1
-    echo "== pull request"; [ -f "$RUN/pr.number" ] && gh pr view "$(cat "$RUN/pr.number")" --repo "$REPO" --json number,url,state,headRefName,baseRefName 2>&1
+    echo "== pull request"; [ -f "$RUN/pr.number" ] && gh pr view "$(cat "$RUN/pr.number")" --repo "$REPO" --json number,url,state,headRefName,baseRefName,createdAt 2>&1
     echo "== hc events lines: $(wc -l < "$RUN/hc-events.jsonl" 2>/dev/null || echo 0) (in $RUN/hc-events.jsonl)"
   } > "$E/summary.txt" 2>&1
   cat "$E/summary.txt"
@@ -333,7 +333,8 @@ fi
 # cleanup: only what this run made. A terminal goes only when its created_ms is the one watch recorded.
 end_term() { # end_term <name> <recorded created_ms file>
   c=$(cat "$2" 2>/dev/null); [ -n "$c" ] || { echo "keep $1: never recorded by watch"; return 0; }
-  [ "$(hcj "$1" | field created_ms)" = "$c" ] || { echo "keep $1: not the terminal this run saw (or gone)"; return 0; }
+  [ -n "$(hcj "$1")" ] || { echo "gone $1: already removed (by the secretary or by hand)"; return 0; }
+  [ "$(hcj "$1" | field created_ms)" = "$c" ] || { echo "keep $1: not the terminal this run saw"; return 0; }
   hc kill "$1" >/dev/null 2>&1; hc rm "$1" >/dev/null 2>&1 && echo "removed terminal $1" || echo "could not remove $1"
 }
 end_term "$W" "$RUN/worker.created"

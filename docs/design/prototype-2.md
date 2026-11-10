@@ -1,6 +1,6 @@
 # Prototype 2
 
-Status: prototype, a host run (Issue #59). [Prototype 1](prototype-1.md) showed `org-state` on the screen. This one runs the first full loop through the parts built since: a person types a request to the secretary, a worker does one small task in its own worktree, asks one question that the person answers on the screen, finishes, and a pull request exists at the end. Its goal clauses are G1 (start one worker from the secretary template and get its completion back to the secretary) and G3 (approvals appear on the screen and people answer from there).
+Status: prototype, a host run (Issue #59), run on 2026-11-10: the loop held ([Result](#result)). [Prototype 1](prototype-1.md) showed `org-state` on the screen. This one runs the first full loop through the parts built since: a person types a request to the secretary, a worker does one small task in its own worktree, asks one question that the person answers on the screen, finishes, and a pull request exists at the end. Its goal clauses are G1 (start one worker from the secretary template and get its completion back to the secretary) and G3 (approvals appear on the screen and people answer from there).
 
 Nothing in the product changes for this prototype. It adds this document and the host runbook [`scripts/probes/prototype-2.sh`](../../scripts/probes/prototype-2.sh). The result of the run is recorded below, under [Result](#result).
 
@@ -44,7 +44,7 @@ Who acts: **P** is the person (on this organization's host, the secretary of the
 | 6 | Answered on the screen | P clicks Yes | | `6-card-answer`: `ANSWER <id> yes` from `person` to `secretary` in the mailbox. |
 | 7 | The answer reaches the worker | S | yes | `7-secretary-read`: the secretary's read mark (`ack`) covers the `ANSWER`. `7-forwarded`: a message `Answer to your question (<id>)` from the secretary to the worker. `7-approval-removed`: the entry left `org-state`. |
 | 8 | The worker finishes, the completion reaches the secretary | W, S | yes | `8-done`: the worker's `run_completed`, and `work/<task_id>` has a commit touching `paddock-proto2.txt`. `8-secretary-read`: the secretary's `ack` covers it. |
-| 9 | A pull request exists | S, `org-pull-request` | yes | `9-pull-request`: a PR with head `work/<task_id>` on the named repository (the runbook reads it with `gh`, read only). `9-ci-record`: a `ci_completed` line for the task, or NO DATA with the exit code the secretary reported. |
+| 9 | A pull request exists | S, `org-pull-request` | yes | `9-pull-request`: a PR with head `work/<task_id>` on the named repository (the runbook reads it with `gh`, read only). `9-ci-record`: a `ci_completed` line for the task, or NO DATA with the exit code the secretary reported (NO DATA here alone does not fail `watch`). |
 | 10 | Nobody touched a terminal | R | | `10-no-touch`: no `note --touch`, and neither the worker nor the secretary showed the `blocked` status (a Claude Code prompt or dialog) during the watch. |
 
 The runbook sees the mailbox from its files, which last; it sees `org-state` and the terminals' status only while `watch` runs, every 5 seconds, so `watch` starts before the request is typed. A step it did not see is NO DATA, never PASS. `watch` also keeps `hc events --json` in the run folder.
@@ -64,7 +64,7 @@ These are known before the run. The runbook shows them as they happen, with a `N
 
 From the paddock repository root on the host where `hc`, `herdr-app`, `claude` and `gh` run:
 
-1. In a login shell (no agent above it; its first `hc` call may start the core, which inherits that shell's environment): `sh scripts/probes/prototype-2.sh prepare --project <repo> --repo OWNER/NAME [--base main]`. It checks step 0, saves the run under `${XDG_STATE_HOME:-~/.local/state}/paddock-proto2/<task_id>/`, and prints the setup commands and the request to type. It starts nothing itself.
+1. In a login shell (no agent above it; its first `hc` call may start the core, which inherits that shell's environment): `sh scripts/probes/prototype-2.sh prepare --project <repo> --repo OWNER/NAME [--base main]`. It checks step 0, saves the run under `${XDG_STATE_HOME:-~/.local/state}/paddock-proto2/<task_id>/`, and prints the setup commands and the request to type, which it also keeps in `steps.txt` there. It starts nothing itself.
 2. Do the printed setup: `org-start` from that login shell, then the layout and the `org-cockpit` mod as in the [README](../../README.md#the-screen). Record the screen with `note`.
 3. Start `sh scripts/probes/prototype-2.sh watch --task-id <task_id>` and keep it running. An agent may run it.
 4. Type the printed request into the secretary's pane. Click Yes on the card when `watch` says so. Answer nothing else; if you must, record it: `note --task-id <task_id> --touch "<what and why>"`.
@@ -84,8 +84,48 @@ No local paths and no company matters go into this document.
 
 ## Result
 
-Not run yet. The run fills this section: the steps that held, then the table of touches and failures.
+Run 2026-11-10, task `p2-202611101453`, runbook at the commit that added the #140 and #127 expectations. Versions: hc 0.1.18, Claude Code 2.1.322, gh 2.96.0; herdr-app ran on Windows with the core in WSL, and its version was not recorded (`collect` ran in WSL, where the Windows binary does not run). The person was the secretary of the organization that ran the runbook: it typed the request into the secretary's conversation (with `hc send`, the same input the pane takes) and clicked Yes on the card with an OS-level mouse click.
+
+**The loop held.** Every step passed, with no touch of a terminal: the person acted only in the secretary's conversation and on the card. G1 and G3 hold for this one task.
+
+| Step | `RESULT` |
+| --- | --- |
+| 0 | `preconditions`, `notes-off`, `worker-token`: PASS |
+| 1 | `1-secretary`, `1-role-files` (the two files the template names, from the bin folder): PASS. Layout open with the secretary in the centre (note, screenshot). |
+| 3, 4 | `3-worktree`, `4-worker`, `4-worker-report`, `4-work-entry`: PASS |
+| 5 | `5-blocked`, `5-approval`: PASS. The entry had `answer_in: secretary`; the card showed "The secretary is asking you", the question, Yes (filled) and No. |
+| 6, 7 | `6-card-answer`, `7-secretary-read`, `7-forwarded`, `7-approval-removed`: PASS |
+| 8 | `8-done`, `8-secretary-read`: PASS. One commit adding `paddock-proto2.txt` on the work branch. |
+| 9 | `9-pull-request`: PASS, PR #1 in the throwaway repository, open, not merged. `9-ci-record`: NO DATA; the throwaway repository has no CI workflow, so `org-pull-request` had no run to record. |
+| 10 | `10-no-touch`: PASS. Neither terminal showed `blocked` during the watch. |
+
+The secretary's status stayed `working` from the request until the task was over: it ended its turns in `org wait` (Issue #140) and told the person, while the card waited, that it was waiting for the card. After the task it removed the worker's terminal and the `work` entry itself.
+
+Delays, from the mailbox, `org-state` and the status log (UTC):
+
+| From | To | Delay |
+| --- | --- | --- |
+| Request typed, 14:54:47 | Worker terminal `working`, 14:55:05 | 18 s (its own `run_started` 14:55:12) |
+| Worker's `run_blocked`, 14:55:18 | Approval written, 14:55:31 | 13 s (seen in `org-state` at the next poll, 14:55:36) |
+| Card shown, 14:55:31 | Click that sent `ANSWER`, 15:05:05 | 9 min 34 s, the operator's tooling (below), not the loop |
+| Click, 15:05:05 | Secretary's `ack`, 15:05:10 | 5 s |
+| Click | Answer forwarded to the worker, 15:05:18; approval removed by 15:05:23 | 13 s; 18 s |
+| Worker's `run_completed`, 15:05:39 | Secretary's `ack`, 15:05:45 | 6 s |
+| `run_completed` | PR opened | about a minute, as the secretary reported; the evidence has no PR time (`collect` now records `createdAt`). The task was closed (worker terminal and `work` entry removed) by 15:07:29, 1 min 50 s after `run_completed`. |
+
+Without the operator's delay the loop took about three minutes from the request to a closed task.
+
+Touches and failures:
 
 | Step | What happened | Cause | Issue |
 | --- | --- | --- | --- |
-| | | | |
+| 6 | The first click on Yes (14:56:19) did not reach the card; the second (15:05:05) did. | The operator's OS-level click went to a window that was not in the foreground. Not a touch of a terminal and not the loop: the card took the answer when it got the click. | None |
+| 9 | `9-ci-record` NO DATA. | The throwaway repository has no CI workflow; expected (see [The fixture](#the-fixture)). | None |
+| Runbook | `prepare` printed the request but did not keep it, so it could not be read back later. | Runbook gap. Fixed: `prepare` keeps its steps and the request in `steps.txt` in the run folder. | None |
+| Runbook | `cleanup` said "keep w-...: not the terminal this run saw (or gone)" for a worker terminal the secretary had already removed. | Runbook message. Fixed: a terminal that is gone is reported as gone. | None |
+| Runbook | `watch` exited 1 only because `9-ci-record` was NO DATA. | Runbook exit code. Fixed: a missing CI record alone no longer fails `watch`; the step still shows NO DATA. | None |
+| Runbook | herdr-app's version was not recorded. | `collect` runs where the core runs; a Windows herdr-app is not on that side. Record it by hand next time. | None |
+
+Not exercised by this run: a worker blocked on its own permission prompt (the card's `answer_in: worker` path, Issue #127), the workers folder's first trust dialog (Q13; the folder was already trusted) and an answer arriving while the secretary is inside `org-pull-request`'s CI wait (the known gap of #140; there was no CI).
+
+New issues for the secretary to file: none. Every finding is either outside the loop or a runbook gap fixed with this record.
