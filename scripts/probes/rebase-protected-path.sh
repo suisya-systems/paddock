@@ -220,7 +220,11 @@ layer() {
 }
 nostop=0; stops=0; nodata=0; ctl=nodata; n=0
 for p in "$P0" "$P1" "$P2" "$P3" "$P4"; do
-  tx=$(field c$n-text); verdict "c$n ($p)" "$(field c$n-ran)" "$(field c$n-rc)" "$tx"
+  tx=$(field c$n-text)
+  # A case counts only if the reset after the previous case succeeded (rc 0); else it did not start from the common point.
+  if [ "$n" -gt 0 ] && [ "$prev_reset" != 0 ]; then V=nodata; echo "RESULT c$n ($p): NO DATA (the reset after c$((n - 1)) did not report exit 0: '$prev_reset'; this case may not have started from the common point)"
+  else verdict "c$n ($p)" "$(field c$n-ran)" "$(field c$n-rc)" "$tx"; fi
+  prev_reset=$(field c$n-reset)
   echo "  state-after-rebase: $(field c$n-state); abort-rc: $(field c$n-abort); reset-rc: $(field c$n-reset)"
   layer "layer-c$n" "$tx"
   if [ "$n" -eq 0 ]; then ctl=$V
