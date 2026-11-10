@@ -144,7 +144,7 @@ startrun() { # startrun [extra env...]
   env -u APPDATA -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID \
       -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u PADDOCK_WORKER_GH_TOKEN_FILE \
       STUB="$tmp/stubstate" PATH="$hcstub:$PATH" XDG_CONFIG_HOME="$xdg" \
-      PADDOCK_CORE_TEMPLATES_DIR="$tmp/placed" PADDOCK_APP_MODS_DIR="$tmp/mods" PADDOCK_READY_TRIES=2 \
+      PADDOCK_CORE_TEMPLATES_DIR="$tmp/placed" PADDOCK_APP_MODS_DIR="$tmp/mods" PADDOCK_BIN_DIR="$tmp/placed-bin" PADDOCK_READY_TRIES=2 \
       "$@" bash "$start" 2>&1
 }
 out=$(startrun); rc=$?

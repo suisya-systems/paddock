@@ -14,6 +14,8 @@ Idempotent: a second run starts no second secretary and copies the same files.
 Environment overrides:
   PADDOCK_CORE_TEMPLATES_DIR  herdr-core templates folder
   PADDOCK_APP_MODS_DIR        herdr-app mods folder
+  PADDOCK_BIN_DIR             folder of the org script workers run (absolute;
+                              default ${XDG_DATA_HOME:-~/.local/share}/paddock/bin)
   PADDOCK_READY_TRIES         seconds to wait for a status (default 15)
   PADDOCK_WORKER_GH_TOKEN_FILE  read-only GitHub token file for workers (default $cfg/paddock/worker-gh-token)
   PADDOCK_SECRETARY_NAME      terminal name of the secretary (default secretary)
@@ -49,6 +51,9 @@ cfg=${XDG_CONFIG_HOME:-$HOME/.config}
 [ -n "${APPDATA:-}" ] && cfg=$APPDATA # Windows (Git Bash)
 templates=${PADDOCK_CORE_TEMPLATES_DIR:-$cfg/herdr-core/templates}
 mods=${PADDOCK_APP_MODS_DIR:-$cfg/herdr-app/mods}
+# Issue #128: the org script goes where a worker may read it and may not write (see worker-settings.json).
+orgbin=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}
+case "$orgbin" in /*) ;; *) die 2 "PADDOCK_BIN_DIR must be an absolute path: $orgbin" ;; esac
 tries=${PADDOCK_READY_TRIES:-15}
 name=${PADDOCK_SECRETARY_NAME:-secretary} # terminal name only; the template stays "secretary"
 
@@ -62,8 +67,9 @@ cp -f "$root/templates/secretary.md" "$templates/secretary.md" || die 6 "cannot 
 for f in worker.md worker-rules.md worker-settings.json; do
   cp -f "$root/templates/$f" "$templates/$f" || die 6 "cannot copy $f"
 done
-# The org commands (Issue #60): a worker runs in its own worktree, so it reaches them as $PADDOCK_ORG (set by its template).
-cp -f "$root/scripts/org" "$templates/org" || die 6 "cannot copy scripts/org"
+# The org commands (Issue #60): a worker reaches them as $PADDOCK_ORG (set by its template), outside the
+# herdr-core folder its settings deny reading (Issue #128).
+mkdir -p "$orgbin" && cp -f "$root/scripts/org" "$orgbin/org" || die 6 "cannot copy scripts/org to $orgbin"
 # Q20: a worker will not start without the read-only GitHub token file. Warn only; never read it.
 tokfile=${PADDOCK_WORKER_GH_TOKEN_FILE:-$cfg/paddock/worker-gh-token}
 [ -s "$tokfile" ] || echo "org-start: warning: no read-only GitHub token in $tokfile; workers will refuse to start until you create it (see skills/org-start/SKILL.md)" >&2

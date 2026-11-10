@@ -15,6 +15,7 @@
       "Edit(~/.config/herdr-core/**)",
       "Edit(~/.config/herdr-app/**)",
       "Edit(~/.local/state/herdr-core/**)",
+      "Edit(~/.local/share/paddock/**)",
       "Edit(~/.claude/settings.json)",
       "Edit(.claude/settings*.json)"
     ]
@@ -33,7 +34,8 @@
       "denyWrite": [
         "~/.config/herdr-core",
         "~/.config/herdr-app",
-        "~/.local/state/herdr-core"
+        "~/.local/state/herdr-core",
+        "~/.local/share/paddock"
       ]
     }
   }
