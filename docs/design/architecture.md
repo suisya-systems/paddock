@@ -119,7 +119,7 @@ An approval is one of two kinds, and its `answer_in` field says which, so the ca
 1. The worker asks the secretary through the mailbox, or its terminal reports `blocked`; the secretary adds an `org-state.approvals` entry (`task_id`, `question`, `asked_at`, `answer_in`).
 2. The mod shows the entry as a card, and the tile as "Needs you" when the terminal is blocked. An entry without a `question` shows its id and task instead of a blank line.
 3. The person answers as its kind says. For `secretary`, the card's answer is one mailbox message, `org --as person send_message secretary "ANSWER <approval id> yes|no"`, run on the secretary's machine; the card never writes `org-state` ([L-N8](predecessor-inventory.md)). It sends one answer per approval, then shows it as a quiet line and the next approval as the card.
-4. The secretary passes the answer on to the worker's mailbox (`org-escalation answer`), or acts on it when the question was its own (then `remove`), and removes the entry; for a prompt it removes it once the terminal is no longer blocked. The card disappears on the next refresh.
+4. For a question, the secretary passes the answer on to the worker's mailbox and removes the entry (`org-escalation answer`), or, when the question was its own, acts on it and runs `remove`. For a prompt it runs `remove` once the terminal is no longer blocked. The card disappears on the next refresh.
 
 `hc send` refuses a blocked terminal unless `--force`; `hc keys` has no such refusal, so for it the rule is the secretary's template only.
 
