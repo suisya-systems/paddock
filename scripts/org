@@ -96,8 +96,9 @@ excl() { local r; set -C; { printf '%s\n' "$2" > "$1"; } 2>/dev/null; r=$?; set 
 # append <kind> <to> <task_id> <text>: one line in this id's own file. A lock per id keeps seq
 # unique and increasing when one agent runs commands in parallel (Issue #145). The lock is the
 # folder <lock> holding the file <lock>/pid: a writer holds it only when its mkdir succeeded AND
-# it created <lock>/pid itself with excl. mkdir alone is not trusted: some mkdir builds report
-# success to the loser of a race (seen on a GitHub ubuntu runner). A waiter never breaks a lock
+# it created <lock>/pid itself with excl. mkdir alone is not trusted: uutils coreutils 0.10.0
+# mkdir (a GitHub ubuntu runner, 2026-11) reported success to the loser of a race for the same
+# folder; GNU coreutils 9.4 mkdir was not seen to do so. A waiter never breaks a lock
 # whose holder is alive: it breaks one only when the recorded pid is dead, holding the guard
 # file <lock>.break, and only if the pid it re-reads there is still that dead one. A lock with no
 # pid recorded (holder killed right after mkdir) or a .break left behind is never broken: the

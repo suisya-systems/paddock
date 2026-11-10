@@ -1,7 +1,8 @@
 #!/bin/bash
-# Issue #145, second cause: on a GitHub ubuntu runner, mkdir reported success to the loser of a
-# race for the same folder (check, then create; a failed create counted as success when the
-# folder was there). A mkdir stub on PATH does the same; parallel sends must still get 1..8.
+# Issue #145, second cause: on a GitHub ubuntu runner, uutils coreutils 0.10.0 mkdir reported
+# success to the loser of a race for the same folder (check, then create; a failed create counted
+# as success when the folder was there). A mkdir stub on PATH does the same; parallel sends from
+# one id must still get 1..8.
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 script=$here/scripts/org
