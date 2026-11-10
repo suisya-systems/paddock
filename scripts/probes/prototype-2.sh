@@ -146,7 +146,7 @@ EOF
   nl=$(grep -rhs -E '^[[:space:]]*notes[[:space:]]*=' "$cfg" 2>/dev/null | head -n 1)
   case "$nl" in *false*) echo "RESULT notes-off: PASS ($nl)" ;;
     *) echo "RESULT notes-off: FAIL (no 'notes = false' under $cfg; set it before the run, decision 0002; a note typed into the secretary counts as a touch)" ;; esac
-  # Role file paths, read from the worker template now (their placement is moving, Issue #129).
+  # Role file paths, read from the worker template now (Issue #129 moved them once; read, do not assume).
   echo "== worker template names these role files (checked again by watch once org-start has placed them):"
   grep -Eo -- '--(append-system-prompt-file|settings) "[^"]*"' "$ROOT/templates/worker.md" | sed 's/^/   /'
   [ -s "${PADDOCK_WORKER_GH_TOKEN_FILE:-$cfg/../paddock/worker-gh-token}" ] \
@@ -217,9 +217,10 @@ if [ "$phase" = watch ]; then
     if [ -n "$s" ] && [ ! -f "$RUN/secretary.created" ]; then
       hcj secretary | field created_ms > "$RUN/secretary.created"
       res 1-secretary PASS "status $s"
-      # role files, read from the template org-start placed (Issue #129 moves them)
+      # role files, read from the template org-start placed: its $td (templates) and $bd (bin folder) expanded here
       td=${PADDOCK_CORE_TEMPLATES_DIR:-${APPDATA:-${XDG_CONFIG_HOME:-$HOME/.config}}/herdr-core/templates}
-      miss=; for p in $(grep -Eo -- '--(append-system-prompt-file|settings) "[^"]*"' "$td/worker.md" 2>/dev/null | sed 's/^[^"]*"//; s/"$//; s#\$td#'"$td"'#'); do
+      bd=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}
+      miss=; for p in $(grep -Eo -- '--(append-system-prompt-file|settings) "[^"]*"' "$td/worker.md" 2>/dev/null | sed 's/^[^"]*"//; s/"$//; s#\$td#'"$td"'#; s#\$bd#'"$bd"'#'); do
         [ -f "$p" ] && echo "$p $(cksum < "$p")" >> "$RUN/role-files.txt" || miss="$miss $p"; done
       [ -s "$RUN/role-files.txt" ] && [ -z "$miss" ] && res 1-role-files PASS "$(wc -l < "$RUN/role-files.txt" | tr -d ' ') files placed" \
         || res 1-role-files FAIL "missing or unresolved:${miss:- none found in $td/worker.md}"
