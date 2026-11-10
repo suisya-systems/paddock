@@ -61,7 +61,8 @@ ROOT=$(pwd)
 [ -f "$ROOT/scripts/org" ] && [ -f "$ROOT/templates/worker.md" ] || die 2 "run from the paddock repository root"
 ORG="$ROOT/scripts/org"
 STATE=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
-EVDIRS="$STATE/events ${PADDOCK_EVENTS_DIR:-}" # mailbox lines; org-pull-request's ci_completed line
+# Mailbox lines are under $STATE; org-pull-request writes ci_completed under its own events folder.
+evdirs() { printf '%s\n' "$STATE/events" "${PADDOCK_EVENTS_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock/events}" | sort -u; }
 RUNS=${XDG_STATE_HOME:-$HOME/.local/state}/paddock-proto2
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 one_line() { tr -d '\n'; }
@@ -126,7 +127,8 @@ if [ "$phase" = prepare ]; then
   hc get --json secretary >/dev/null 2>&1 && die 6 "a terminal named secretary exists; the run starts the secretary fresh from the template (hc kill / hc rm it, if it is yours to end)"
   hc get --json "$W" >/dev/null 2>&1 && die 6 "a terminal named $W exists"
   hc ls 2>/dev/null | grep -q "task_id=$T" && die 6 "a terminal labelled task_id=$T exists"
-  os=$(orgstate)
+  os=$(bash "$ORG" --as secretary doc get org-state 2>&1) || die 6 "cannot read org-state, so the run cannot know it is free: $os"
+  os=$(printf '%s' "$os" | one_line)
   printf '%s' "$os" | grep -Eq '"task_id"' && die 6 "org-state holds other work or approvals; the run needs the organization to itself (org-state: $os)"
   [ -d "$workers" ] || echo "prototype-2: note: $workers does not exist yet; org-delegate creates it, and its first worker meets the folder-trust dialog once (Q13)" >&2
   mkdir -p "$RUN" || die 6 "cannot create $RUN"
@@ -178,7 +180,7 @@ fi
 
 # ---- helpers on the mailbox (all months; only lines since the run started)
 lines() {
-  for d in $EVDIRS; do
+  evdirs | while IFS= read -r d; do
     for id in secretary person "$W"; do cat "$d"/*/"$id".jsonl 2>/dev/null; done
   done | awk -v s="$START" 'match($0, /"ts":"[^"]*"/) { if (substr($0, RSTART + 6, RLENGTH - 7) >= s) print }'
 }
