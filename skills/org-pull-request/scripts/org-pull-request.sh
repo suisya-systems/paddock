@@ -11,7 +11,7 @@ Usage: org-pull-request.sh --title TITLE (--body-file FILE | --body TEXT) [optio
 
 Pushes the worktree's branch to origin, opens a PR, watches its CI run as a background
 child (hc run --bg ... gh run watch --exit-status, then hc wait), appends a ci_completed
-line to the secretary's events file, then acts by approval mode.
+line to the secretary's history with scripts/org, then acts by approval mode.
 
 Options:
   --worktree DIR     the worker's worktree (default: current directory)
@@ -24,7 +24,8 @@ Options:
   -h, --help         this text
 
 Environment overrides:
-  PADDOCK_EVENTS_DIR  events folder (default ${XDG_STATE_HOME:-~/.local/state}/paddock/events)
+  PADDOCK_STATE_DIR   scripts/org's state folder; the line goes to its events/ (default
+                      ${XDG_STATE_HOME:-~/.local/state}/paddock)
   PADDOCK_RUN_TRIES   tries to find the CI run (default 10)
   PADDOCK_RUN_SLEEP   seconds between tries (default 6)
 
@@ -101,17 +102,12 @@ hc run --bg --rm --no-notify --name "$name" -- gh run watch "$run" --repo "$repo
 res=$(hc wait "$name" 2>&1 | tr -d '\n')
 code=$(printf '%s' "$res" | sed -n 's/.*"exit_code": *\([0-9][0-9]*\).*/\1/p')
 [ -n "$code" ] || die 8 "no integer exit_code in the hc wait answer: $res"
-[ "$code" -eq 0 ] && concl=success || concl=failure
 
-# 4. ci_completed (decision 0004: events/<YYYY-MM>/<writer>.jsonl, own seq, UTC ts)
-evdir=${PADDOCK_EVENTS_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock/events}/$(date -u +%Y-%m)
-evfile=$evdir/secretary.jsonl
-mkdir -p "$evdir" || die 12 "cannot create $evdir"
-seq=$(( $( [ -f "$evfile" ] && wc -l < "$evfile" || echo 0 ) + 1 ))
-tj=; [ -z "$task" ] || tj=",\"task_id\":\"$task\""
-printf '{"seq":%d,"ts":"%s","kind":"ci_completed","writer":"secretary"%s,"pr":%d,"sha":"%s","run_id":%d,"exit_code":%d,"conclusion":"%s"}\n' \
-  "$seq" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$tj" "$pr" "$sha" "$run" "$code" "$concl" >> "$evfile" \
-  || die 12 "cannot write $evfile"
+# 4. ci_completed through scripts/org (Issue #168): the secretary's folder, seq and lock.
+org=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/org
+targs=(); [ -z "$task" ] || targs=(--task "$task")
+bash "$org" --as secretary ci_completed --pr "$pr" --sha "$sha" --run-id "$run" --exit-code "$code" "${targs[@]}" \
+  || die 12 "the ci_completed line could not be written (scripts/org --as secretary ci_completed)"
 
 [ "$code" -eq 0 ] || die 9 "CI failed on $sha (exit_code $code, run $run); PR $url"
 

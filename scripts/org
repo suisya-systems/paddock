@@ -14,6 +14,9 @@ Usage: org [--as <id>] <command> [args]
   set_summary <text>                            say what you are doing (shown by list_runs)
   report <start|done|blocked> --task <task_id> [--to <id>] <text>
                                                 write a run record and tell <to> (default: secretary)
+  ci_completed --pr N --sha SHA --run-id N --exit-code N [--task ID]
+                                                record a watched CI run (org-pull-request writes
+                                                it as secretary; conclusion from the exit code)
   list_runs                                     latest state per task, and each agent's summary
   wait [--timeout S] [--children]               hold until you have unread mail (prints
                                                 {"reason":"mail","unread":N}; marks nothing read)
@@ -53,7 +56,7 @@ cmd=${1:-}; [ $# -eq 0 ] || shift
 
 valid_id() { case "$1" in ''|-*|*[!a-z0-9_-]*) return 1 ;; esac; }
 case "$cmd" in
-  send_message|check_messages|set_summary|report|list_runs|doc|wait) ;;
+  send_message|check_messages|set_summary|report|ci_completed|list_runs|doc|wait) ;;
   *) echo "org: unknown command: $cmd" >&2; usage >&2; exit 2 ;;
 esac
 valid_id "$id" || die 2 "no valid id: give --as <id> or set PADDOCK_ORG_ID (lowercase letters, digits, _ and -)"
@@ -77,23 +80,28 @@ json_esc() {
     | awk 'NR>1{printf "%s","\\n"} {printf "%s",$0}'
 }
 
-# next_seq: one more than the highest last seq over this id's files (continues across months;
-# a writer that took its month before the lock may write to an older file).
+# next_seq: one more than the highest seq on any line of this id's files (continues across
+# months; a writer that took its month before the lock may write to an older file). Every line,
+# not only the last: a ci_completed line from before Issue #168 can end a file with a lower seq.
+# ponytail: reads all of the id's history per write; keep a high-water file if it grows large.
 next_seq() {
-  local f s max=0
-  for f in "$state"/events/*/"$id".jsonl; do
-    [ -f "$f" ] || continue
-    s=$(tail -n 1 "$f" | sed -n 's/^{"seq":\([0-9][0-9]*\),.*/\1/p')
-    [ "${s:-0}" -le "$max" ] || max=$s
-  done
-  echo $((max + 1))
+  cat "$state"/events/*/"$id".jsonl 2>/dev/null \
+    | awk 'match($0, /^\{"seq":[0-9]+,/) { s = substr($0, 8, RLENGTH - 8) + 0; if (s > m) m = s } END { print m + 1 }'
 }
 
 # excl <file> <text>: create <file> holding <text> only if it does not exist yet. The shell's own
 # noclobber open (O_EXCL) decides, so no external command's exit status is trusted for it.
 excl() { local r; set -C; { printf '%s\n' "$2" > "$1"; } 2>/dev/null; r=$?; set +C; return "$r"; }
 
-# append <kind> <to> <task_id> <text>: one line in this id's own file. A lock per id keeps seq
+# append <kind> <to> <task_id> <text>: one message-shaped line in this id's own file.
+append() {
+  local body
+  body=$(printf '%s\n' "$4" | json_esc)
+  [ "${#body}" -le 32768 ] || die 2 "text is longer than 32 KiB"
+  put "\"ts\":\"$now\",\"from\":\"$id\",\"kind\":\"$1\",\"to\":\"$2\",\"task_id\":\"$3\",\"text\":\"$body\""
+}
+
+# put <fields>: the line {"seq":<next>,<fields>} in this id's own file. A lock per id keeps seq
 # unique and increasing when one agent runs commands in parallel (Issue #145). The lock is the
 # folder <lock> holding the file <lock>/pid: a writer holds it only when its mkdir succeeded AND
 # it created <lock>/pid itself with excl. mkdir alone is not trusted: uutils coreutils 0.10.0
@@ -103,10 +111,8 @@ excl() { local r; set -C; { printf '%s\n' "$2" > "$1"; } 2>/dev/null; r=$?; set 
 # file <lock>.break, and only if the pid it re-reads there is still that dead one. A lock with no
 # pid recorded (holder killed right after mkdir) or a .break left behind is never broken: the
 # send gives up after $PADDOCK_LOCK_WAIT s (default 60) with exit 5 and names what to remove.
-append() {
-  local d=$state/events/$cur body lk=$state/events/$id.lock me=${BASHPID:-$$} n=0 o ok=0 end
-  body=$(printf '%s\n' "$4" | json_esc)
-  [ "${#body}" -le 32768 ] || die 2 "text is longer than 32 KiB"
+put() {
+  local d=$state/events/$cur lk=$state/events/$id.lock me=${BASHPID:-$$} n=0 o ok=0 end
   mkdir -p "$d" || die 5 "cannot create $d"
   end=$((SECONDS + ${PADDOCK_LOCK_WAIT:-60}))
   until mkdir "$lk" 2>/dev/null && excl "$lk/pid" "$me"; do
@@ -124,8 +130,7 @@ append() {
     fi
     sleep 0.05 2>/dev/null || sleep 1
   done
-  printf '{"seq":%s,"ts":"%s","from":"%s","kind":"%s","to":"%s","task_id":"%s","text":"%s"}\n' \
-    "$(next_seq)" "$now" "$id" "$1" "$2" "$3" "$body" >> "$d/$id.jsonl" && ok=1
+  printf '{"seq":%s,%s}\n' "$(next_seq)" "$1" >> "$d/$id.jsonl" && ok=1
   rm -f "$lk/pid"; rmdir "$lk" 2>/dev/null
   [ "$ok" -eq 1 ] || die 5 "cannot write $d/$id.jsonl"
 }
@@ -179,6 +184,27 @@ case "$cmd" in
     valid_id "$to" || die 2 "invalid recipient: $to"
     [ -n "$*" ] || die 2 "report needs text"
     append "$kind" "$to" "$task" "$*" ;;
+
+  ci_completed)
+    # Issue #168: org-pull-request records the watched CI run here, so it shares this id's
+    # folder, seq and lock. Fields as before (SKILL.md of org-pull-request, decision 0004).
+    pr=; sha=; run=; code=; task=
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --pr|--sha|--run-id|--exit-code|--task)
+          [ $# -ge 2 ] || die 2 "$1 needs a value"
+          case "$1" in --pr) pr=$2 ;; --sha) sha=$2 ;; --run-id) run=$2 ;; --exit-code) code=$2 ;; --task) task=$2 ;; esac
+          shift 2 ;;
+        *) die 2 "usage: ci_completed --pr N --sha SHA --run-id N --exit-code N [--task ID]" ;;
+      esac
+    done
+    num() { case "$1" in 0) ;; [1-9]*) case "$1" in *[!0-9]*) return 1 ;; esac ;; *) return 1 ;; esac; }
+    num "$pr" && num "$run" && num "$code" || die 2 "--pr, --run-id and --exit-code need whole numbers (no leading zero)"
+    case "$sha" in ''|*[!0-9a-f]*) die 2 "--sha needs a hex commit id" ;; esac
+    case "$task" in *[!A-Za-z0-9._-]*) die 2 "--task may hold only letters, digits, . _ -" ;; esac
+    [ "$code" = 0 ] && concl=success || concl=failure
+    tj=; [ -z "$task" ] || tj=",\"task_id\":\"$task\""
+    put "\"ts\":\"$now\",\"kind\":\"ci_completed\",\"writer\":\"$id\"$tj,\"pr\":$pr,\"sha\":\"$sha\",\"run_id\":$run,\"exit_code\":$code,\"conclusion\":\"$concl\"" ;;
 
   check_messages)
     peek=

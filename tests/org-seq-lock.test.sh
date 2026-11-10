@@ -8,7 +8,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 fail=0
 check() { if [ "$2" -eq 0 ]; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }
-real_tail=$(command -v tail)
+real_cat=$(command -v cat) # next_seq reads the id's .jsonl files with cat (Issue #168)
 
 org() { env -u PADDOCK_ORG_ID -u PADDOCK_NOW PADDOCK_STATE_DIR="$tmp/state" bash "$script" "$@"; }
 seqs() { sed -n 's/^{"seq":\([0-9]*\),.*/\1/p' "$tmp"/state/events/*/"$1".jsonl 2>/dev/null | sort -n | tr '\n' ' '; }
@@ -30,13 +30,13 @@ g=$(seqs wm); [ "$g" = "1 2 3 4 " ]; check "sends across a month change get seq 
 
 # 2. A live writer held inside the critical section for 12 s is never broken by a waiter.
 mkdir -p "$tmp/hold"
-cat > "$tmp/hold/tail" <<EOF
+"$real_cat" > "$tmp/hold/cat" <<EOF
 #!/bin/sh
-out=\$("$real_tail" "\$@")
-[ \$# -lt 3 ] || while [ ! -e "$tmp/go" ]; do sleep 0.1; done
+out=\$("$real_cat" "\$@")
+case "\$*" in *.jsonl*) while [ ! -e "$tmp/go" ]; do sleep 0.1; done ;; esac
 printf '%s\n' "\$out"
 EOF
-chmod +x "$tmp/hold/tail"
+chmod +x "$tmp/hold/cat"
 org --as wh send_message secretary first >/dev/null 2>&1
 PATH="$tmp/hold:$PATH" org --as wh send_message secretary held >/dev/null 2>&1 & holder=$!
 end=$((SECONDS + 10)); until [ -d "$tmp/state/events/wh.lock" ] || [ "$SECONDS" -ge "$end" ]; do sleep 0.05; done
@@ -47,10 +47,10 @@ touch "$tmp/go"
 bounded 20 "$holder"; r1=$?; bounded 20 "$waiter"; r2=$?
 g=$(seqs wh); [ "$r1" -eq 0 ] && [ "$r2" -eq 0 ] && [ "$g" = "1 2 3 " ]; check "after release both writes land with seq 1..3 (exit $r1 $r2, got: $g)" $?
 
-# 3. Eight parallel sends with a slow critical section (each read of the last seq takes 1 s).
+# 3. Eight parallel sends with a slow critical section (each read of the seq history takes 1 s).
 mkdir -p "$tmp/slow"
-printf '#!/bin/sh\nout=$("%s" "$@"); sleep 1; printf "%%s\\n" "$out"\n' "$real_tail" > "$tmp/slow/tail"
-chmod +x "$tmp/slow/tail"
+printf '#!/bin/sh\nout=$("%s" "$@"); case "$*" in *.jsonl*) sleep 1 ;; esac; printf "%%s\\n" "$out"\n' "$real_cat" > "$tmp/slow/cat"
+chmod +x "$tmp/slow/cat"
 org --as w8 send_message secretary p0 >/dev/null 2>&1
 pids=
 for i in 1 2 3 4 5 6 7; do PATH="$tmp/slow:$PATH" org --as w8 send_message secretary "p$i" >/dev/null 2>&1 & pids="$pids $!"; done
