@@ -36,7 +36,7 @@
 #                            harness cut it, or the agent gave up: read the seen-* file).
 #   a-checkin                hc checked in at its default timeout (informational).
 #   a2-/b-blocked            it held for about SLEEP seconds, not at once.
-#   a2-/b-output             the wait's output names the child and shows exit code 5.
+#   a2-/b-output             the wait's output shows exit_code 5 (hc names a child by terminal address, not by name).
 # The wait's own exit status and the seen-* text are printed for reading by eye (hc may
 # use its own status for the wait; the JSON line is the evidence). Paste the whole output back.
 set -u
@@ -89,8 +89,8 @@ judge() { # judge <a|a2|b> <child> <exit|checkin> [origin-file]: verdicts from t
       else result $p-checkin NO DATA "no reason timeout in the output: read it below"; fi
     else
       if [ $el -ge $((SLEEP - 15)) ]; then result $p-blocked PASS "held ${el}s of ${SLEEP}s"; else result $p-blocked FAIL "returned after ${el}s, long before ${SLEEP}s"; fi
-      if grep -q "$child" "$OUT/$p.out" && grep -Eq '(^|[^0-9])5([^0-9]|$)' "$OUT/$p.out"; then result $p-output PASS "names $child and shows 5"
-      else result $p-output FAIL "does not name $child with exit code 5"; fi
+      if grep -Eq '"exit_code": *5[,}]' "$OUT/$p.out"; then result $p-output PASS "shows exit_code 5 ($child is a terminal address in the output, not a name)"
+      else result $p-output FAIL "no exit_code 5 in the output"; fi
     fi
   elif [ -f "$OUT/$p.start" ]; then
     result $p-returned FAIL "started, but no end recorded: the call was cut or abandoned after $(( $(date +%s) - $(cat "$OUT/$p.start") ))s"
