@@ -103,7 +103,12 @@ Then run: bash \"\$PADDOCK_ORG\" --as $W report done --task $ID \"probe done; a-
 In the texts replace each semicolon with a comma. Do not copy the file's line into the report."
 out=$(bash "$ROOT/skills/org-delegate/scripts/org-delegate.sh" --project "$PROJ" --task-id "$ID" --task "$TASK" 2>&1); rc=$?
 echo "$out"
-if [ "$rc" -eq 0 ]; then echo "RESULT delegate: PASS"; else echo "RESULT delegate: FAIL (exit $rc)"; exit 1; fi
+if [ "$rc" -eq 0 ]; then echo "RESULT delegate: PASS"; else
+  echo "RESULT delegate: FAIL (exit $rc)"
+  case "$(hc read "$W" 2>/dev/null)" in *"Quick safety check"*|*"trust this folder"*)
+    echo "NEEDS-PERSON: folder-trust dialog in $W; answer it (or trust the project) and rerun"; KEEP=1 ;; esac
+  exit 1
+fi
 
 t=0; tab=$(printf '\t')
 while [ "$t" -lt "$WAIT" ]; do
@@ -126,7 +131,7 @@ verdict() {
   case "$saw" in
     yes) echo "RESULT $n: FAIL (the worker saw the marker; ran=$ran text=$txt)" ;;
     no) case "$ran" in
-          yes) if [ "$txt" != none ] && [ -n "$txt" ] || { [ "$rcv" != none ] && [ "$rcv" != 0 ]; }; then echo "RESULT $n: PASS (refused; text=$txt rc=$rcv)"
+          yes) if [ "$txt" != none ] && [ -n "$txt" ] || case "$rcv" in ""|*[!0-9]*|0) false ;; *) true ;; esac; then echo "RESULT $n: PASS (refused; text=$txt rc=$rcv)"
                else echo "RESULT $n: NO DATA (ran, marker not seen, but no error text and no nonzero rc: $txt / rc=$rcv)"; fi ;;
           *) echo "RESULT $n: NO DATA (declined or not run: ran=$ran)" ;;
         esac ;;
