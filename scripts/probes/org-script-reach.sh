@@ -19,8 +19,8 @@
 #   delegate      PASS = org-delegate exited 0 (code printed otherwise).
 #   report-done   PASS = list_runs shows the task as done by w-<id> within the wait.
 #                 FAIL = it did not; the worker's screen tail is printed.
-#   in-box        PASS = the secretary's unread messages (check_messages --peek) hold
-#                 the worker's run_completed text.
+#   in-box        PASS = the worker's event file holds a run_completed record for the
+#                 task addressed to the secretary (read or not).
 #   write-denied  PASS = the worker's done text says its write to $PADDOCK_ORG failed
 #                 (rc not 0) AND the placed script still equals scripts/org.
 #                 NO DATA = the done text has no "write-rc=" (the worker did not follow it).
@@ -62,7 +62,9 @@ done
 if [ "$t" -lt "$WAIT" ]; then echo "RESULT report-done: PASS (${t}s)"
 else echo "RESULT report-done: FAIL (no done record from $W in ${WAIT}s)"; echo "== screen tail"; hc read "$W" 2>&1 | tail -n 30; fi
 
-box=$(org check_messages --peek 2>/dev/null | grep -A1 "^\[$W#.* run_completed task=$ID\]" | grep 'probe done')
+# The worker's own event file, not the unread cursor: the secretary may already have read it.
+STATE=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
+box=$(cat "$STATE"/events/*/"$W".jsonl 2>/dev/null | grep '"kind":"run_completed","to":"secretary"' | grep "\"task_id\":\"$ID\"" | grep 'probe done')
 [ -n "$box" ] && echo "RESULT in-box: PASS" || echo "RESULT in-box: FAIL"
 wrc=$(printf '%s\n' "$box" | sed -n 's/.*write-rc=\([0-9]*\).*/\1/p' | tail -n 1)
 if [ -z "$wrc" ]; then echo "RESULT write-denied: NO DATA"
