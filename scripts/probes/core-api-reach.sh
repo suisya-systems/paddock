@@ -99,7 +99,13 @@ Run each step as one Bash call, once. After each, note whether it ran, its exit 
 Never write a value of any variable in the report; names only."
 out=$(bash "$ROOT/skills/org-delegate/scripts/org-delegate.sh" --project "$PROJ" --task-id "$ID" --task "$TASK" 2>&1); rc=$?
 echo "$out"
-if [ "$rc" -eq 0 ]; then echo "RESULT delegate: PASS"; trap cleanup EXIT INT TERM; else echo "RESULT delegate: FAIL (exit $rc)"; exit 1; fi
+trap cleanup EXIT INT TERM
+if [ "$rc" -eq 0 ]; then echo "RESULT delegate: PASS"; else
+  echo "RESULT delegate: FAIL (exit $rc)"
+  case "$(hc read "$W" 2>/dev/null)" in *"Quick safety check"*|*"trust this folder"*)
+    echo "NEEDS-PERSON: folder-trust dialog in $W; answer it (or trust the project) and rerun"; KEEP=1 ;; esac
+  exit 1
+fi
 
 t=0
 while [ "$t" -lt "$WAIT" ]; do
@@ -134,7 +140,7 @@ case "$l" in
   *"auto mode"*|*"Auto mode"*) lay="auto mode (named in the text); deny rule and sandbox: not measured by this command" ;;
   *"deny rule"*|*"denied by"*|*"permission settings"*|*"has been denied"*) lay="settings deny rule (named in the text); auto mode and sandbox: not measured by this command" ;;
   *"ran=refused"*) lay="refused before it ran, layer not told apart; sandbox: not measured by this command" ;;
-  *"Read-only file system"*|*"Operation not permitted"*|*"Permission denied"*) lay="sandbox (the command ran and failed with an errno that names it); deny rule and auto mode did not refuse" ;;
+  *"Read-only file system"*|*"Operation not permitted"*|*"Permission denied"*) lay="the command ran and failed with an errno; the sandbox is a possible cause, but host permissions or mounts give the same text, so the holder is not told apart; deny rule and auto mode did not refuse" ;;
   *unavailable*) lay="the command ran and reported the core unavailable; which of sandbox socket deny, missing HC_SOCKET/HC_SESSION or no core did it is not told apart; deny rule and auto mode did not refuse" ;;
   *) lay="not told apart; see the screen tail" ;;
 esac
