@@ -75,7 +75,9 @@ if hc get "$W" >/dev/null 2>&1 || [ -e "$WT" ] || git -C "$PROJ" show-ref --veri
   echo "RESULT precondition-failed: $W, $WT or branch work/$ID already exists; remove it yourself and rerun"; exit 1
 fi
 BK=$(mktemp -d) || { echo "RESULT precondition-failed: mktemp"; exit 1; }
-command cp -f "$SETF" "$BK/settings.before"
+command cp -f "$SETF" "$BK/settings.before" && cmp -s "$SETF" "$BK/settings.before" || { echo "RESULT precondition-failed: cannot back up $SETF"; exit 1; }
+# org-delegate writes exactly this (no --allow-write), before the worker starts: the baseline for the worktree file.
+printf "%s\n" "{}" > "$BK/local.before"
 KEEP=
 cleanup() {
   if ! cmp -s "$SETF" "$BK/settings.before"; then
@@ -108,7 +110,6 @@ else echo "RESULT delegate: FAIL (exit $rc)"
   case "$(hc read "$W" 2>/dev/null)" in *"Quick safety check"*|*"trust this folder"*) echo "NEEDS-PERSON: folder-trust dialog in $W; answer it (or trust the project) and rerun"; KEEP=1 ;; esac
   exit 1; fi
 [ -f "$LOC" ] || { echo "RESULT precondition-failed: $LOC was not written by org-delegate"; exit 1; }
-command cp -f "$LOC" "$BK/local.before"
 
 t=0; tab=$(printf '\t')
 while [ "$t" -lt "$WAIT" ]; do
