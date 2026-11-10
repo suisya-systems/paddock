@@ -37,7 +37,7 @@ run() { # run <extra env...> -- ; uses fresh dirs under $tmp/w unless reused
       -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN \
       STUB="$tmp/stub" PATH="$stubdir:$PATH" \
       PADDOCK_CORE_TEMPLATES_DIR="$tmp/core/templates" \
-      PADDOCK_APP_MODS_DIR="$tmp/app/mods" \
+      PADDOCK_APP_MODS_DIR="$tmp/app/mods" PADDOCK_BIN_DIR="$tmp/bin-org" \
       PADDOCK_READY_TRIES=2 "$@" bash "$script" 2>&1
 }
 mkdir -p "$tmp/stub"
@@ -73,7 +73,7 @@ out=$(run); rc=$?
 cmp -s "$here/templates/secretary.md" "$tmp/core/templates/secretary.md"; check "template placed in core templates folder" $?
 cmp -s "$here/mods/org-agents/main.js" "$tmp/app/mods/org-agents/main.js" \
   && cmp -s "$here/mods/org-agents/mod.json" "$tmp/app/mods/org-agents/mod.json"; check "mod files placed" $?
-cmp -s "$here/scripts/org" "$tmp/core/templates/org"; check "scripts/org placed beside the templates (as PADDOCK_ORG)" $?
+cmp -s "$here/scripts/org" "$tmp/bin-org/org" && [ ! -e "$tmp/core/templates/org" ]; check "scripts/org placed in the bin folder, not the templates folder (as PADDOCK_ORG, Issue #128)" $?
 ! grep -Eq '^server (stop|restart)' "$tmp/stub/calls"; check "never stops or restarts the core" $?
 
 # Name override: the terminal gets the given name; the template stays "secretary".
