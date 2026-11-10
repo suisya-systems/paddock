@@ -77,7 +77,10 @@ fi
 BK=$(mktemp -d) || { echo "RESULT precondition-failed: mktemp"; exit 1; }
 command cp -f "$SETF" "$BK/settings.before" && cmp -s "$SETF" "$BK/settings.before" || { echo "RESULT precondition-failed: cannot back up $SETF"; exit 1; }
 # org-delegate writes exactly this (no --allow-write), before the worker starts: the baseline for the worktree file.
-printf "%s\n" "{}" > "$BK/local.before"
+# Issue #155: the core socket folder deny, from the same source org-delegate reads.
+SD=${PADDOCK_CORE_SOCKET_DIR:-${HC_TERMINAL_SOCKET:+$(dirname "$HC_TERMINAL_SOCKET")}}
+[ -n "$SD" ] || { echo "RESULT precondition-failed: run from a core terminal or set PADDOCK_CORE_SOCKET_DIR (org-delegate needs the socket folder)"; exit 1; }
+printf '%s\n' "{\"sandbox\":{\"filesystem\":{\"denyRead\":[\"$SD\"],\"denyWrite\":[\"$SD\"]}}}" > "$BK/local.before"
 KEEP=
 cleanup() {
   if ! cmp -s "$SETF" "$BK/settings.before"; then

@@ -25,6 +25,8 @@ brief file into the worktree (rules: --append-system-prompt-file in the template
 
 Environment overrides:
   PADDOCK_WORKERS_DIR  the one workers folder, trusted once; an absolute path (default $HOME/paddock-workers)
+  PADDOCK_CORE_SOCKET_DIR  the core's socket folder, denied to the worker's sandbox in its settings
+                       file (default: the folder of $HC_TERMINAL_SOCKET; with neither, exit 2)
 
 Exit codes: 0 worker running and recorded, 2 bad argument, 3 hc or git not found,
 5 core unreachable or hc failed (the new worktree and branch are removed when no worker can
@@ -78,6 +80,15 @@ name=w-$id
 workers=${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}
 wt=$workers/$id
 case "$workers" in /*) ;; *) die 2 "PADDOCK_WORKERS_DIR must be an absolute path: $workers" ;; esac
+# L-N2 (Issue #155): the worker's sandbox denies the core's socket folder. The folder is per user
+# ($XDG_RUNTIME_DIR/herdr-core on Linux), so the shared settings file cannot name it: it goes in the
+# per-task file below. Source: PADDOCK_CORE_SOCKET_DIR, else the folder of the socket the core gives
+# this terminal. Without one, stop: a worker without this deny is what L-N2 forbids.
+if [ -n "${PADDOCK_CORE_SOCKET_DIR:-}" ]; then sockdir=$PADDOCK_CORE_SOCKET_DIR
+elif [ -n "${HC_TERMINAL_SOCKET:-}" ]; then sockdir=$(dirname "$HC_TERMINAL_SOCKET")
+else die 2 "cannot tell the core's socket folder: run from a core terminal (HC_TERMINAL_SOCKET) or set PADDOCK_CORE_SOCKET_DIR"; fi
+case "$sockdir" in /*) ;; *) die 2 "the core socket folder must be an absolute path: $sockdir" ;; esac
+case "$sockdir" in *[\"\\]*|*[[:cntrl:]]*) die 2 "the core socket folder has a quote, backslash or control character" ;; esac
 
 # 1. The core answers, and the worker's name is free. Nothing is created before this.
 hc ls >/dev/null 2>&1 || die 5 "cannot reach the herdr core (hc ls failed)"
@@ -106,17 +117,18 @@ fail_undone() { code=$1; shift; undo; die "$code" "$*"; }
 [ "$(cd "$wt" && pwd -P)" = "$(cd "$workers" && pwd -P)/$id" ] \
   || fail_undone 6 "$wt did not land directly under $workers"
 
-# 3. The per-task settings file (Q10 a): only what changes per task. The role's deny list, sandbox and
+# 3. The per-task settings file (Q10 a): only what changes per task or per user (the socket folder). The role's deny list, sandbox and
 # hooks come from the template's --settings file. Never write through a symlink, never overwrite a file.
 sf=$wt/.claude/settings.local.json
 [ ! -L "$wt/.claude" ] || fail_undone 6 "$wt/.claude is a symlink (the base $base tracks it); nothing was written"
 [ ! -e "$sf" ] && [ ! -L "$sf" ] || fail_undone 6 "$sf already exists (the base $base tracks it); it is never overwritten"
-json='{}'
+fs="\"denyRead\":[\"$sockdir\"],\"denyWrite\":[\"$sockdir\"]"
 if [ "${#allow[@]}" -gt 0 ]; then
   list=
   for p in "${allow[@]}"; do list="$list${list:+,}\"$p\""; done
-  json="{\"sandbox\":{\"filesystem\":{\"allowWrite\":[$list]}}}"
+  fs="\"allowWrite\":[$list],$fs"
 fi
+json="{\"sandbox\":{\"filesystem\":{$fs}}}"
 printf '%s\n' "$json" | hc file write "$sf" >/dev/null 2>&1 \
   || fail_undone 5 "hc file write failed for $sf; the worktree and branch were removed"
 { [ -f "$sf" ] && [ ! -L "$sf" ] && [ "$(cd "$wt/.claude" && pwd -P)" = "$(cd "$wt" && pwd -P)/.claude" ]; } \
