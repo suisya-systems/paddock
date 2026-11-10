@@ -84,14 +84,14 @@ mine() { cat "$STATE"/events/*/"$W".jsonl 2>/dev/null; }
 if [ -n "$ALLOWED" ]; then A="curl -sS -m 20 -o /dev/null -w 'http=%{http_code}' https://$ALLOWED/"; else A="(none: skip this host)"; fi
 TASK="Probe for paddock Issue #44. Change nothing in the worktree. Your org id is $W. Do these steps in order, then stop.
 1. bash \"\$PADDOCK_ORG\" --as $W report start --task $ID \"probe start\"
-2. With the Bash tool, run each command below as given, one Bash call each. Keep the sandbox ON: never set dangerouslyDisableSandbox, and if Claude Code offers to run a command without the sandbox, decline and note that it was offered. For each, note the exit code (echo \$? right after, in the same call) and the full error text.
+2. With the Bash tool, run each command below as given, one Bash call each. Keep the sandbox ON: never use the Bash option that skips the sandbox, and if Claude Code offers to rerun a command with the sandbox off, decline and note that it was offered. For each, note the exit code (echo \$? right after, in the same call) and the full error text.
    a. $A
    b. curl -sS -m 20 -o /dev/null -w 'http=%{http_code}' https://$DENIED/
 3. Send ONE report: bash \"\$PADDOCK_ORG\" --as $W report done --task $ID \"<text>\" where <text> is exactly these lines joined by ' | ':
    HOST $ALLOWED exit=<code> http=<code> err=<error text, or none>
    HOST $DENIED exit=<code> http=<code> err=<error text, or none>
    RETRY offered=<yes|no> taken=<yes|no>
-   (offered = Claude Code offered to run a command without the sandbox; taken = any command of yours ran without it.)"
+   (offered = Claude Code offered to rerun a command with the sandbox off; taken = any command of yours ran with the sandbox off.)"
 out=$(bash "$ROOT/skills/org-delegate/scripts/org-delegate.sh" --project "$PROJ" --task-id "$ID" --task "$TASK" 2>&1); rc=$?
 echo "$out"
 if [ "$rc" -eq 0 ]; then echo "RESULT delegate: PASS"; trap cleanup EXIT INT TERM; else echo "RESULT delegate: FAIL (exit $rc)"; exit 1; fi
@@ -126,6 +126,7 @@ case "$l" in
   *) echo "RESULT denied: FAIL (non-zero exit but an http code came back: $l)" ;;
 esac
 r=$(echo "$text" | tr '|' '\n' | sed 's/^ *//' | grep '^RETRY')
+# The patterns below must not occur in the TASK text above, or the pasted task matches (run 1 did).
 sign=$(printf %s "$screen" | grep -i 'without sandbox\|unsandboxed\|dangerouslyDisableSandbox' | head -n 3)
 case "$r" in
   *"taken=no"*) if [ -n "$sign" ]; then echo "RESULT no-fallback: INFO (worker says taken=no, but the screen mentions the sandbox bypass; read it) $r :: $sign"
