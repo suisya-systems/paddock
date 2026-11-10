@@ -157,10 +157,12 @@ A terminal that never reported status is never `blocked`, so the rule above does
 
 **Question.** How are renga (the predecessor's terminal client) and claude-org-runtime (its runtime, including an adapter for the older Herdr TUI) ended?
 
-**Draft recommendation (Issue #11; awaiting the owner, not decided).**
+**Decided (2026-11-11, owner, Issue #11): maintenance mode now for both, archive once paddock replaces them in daily use.**
 
 - **renga: maintenance mode now, archive later.** Only fixes the predecessor needs to keep running; no new features. Archive it when the replacement criterion below is met. Why: paddock does not use it, and the one way it came back (Q1 option B) is closed.
 - **claude-org-runtime: maintenance mode now, with its Herdr adapter stated as for the older TUI only; archive later on the same criterion.** Why: the predecessor still runs on it, and the statement stops anyone from reading the adapter as a route to herdr-core.
+- **Rejected:** archiving now, because it closes both repositories to the fixes the predecessor still needs while paddock has not replaced it; keeping either piece open for new features, because paddock uses neither.
+- **Replacement criterion (not measured yet):** (1) the merge rule's CI job exists and has passed and blocked one real pull request each; (2) one working week on paddock alone, with neither piece started, covering delegation, review, CI and merge, and every fallback to the predecessor logged; zero fallbacks. Both must hold before archiving.
 
 **What we know.**
 
@@ -176,11 +178,9 @@ A terminal that never reported status is never `blocked`, so the rule above does
 - **State that the Herdr adapter is for the older TUI only.** Applies to claude-org-runtime only. Cost: one line in its documentation. Needs nothing new. Feasible: a text change.
 - **Archive after paddock replaces them in daily use.** Cost: one repository setting each; an archived GitHub repository is read-only and can be unarchived (GitHub Docs, "Archiving repositories"). Needs what does not exist yet: a written replacement criterion and the acceptance CI job. Archiving now is possible but closes the repositories to the fixes the predecessor still needs.
 
-**Not measured:** whether paddock carries the owner's daily work. Proposed criterion and measurement: (1) the merge rule's CI job exists and has passed and blocked one real pull request each; (2) one working week on paddock alone, with neither piece started, covering delegation, review, CI and merge, and every fallback to the predecessor logged; zero fallbacks. Both must hold before archiving.
+**Not measured:** whether paddock carries the owner's daily work. The replacement criterion above is the measurement; neither of its parts has been run.
 
-**What would change the pick.** Q1 reopened toward our own TUI (renga's client comes back into play); a user of the older Herdr TUI or of claude-org-runtime outside the predecessor (none is recorded in `docs/design/`); paddock stalling (maintenance stays, no archive).
-
-**Decides.** The owner.
+**Revisit when.** Q1 is reopened toward our own TUI (renga's client comes back into play); a user of the older Herdr TUI or of claude-org-runtime outside the predecessor turns up (none is recorded in `docs/design/`); paddock stalls (maintenance stays, no archive).
 
 ## Q7. Windows
 
