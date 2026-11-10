@@ -20,7 +20,7 @@ Bash only, plus `git`, `gh` and `hc`. `--repo OWNER/NAME` is taken from a GitHub
 2. Opens the PR: `gh pr create --repo <r> --head <branch> --base main --title ... --body-file ...` (or `--body`). `--pr N` reuses an open PR instead (a rerun after a failure).
 3. Finds the CI run of the pushed head: `gh run list --commit <sha>`, retrying while none exists yet (`PADDOCK_RUN_TRIES`, default 10, every `PADDOCK_RUN_SLEEP`, default 6 s; exit 7 when none appears).
 4. Watches it as measured in [MON-12](../../docs/design/predecessor-inventory.md) ([probe](../../scripts/probes/ci-watch-child.sh)): `hc run --bg --rm --no-notify --name ci-<pr> -- gh run watch <run-id> --repo <r> --exit-status`, then `hc wait ci-<pr>`, and reads the integer `exit_code` from its one JSON line. A line without one (a kill sets `signal`) exits 8.
-5. Appends one `ci_completed` line to `<events>/<YYYY-MM>/secretary.jsonl` ([decision 0004](../../docs/decisions/0004-records-documents-and-jsonl.md)), for a failed run too:
+5. Appends one `ci_completed` line to `events/<YYYY-MM>/secretary.jsonl` through `bash scripts/org --as secretary ci_completed` (Issue #168: the secretary's folder, sequence and lock) ([decision 0004](../../docs/decisions/0004-records-documents-and-jsonl.md)), for a failed run too:
    `{"seq":1,"ts":"2026-11-10T01:02:03Z","kind":"ci_completed","writer":"secretary","task_id":"t1","pr":42,"sha":"<head>","run_id":777,"exit_code":0,"conclusion":"success"}`
 6. Acts by the approval mode, then prints the outcome.
    - `human`: prints `PR_URL=...` and that the person decides; merges nothing. Exit 0.
@@ -47,7 +47,7 @@ The mode is `--mode`, else `merge_approval_mode` in the `org-state` document (re
 ## Assumptions (open points left open)
 
 - Approval mode lives in `org-state` as a top-level `merge_approval_mode` string. The prototype-1 shape has no such field yet; this is the smallest reading of "read from org-state or an argument".
-- The events folder is `$PADDOCK_EVENTS_DIR`, else `${XDG_STATE_HOME:-~/.local/state}/paddock/events`. Decision 0004 leaves the folder and the writer ids open; the writer id here is `secretary`, and `seq` is the line count of that month's file plus one (one writer, so no race). Lines carry `kind`, `writer`, `task_id` (when given), `pr`, `sha`, `run_id`, `exit_code` and `conclusion` beyond `seq` and `ts`.
+- The events folder is `scripts/org`'s: `$PADDOCK_STATE_DIR/events`, default `${XDG_STATE_HOME:-~/.local/state}/paddock/events`. The writer id is `secretary`, and `seq` is `scripts/org`'s for that id: one more than the highest so far, taken under the per-id lock, so it never repeats a number a reader has acknowledged. Lines carry `kind`, `writer`, `task_id` (when given), `pr`, `sha`, `run_id`, `exit_code` and `conclusion` beyond `seq` and `ts` (`ts` follows `$PADDOCK_NOW` when set).
 - The base branch is `main` unless `--base` says otherwise. The title and body are written by the secretary in English.
 - `--task-id` may hold only letters, digits, `.`, `_` and `-` (it goes into a JSON line); anything else exits 2 before the push.
 - Known limit: when a head has several runs (for example both `push` and `pull_request` workflows), only the newest one found is watched and recorded. In `human` mode "CI green" means that run; in `acceptance` mode the required checks cover the rest.

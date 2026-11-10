@@ -208,10 +208,10 @@ A terminal that never reported status is never `blocked`, so the rule above does
   - The fence is the sandbox: [templates/worker-settings.json](../../templates/worker-settings.json) line 23 turns it on with write and read limits, and [org-delegate.sh](../../skills/org-delegate/scripts/org-delegate.sh) line 83 adds the core's socket folder to its read deny (L-N2). Measured sandbox refusals, both in WSL2: a write outside the worktree (L-K4) and a non-allowlisted host (PRM-6, Issue #44), in the [predecessor inventory](predecessor-inventory.md).
   - Host runs: core and agents in WSL2 for the Core measurement, the Inventory probes, the Continue probe, Q16 and Q18, and [prototype 2](prototype-2.md) (window on Windows, core in WSL). The only native attempt, the Mod measurement, ran hc and the window natively and its Claude Code stopped at folder trust. Two probes read `/proc` and need Linux or WSL ([idle-secretary-wake.sh](../../scripts/probes/idle-secretary-wake.sh) line 8, [org-start-secretary.sh](../../scripts/probes/org-start-secretary.sh) line 10).
   - The window: with a local core on Windows the mods reach `hc` through `pwsh` ([org-agents](../../mods/org-agents/main.js) line 17, [org-cockpit](../../mods/org-cockpit/main.js) line 36, [architecture 4.1](architecture.md#41-windows)); with the core in WSL the cockpit runs `sh` on that machine, after `hc machine add` and a `"secretary": "<machine>/secretary"` prop in the layout ([README](../../README.md) line 23).
-  - Scripts: org-start is Bash only, run from Git Bash on Windows ([SKILL.md](../../skills/org-start/SKILL.md) line 14). `hc connect` drops its answer at stdin EOF on Windows only ([upstream note](upstream/hc-connect-stdin-eof.md) lines 11-12); `scripts/org` and the mods hold stdin open 1 s as a work-around. The mailbox lock ([scripts/org](../../scripts/org) lines 96-105, Issue #145) was checked with Linux coreutils only; and a shell `>>` is not guaranteed atomic natively on Windows (Q8 point 1).
+  - Scripts: org-start is Bash only, run from Git Bash on Windows ([SKILL.md](../../skills/org-start/SKILL.md) line 14). `hc connect` drops its answer at stdin EOF on Windows only ([upstream note](upstream/hc-connect-stdin-eof.md) lines 11-12); `scripts/org` and the mods hold stdin open 1 s as a work-around. The mailbox lock ([scripts/org](../../scripts/org) lines 104-113, Issue #145) was checked with Linux coreutils only; and a shell `>>` is not guaranteed atomic natively on Windows (Q8 point 1).
 - **Cost of A:** Windows users install WSL2, a distribution, and bubblewrap and socat in it (vendor docs). Measured in WSL2: the write and network refusals; the sandbox read deny and the socket deny are not measured on their own (L-K1, L-N2, L-N9).
 - **B rejected:** a native worker would run every command unsandboxed (vendor docs, not tried), losing the write limit (L-K4), the sandbox read deny (L-K1, L-N9 layer 2), the socket deny (L-N2) and the network proxy (PRM-6). Left would be permission rules, which match a tool's path or a command's text, not what a program does (L-N1, L-N2). B would also need org-start and org-delegate checked under Git Bash, the folder-trust step on Windows (Q13), the mailbox lock measured on NTFS, and a fix for the `hc connect` EOF drop beyond the 1 s hold; none of it was measured.
-- **Remaining work under A** (Issue #164): by default Claude Code runs commands unsandboxed when the sandbox cannot start (vendor docs), so the worker settings need `sandbox.failIfUnavailable` true (stop instead) and `allowUnsandboxedCommands` false (no retry outside the sandbox); both are unset today. Also open: a Windows setup note (WSL2, `hc machine add`, the layout prop).
+- **Remaining work under A** (Issue #164): by default Claude Code runs commands unsandboxed when the sandbox cannot start (vendor docs), so the worker settings need `sandbox.failIfUnavailable` true (stop instead) and `allowUnsandboxedCommands` false (no retry outside the sandbox). `failIfUnavailable` is set since #164 (row L-K7 in the [predecessor inventory](predecessor-inventory.md) has the per-layer state and the probe); `allowUnsandboxedCommands` is left out pending an owner decision, because a `false` in the `--settings` file makes Claude Code ignore the worktree settings' `allowWrite` that `--allow-write` writes. Also open: a Windows setup note (WSL2, `hc machine add`, the layout prop).
 - **Revisit when:** the vendor supports the sandbox on native Windows; the owner accepts unfenced workers on Windows; or target machines cannot run WSL2.
 
 ## Q8. What is each component written in?
@@ -341,7 +341,52 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 **Options.** A line in the secretary's template body; a value in paddock's own configuration that a skill reads at start; an environment variable passed at launch; detection from the environment only, with no stored value.
 
-**Decides.** The owner.
+**Decided (2026-11-11, owner, Issue #16): a value in paddock's configuration, added to the secretary's launch task.** The drafted recommendation, adopted as written. The value is one line, `conversation_language: <value>`, in Q14's `org-config.md`, with `auto` as the script default. Every script that launches the secretary reads it and, when it is not `auto`, puts `Conversation language: <value>` at the end of the launch's task, so it arrives in the first message with the template body. Workers get no language value.
+
+**Why.**
+
+- The first message is the channel in use today (the body line), and a rule given only there held after `/compact` in one weak measurement (Q12).
+- Reading the file at each launch, not once at `org-start`, means a change the person asks for reaches the next secretary after a renewal: `secretary-handover` launches from the installed template without `org-start` (its line 71), and `org-start` refuses to run inside an agent (lines 42 to 47), so the secretary could not refresh a value written into the template.
+- The person changes the setting by telling the secretary, which switches language at once and edits the file, as for every Q14 setting.
+- **It follows Q14 for where the value is kept:** Q14 left exactly this open ("The conversation language may go into `org-config.md` too", Q14 Consequences), and its file, its reader order (argument, `PADDOCK_*` variable, file, script default) and its default-in-script rule fit as they are. Q14 did not settle the path to the agent, because its other values are read by the scripts for themselves, while this one must reach a conversation. The launch task is that path.
+
+**Rejected.**
+
+- **A line in the body alone:** `org-start` overwrites the installed template on every run (line 70), so a change is a repository edit, the same for everyone.
+- **`org-start` writes the value into the body line when it places the template:** a change would not reach a handover until the person reruns `org-start`.
+- **An environment variable:** it lives in the core's environment, set in the login shell that starts the core ([`org-start` SKILL.md](../../skills/org-start/SKILL.md) line 50), which the secretary cannot change when the person asks. It stays only as the `PADDOCK_*` override in Q14's reader order.
+- **Detection only:** it is not a setting (principle 7), and a person whose locale is not the language they want has no lasting fix.
+
+**What is in the repository today.**
+
+- The setting is a fixed line in the secretary template body, `Conversation language: auto` ([`templates/secretary.md`](../../templates/secretary.md) line 7). Line 9 says `auto` means the session's locale or, when unclear, the language the person writes in, and that everything the secretary writes for agents is English. This is the body-line option in use ([prototype 1](prototype-1.md) line 72).
+- `org-start` overwrites the installed secretary template on every run ([`org-start.sh`](../../skills/org-start/scripts/org-start.sh) line 70).
+- The secretary is launched in two places: `org-start` with no task ([`org-start.sh`](../../skills/org-start/scripts/org-start.sh) line 99; `tests/org-start.test.sh` line 72 checks those exact arguments) and `secretary-handover` with a resume task ([`secretary-handover.sh`](../../skills/secretary-handover/scripts/secretary-handover.sh) lines 70 and 71). After a core stop, a skill resumes it with `claude --continue` ([architecture §6](architecture.md#6-flows), line 99), which keeps the first message it had.
+- `org-config.md` does not exist yet: Q14 is decided, and no script names the file.
+- Workers have no language line. Their template and rules are English ([`templates/worker.md`](../../templates/worker.md), [`templates/worker-rules.md`](../../templates/worker-rules.md)), but nothing tells them to write reports and messages in English; they follow the target repository's own instructions (`worker.md` line 9). A person may answer a blocked worker in its terminal (`worker-rules.md` line 27).
+
+**The options.**
+
+| Option | Cost | Needs what does not exist | Feasible? |
+| --- | --- | --- | --- |
+| A line in the template body (today) | Nothing to build. A change is a repository edit, the same for everyone. | Nothing. | Yes, it runs today. That the secretary obeys it is not measured (below). |
+| A value in paddock's configuration, added to the launch task (picked) | One `sed` read of `org-config.md` in `org-start` and in `secretary-handover`; line 7 of the template says the value comes at the end of the first message, `auto` when absent. With `auto` or no line, the launches are unchanged, so the `org-start` test keeps its arguments. | `org-config.md` (Q14's task); the read in both launch scripts; the secretary's instruction to edit the line when asked. | Yes on the shell side: core appends the task after the body (Core docs), and both scripts already pass or can pass a task. |
+| An environment variable passed at launch | The template `command` turns it into prompt text (for example `--append-system-prompt`). The value comes from the core's environment, set where the core is started. | The variable and the command change. | Possible: a template `command` runs through `sh` (Core docs). How a running core picks up a changed variable is not measured. |
+| Detection only, no stored value | Nothing to build: `auto` does this today. | Nothing. | Yes, but it is not a setting. |
+
+**Consequences** (for the implementing task).
+
+- `org-start` and `secretary-handover` read `conversation_language` from `org-config.md` in Q14's order and, unless it is `auto`, end the launch task with `Conversation language: <value>`. `org-start` then passes a task where it passes none today.
+- [`templates/secretary.md`](../../templates/secretary.md) line 7 changes from a fixed `auto` to: the value is at the end of the first message, `auto` when absent. Line 9 (what `auto` means, English for agents) stays. The secretary's instructions for `org-config.md` (Q14) cover this line: when the person asks for another language, switch at once and edit the line.
+- Workers: no language value is passed; they write to the secretary, and the person sees their work through it. `templates/worker-rules.md` gains one line asking for reports, messages and records in English, since nothing does today and a target's own instructions may say otherwise. That line is part of the implementing task, not of this decision's pull request.
+
+**Not measured.** Whether the secretary follows the line, and what `auto` resolves to: no run has checked the language of its replies. Measurement, on a dedicated core (`HC_SESSION`) started from a shell whose `LANG` and `LC_ALL` are set for the run: (1) locale English, launch task ending `Conversation language: ja`, ask in English; the reply must be Japanese, before and after `/compact`; (2) `auto` with `LANG` and `LC_ALL` both `ja_JP.UTF-8`, have the secretary print `locale` first, ask in English, and record which language it answers in. Capture the replies with `hc read`, not a `grep` over the screen (the Q12 limit).
+
+**Revisit when.**
+
+- The measurement shows the first-message line is not followed, or not after compaction: the value goes by `--append-system-prompt` in the template `command`, as the worker rules do (Q12).
+- The screen must show or change the setting: Q14's revisit (a core document).
+- People often talk to workers in their terminals: `org-delegate` adds the line to the worker's task ([`org-delegate.sh`](../../skills/org-delegate/scripts/org-delegate.sh) line 149).
 
 ## Q10. Who distributes permissions, hooks and skills, and when?
 
@@ -511,7 +556,7 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 - The settings are read by shell scripts: the worker folder and the cap by `org-delegate` and `org-resume`, the approval mode by `org-pull-request`. A `key: value` line is read with one `sed`; it needs no core round trip and no parser (goal G4).
 - The projects table is read by the secretary only, as Markdown, without a parser ([inventory](predecessor-inventory.md) REG-1). The secretary passes the project's path and base branch as `--project` and `--base` to both `org-delegate` and `org-pull-request`, as it passes `--project` today, so no script parses the table.
-- The person never writes the format. They tell the secretary ("add this project", "merge on green CI"), and the secretary edits the file; `org-start` creates both files with the defaults when they are missing. The person can open either file to read it. A core document has no `hc` verb ([`org-pull-request.sh`](../../skills/org-pull-request/scripts/org-pull-request.sh) line 118), so under (b) only the secretary or a mod that does not exist could change it.
+- The person never writes the format. They tell the secretary ("add this project", "merge on green CI"), and the secretary edits the file; `org-start` creates both files with the defaults when they are missing. The person can open either file to read it. A core document has no `hc` verb ([`org-pull-request.sh`](../../skills/org-pull-request/scripts/org-pull-request.sh) line 113), so under (b) only the secretary or a mod that does not exist could change it.
 - These are settings, not work in progress, and [decision 0004](../decisions/0004-records-documents-and-jsonl.md) gives core documents to in-progress state.
 
 **Rejected.**
@@ -524,10 +569,10 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 - Worker folder: `PADDOCK_WORKERS_DIR`, default `~/paddock-workers` ([`org-delegate.sh`](../../skills/org-delegate/scripts/org-delegate.sh) line 80). The script reads its own environment, so the variable works on one call; for it to hold for every call, it must be in the core's environment, set in the login shell that starts the core ([`org-start` SKILL.md](../../skills/org-start/SKILL.md) line 50).
 - Worker cap and projects registry: none. The secretary passes `--project <path>` on every delegation ([`org-delegate` SKILL.md](../../skills/org-delegate/SKILL.md) line 34).
-- Base branch: `--base`, default `main`, in both [`org-delegate.sh`](../../skills/org-delegate/scripts/org-delegate.sh) line 43 and [`org-pull-request.sh`](../../skills/org-pull-request/scripts/org-pull-request.sh) lines 40 and 77 (the PR's base). Nothing per project.
-- Merge approval mode: `--mode`, else a top-level `merge_approval_mode` in `org-state`, else `human` ([`org-pull-request.sh`](../../skills/org-pull-request/scripts/org-pull-request.sh) lines 118 to 120). Its SKILL.md calls this "the smallest reading" and notes that the prototype-1 shape has no such field ([`org-pull-request` SKILL.md](../../skills/org-pull-request/SKILL.md) line 49). So one setting already sits in a state document, as a stopgap.
-- Conversation language ([Q9](#q9-where-does-the-conversation-language-setting-live), open): the line `Conversation language: auto` in the secretary template body ([`templates/secretary.md`](../../templates/secretary.md) line 7), which is option (c) in use.
-- Allowed document names: `org-state` and `secretary-handover` only ([`scripts/org`](../../scripts/org) lines 249 to 251).
+- Base branch: `--base`, default `main`, in both [`org-delegate.sh`](../../skills/org-delegate/scripts/org-delegate.sh) line 43 and [`org-pull-request.sh`](../../skills/org-pull-request/scripts/org-pull-request.sh) lines 41 and 78 (the PR's base). Nothing per project.
+- Merge approval mode: `--mode`, else a top-level `merge_approval_mode` in `org-state`, else `human` ([`org-pull-request.sh`](../../skills/org-pull-request/scripts/org-pull-request.sh) lines 113 to 115). Its SKILL.md calls this "the smallest reading" and notes that the prototype-1 shape has no such field ([`org-pull-request` SKILL.md](../../skills/org-pull-request/SKILL.md) line 49). So one setting already sits in a state document, as a stopgap.
+- Conversation language ([Q9](#q9-where-does-the-conversation-language-setting-live), decided 2026-11-11 to move to `org-config.md`; this is the state before): the line `Conversation language: auto` in the secretary template body ([`templates/secretary.md`](../../templates/secretary.md) line 7), which is option (c) in use.
+- Allowed document names: `org-state` and `secretary-handover` only ([`scripts/org`](../../scripts/org) lines 275 to 277).
 
 **The options.**
 
@@ -550,7 +595,7 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 - The cap counts live terminals with the `task_id` label, whatever their status. Two launches at the same moment can both pass the count; the secretary runs launches one at a time, and that is a known limit, not a lock.
 - `org-pull-request` reads the approval mode from the file instead of `org-state`.
 - The worker settings gain a write deny for the config folder, as they have for the bin folder (`worker-settings.json` lines 18 and 38), and `org-delegate` refuses an `--allow-write` path inside it. Like every path in that file, the deny names the default folder only; with `APPDATA` or `XDG_CONFIG_HOME` set elsewhere it does not follow ([`org-start` SKILL.md](../../skills/org-start/SKILL.md) line 46, the same open limit).
-- The conversation language may go into `org-config.md` too, so a change survives `org-start`; that is Q9's to decide.
+- The conversation language goes into `org-config.md` too, so a change survives `org-start` ([Q9](#q9-where-does-the-conversation-language-setting-live), decided 2026-11-11).
 - The permission mode is not one of these settings: it belongs in each template's command (PRM-9). The shipped templates pass none today ([`templates/worker.md`](../../templates/worker.md) line 3, [`templates/secretary.md`](../../templates/secretary.md) line 3).
 
 **Revisit when.**
