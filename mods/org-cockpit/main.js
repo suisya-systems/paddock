@@ -2,7 +2,8 @@
 // roles placed by layouts/paddock.json through props.role:
 //   "workers"  left: one tile per worker terminal (labelled task_id): status colour, its last
 //              lines, "Needs you" when blocked. Click opens the terminal to answer there.
-//   "approval" bottom right: the oldest org-state approval as one card.
+//   "approval" bottom right: the oldest org-state approval as one card, its controls following
+//              who answers it (answer_in: the worker's own terminal, or the secretary).
 //   "consult"  floating: what the secretary asks the person, while its terminal is blocked.
 // The secretary itself is a terminal block in the layout, not drawn here.
 // org-state reading is prototype 1's (mods/org-agents/main.js); mods cannot import across folders.
@@ -304,33 +305,58 @@ export default class Cockpit extends View {
       .child(mine ? "Sending…" : label);
   }
 
+  // Answering in words goes to the secretary, never to a worker's terminal.
+  secretaryLink(t) {
+    const sec = this.secretary();
+    return div().id("open-secretary").truncate().text_size(12)
+      .when(Boolean(sec), (el) => el.text_color(t.muted).cursor_pointer().hover((s) => s.text_color(t.foreground))
+        .on_click(() => run("pane.focus", { terminal: sec.address })))
+      .when(!sec, (el) => el.text_color(t.dim))
+      .child(sec ? "Open the secretary to answer in words" : "The secretary is not running");
+  }
+
+  // Who answers (architecture 7.1): answer_in "worker" is a worker's own permission prompt or
+  // dialog, answered only in its terminal, so the card opens it and offers no Yes / No. Anything
+  // else is answered through the secretary: Yes / No to its mailbox, or in words in its pane.
   card(t, a, more, now) {
-    const term = terminals().find((x) => x.state === "live" && x.labels?.task_id === a.task_id);
     const c = t.blocked;
+    const inWorker = a.answer_in === "worker";
+    const term = inWorker && terminals().find((x) => x.state === "live" && x.labels?.task_id === a.task_id);
+    const stillBlocked = term && term.status === "blocked";
     const failed = this.sent.get(a.id)?.state === "failed";
     // An approval without an id cannot be answered here (the secretary matches answers by id).
-    const answerable = typeof a.id === "string" && a.id !== "";
-    const open = div().id("open").truncate().text_size(12)
-      .when(Boolean(term), (el) => el.text_color(t.muted).cursor_pointer().hover((s) => s.text_color(t.foreground))
-        .on_click(() => run("terminal.peek", { terminal: term.address })))
-      .when(!term, (el) => el.text_color(t.dim))
-      .child(term ? `Open ${a.task_id} to answer in words` : `No terminal for ${a.task_id}`);
+    const answerable = !inWorker && typeof a.id === "string" && a.id !== "";
+    const task = a.task_id || "an unnamed task";
+    // A malformed entry still says which approval it is, so the person can ask about it.
+    const question = a.question || `Approval ${a.id || "without an id"} for ${task}`;
+    const note = !a.question ? "No question was written. Ask the secretary what it needs."
+      : inWorker ? "Answered in its own terminal, not from here." : null;
     // The secretary removes an answered approval; until it does, the card says it may be answered.
-    const meta = `waiting ${since(a.asked_at, now)}` + (term && term.status !== "blocked" ? " · answered?" : "");
+    const meta = `waiting ${since(a.asked_at, now)} · ${task}` + (term && !stillBlocked ? " · no longer blocked, answered?" : "");
+    const loud = !inWorker || !term || stillBlocked;
+    const label = inWorker ? `${String(a.task_id || "a worker").toUpperCase()} NEEDS YOU` : "THE SECRETARY IS ASKING YOU";
+    const open = term && div().id("open").h(36).rounded(8).flex().items_center().justify_center().cursor_pointer()
+      .text_size(13).font_semibold().bg(stillBlocked ? c : t.raised).text_color(stillBlocked ? t.background : t.foreground)
+      .hover((st) => st.bg(stillBlocked ? c + "d9" : t.hover))
+      .on_click(() => run("terminal.peek", { terminal: term.address }))
+      .child(stillBlocked ? `Open ${a.task_id} to answer` : `Open ${a.task_id}`);
     return v_flex().gap(8)
       .child(h_flex().id(`ap-${a.id}`).items_stretch().rounded(12).overflow_hidden().bg(c + "26")
         .child(div().w(4).flex_none().bg(c))
         .child(v_flex().flex_1().min_w(0).px(16).py(16).gap(12)
           .child(h_flex().gap(8).items_center()
-            .child(div().size(8).flex_none().rounded(4).bg(c).loop("opacity", { from: 0.35, to: 1, period: 1400 }))
-            .child(this.label(t, "NEEDS YOUR ANSWER", c)))
-          .child(div().text_size(16).font_semibold().line_height(1.3).text_color(t.foreground).whitespace_normal().max_h(63).overflow_hidden().child(a.question ?? ""))
-          .child(div().text_size(11).text_color(t.muted).child(meta))
+            .child(div().size(8).flex_none().rounded(4).bg(c).when(loud, (el) => el.loop("opacity", { from: 0.35, to: 1, period: 1400 })))
+            .child(this.label(t, label, c)))
+          .child(div().text_size(16).font_semibold().line_height(1.3).text_color(a.question ? t.foreground : t.muted).whitespace_normal().max_h(63).overflow_hidden().child(question))
+          .when(Boolean(note), (el) => el.child(div().text_size(12).text_color(t.muted).whitespace_normal().child(note)))
+          .child(div().text_size(11).text_color(t.muted).truncate().child(meta))
           .when(failed, (el) => el.child(div().text_size(12).text_color(c).child("Not sent. Try again.")))
           .when(answerable, (el) => el.child(h_flex().gap(8)
             .child(this.choice(t, a, "yes", "Yes", true))
             .child(this.choice(t, a, "no", "No", false))))
-          .child(open)))
+          .when(Boolean(open), (el) => el.child(open))
+          .when(inWorker && !term, (el) => el.child(div().text_size(12).text_color(c).whitespace_normal().child(`No terminal for ${task}. Tell the secretary.`)))
+          .when(!inWorker || !term, (el) => el.child(this.secretaryLink(t)))))
       .when(more > 0, (el) => el.child(div().px(4).text_size(12).text_color(t.muted).child(`and ${more} more waiting`)));
   }
 

@@ -76,6 +76,7 @@ export const panes = () => [];
 export const terminals = () => [
   { address: "t1", name: "w-task-a", state: "live", status: "blocked", labels: { task_id: "task-a" } },
   { address: "t2", name: "w-task-b", state: "live", status: "blocked", labels: { task_id: "task-b" } },
+  { address: "t9", name: "secretary", state: "live", status: "working", labels: {} },
 ];
 export const theme = () => new Proxy({}, { get: () => "#aa5500" });
 EOF
@@ -120,7 +121,7 @@ run_case() { # run_case <answer>
   export PADDOCK_STATE_DIR=$tmp/state-$1
   out=$(cd "$tmp/m" && node drive.mjs "$1" 2>&1)
   echo "$out" | grep -q '^button found$'; check "$1: the approval card has a $1 button" $?
-  echo "$out" | grep -q '^open found$'; check "$1: the card still opens the worker's terminal" $?
+  echo "$out" | grep -q '^open found$'; check "$1: the card still has an Open control (the secretary's pane, Issue #127)" $?
   msgs=$(bash "$here/scripts/org" --as secretary check_messages --peek 2>&1)
   n=$(printf '%s\n' "$msgs" | grep -c '^\[person#')
   [ "$n" -eq 1 ]; check "$1: exactly one message reaches the secretary, even after more clicks (got $n)" $?

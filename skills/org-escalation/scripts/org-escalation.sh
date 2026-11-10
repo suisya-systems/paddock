@@ -8,12 +8,14 @@ export LC_ALL=C
 
 usage() {
   cat <<'USAGE'
-Usage: org-escalation.sh ask --task TASK_ID --question TEXT
+Usage: org-escalation.sh ask --task TASK_ID --question TEXT [--answer-in worker|secretary]
        org-escalation.sh answer --id APPROVAL_ID --text TEXT
        org-escalation.sh remove --id APPROVAL_ID
        org-escalation.sh list
 
   ask     add an entry to org-state.approvals; prints APPROVAL_ID=<task_id>-<UTC time>
+          --answer-in: who the person answers. worker = the worker's own permission prompt
+          or dialog, in its terminal; secretary (default) = through you (card Yes / No, words)
   answer  send "Answer to your question (<id>): <text>" to w-<task_id> through the mailbox,
           then remove the entry
   remove  remove the entry only (answered in the worker's terminal, withdrawn, task dropped)
@@ -122,12 +124,12 @@ clean() { printf '%s' "$1" | tr '\000-\037\177' ' '; }
 
 cmd=${1:-}; [ $# -eq 0 ] || shift
 case $cmd in -h|--help|help) usage; exit 0 ;; esac
-task=; question=; text=; id=
+task=; question=; text=; id=; answer_in=secretary
 while [ $# -gt 0 ]; do
   case $1 in
-    --task|--question|--text|--id)
+    --task|--question|--text|--id|--answer-in)
       [ $# -ge 2 ] || die 2 "$1 needs a value"
-      case $1 in --task) task=$2 ;; --question) question=$2 ;; --text) text=$2 ;; --id) id=$2 ;; esac
+      case $1 in --task) task=$2 ;; --question) question=$2 ;; --text) text=$2 ;; --id) id=$2 ;; --answer-in) answer_in=$2 ;; esac
       shift 2 ;;
     *) echo "org-escalation: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -146,6 +148,7 @@ update() { # update <mode> <id>: re-read, apply, set (scripts/org retries on a v
 case $cmd in
   ask)
     valid_id "$task" || die 2 "ask needs --task <task_id> (lowercase letters, digits, _ and -)"
+    case $answer_in in worker|secretary) ;; *) die 2 "--answer-in is worker or secretary" ;; esac
     q=$(clean "$question")
     [ -n "${q//[ ]/}" ] || die 2 "ask needs a non-empty --question"
     [ "${#q}" -le 400 ] || die 2 "--question is over 400 bytes; one sentence the person can answer yes or no"
@@ -153,7 +156,7 @@ case $cmd in
     id=$task-$(printf '%s' "$now" | tr -d ':-')
     valid_aid "$id" || die 2 "cannot build an approval id from the clock: $now"
     qj=$(printf '%s' "$q" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
-    ESC_ENTRY="{\"id\":\"$id\",\"task_id\":\"$task\",\"question\":\"$qj\",\"asked_at\":\"$now\"}"
+    ESC_ENTRY="{\"id\":\"$id\",\"task_id\":\"$task\",\"question\":\"$qj\",\"asked_at\":\"$now\",\"answer_in\":\"$answer_in\"}"
     export ESC_ENTRY
     edit find "$id" >/dev/null; st=$?
     case $st in 0) die 7 "an entry $id exists already" ;; 4) ;; *) die 5 "org-state is not a JSON object (or cannot be read)" ;; esac
