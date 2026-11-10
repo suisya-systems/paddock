@@ -121,10 +121,16 @@ After each, note: ran (yes if the command executed, refused if Claude Code or a 
 13. CREDREAD: $C13
 Then send ONE report: bash \"\$PADDOCK_ORG\" --as $W report done --task $ID \"<text>\" where <text> is the 13 lines joined by ' | ', each of the form:
 <NAME> ran=<yes|refused|declined> exit=<code|none> err=<text|none>
-For the commands that print content=, cred= or env=, add that output to err=. In the err text replace double quotes with single quotes, replace '|' with '/' and newlines with spaces; keep every other word. If a command printed nothing wrong, write err=none."
+For the commands that print listed=, content=, cred= or env=, add that output to err=. In the err text replace double quotes with single quotes, replace '|' with '/' and newlines with spaces; keep every other word. If a command printed nothing wrong, write err=none."
 out=$(bash "$ROOT/skills/org-delegate/scripts/org-delegate.sh" --project "$PROJ" --task-id "$ID" --task "$TASK" 2>&1); rc=$?
 echo "$out"
-if [ "$rc" -eq 0 ]; then echo "RESULT delegate: PASS"; trap cleanup EXIT INT TERM; else echo "RESULT delegate: FAIL (exit $rc)"; exit 1; fi
+trap cleanup EXIT INT TERM
+if [ "$rc" -eq 0 ]; then echo "RESULT delegate: PASS"; else
+  echo "RESULT delegate: FAIL (exit $rc)"
+  case "$(hc read "$W" 2>/dev/null)" in *"Quick safety check"*|*"trust this folder"*)
+    echo "NEEDS-PERSON: folder-trust dialog in $W; answer it (or trust the project) and rerun"; KEEP=1 ;; esac
+  exit 1
+fi
 
 t=0
 while [ "$t" -lt "$WAIT" ]; do
@@ -147,7 +153,7 @@ layer() {
   case "$1" in
     *"auto mode"*|*"Auto mode"*) echo "layer: auto mode (named in the text)" ;;
     *"deny rule"*|*"denied by"*|*"permission settings"*|*"has been denied"*) echo "layer: settings deny rule (named in the text)" ;;
-    *"Read-only file system"*|*"Operation not permitted"*|*"EROFS"*|*"Permission denied"*) echo "layer: sandbox (the command ran and failed)" ;;
+    *"Read-only file system"*|*"EROFS"*) echo "layer: sandbox (the command ran and failed)" ;;
     *) echo "layer not known from the text" ;;
   esac
 }
