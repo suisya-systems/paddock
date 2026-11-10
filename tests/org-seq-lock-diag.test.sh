@@ -8,16 +8,16 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 echo "DIAG bash=$BASH_VERSION uname=$(uname -sr) nproc=$(nproc 2>/dev/null) pid_max=$(cat /proc/sys/kernel/pid_max 2>/dev/null) ulimit_u=$(ulimit -u)"
-echo "DIAG tmpfs=$(df -T "$tmp" 2>/dev/null | awk 'NR==2{print $2}') mv=$(mv --version 2>/dev/null | head -1) mkdir=$(command -v mkdir) sleep=$(command -v sleep) tail=$(command -v tail)"
+echo "DIAG tmpfs=$(df -T "$tmp" 2>/dev/null | awk 'NR==2{print $2}') mv=$(mv --version 2>/dev/null | head -1) mkdir_v=$(mkdir --version 2>/dev/null | head -1) mkdir=$(command -v mkdir) sleep=$(command -v sleep) tail=$(command -v tail)"
 echo "DIAG pidns=$(readlink /proc/self/ns/pid 2>/dev/null) uid=$(id -u)"
 
 # A copy of scripts/org with one trace line per lock step (no forks: $EPOCHREALTIME, $BASHPID).
 tr_org=$tmp/org
 sed \
-  -e 's|^  until mkdir "\$lk" 2>/dev/null; do$|  echo "$EPOCHREALTIME $me START" >> "$state/trace"\n&|' \
+  -e 's|^  until mkdir "\$lk" 2>/dev/null && excl "\$lk/pid" "\$me"; do$|  echo "$EPOCHREALTIME $me START" >> "$state/trace"\n&|' \
   -e 's|^      o=\$(cat "\$lk/pid" 2>/dev/null)$|&; k=0; kill -0 "$o" 2>/dev/null \|\| k=$?; echo "$EPOCHREALTIME $me CHECK n=$n o=$o kill=$k" >> "$state/trace"|' \
   -e 's|^            && rm -f "\$lk/pid" && rmdir "\$lk" 2>/dev/null$|            \&\& echo "$EPOCHREALTIME $me BREAK o=$o" >> "$state/trace" \&\& rm -f "$lk/pid" \&\& rmdir "$lk" 2>/dev/null|' \
-  -e 's|^  # the pid file appears whole.*$|  echo "$EPOCHREALTIME $me ACQ n=$n ino=$(ls -di "$lk" \| cut -d" " -f1) ents=$(ls -A "$lk" \| tr "\\n" ,)" >> "$state/trace"\n&|' \
+  -e 's|^  printf .{"seq":%s,.*$|  echo "$EPOCHREALTIME $me ACQ n=$n ino=$(ls -di "$lk" \| cut -d" " -f1) ents=$(ls -A "$lk" \| tr "\\n" ,)" >> "$state/trace"\n&|' \
   -e 's|^  rm -f "\$lk/pid"; rmdir "\$lk" 2>/dev/null$|  echo "$EPOCHREALTIME $me WROTE seq=$(tail -n 1 "$d/$id.jsonl" \| cut -c1-12) pidfile=$(cat "$lk/pid" 2>/dev/null)" >> "$state/trace"\n  rm -f "$lk/pid"; rmdir "$lk"; echo "$EPOCHREALTIME $me REL rmdir=$?" >> "$state/trace"|' \
   "$here/scripts/org" > "$tr_org"
 for w in START CHECK BREAK ACQ WROTE REL; do grep -q "$w" "$tr_org" || echo "DIAG trace step $w not injected"; done

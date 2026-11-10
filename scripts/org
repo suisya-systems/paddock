@@ -89,37 +89,40 @@ next_seq() {
   echo $((max + 1))
 }
 
-# append <kind> <to> <task_id> <text>: one line in this id's own file. A mkdir lock per id
-# keeps seq unique and increasing when one agent runs commands in parallel (Issue #145).
-# The holder records its pid in <lock>/pid. A waiter never breaks a lock whose holder is
-# alive: it breaks one only when the recorded pid is dead, under a second lock <lock>.break,
-# and only if the pid it re-reads there is still that dead one. A lock with no pid recorded
-# (holder killed right after mkdir) or a .break left behind is never broken: the send gives
-# up after $PADDOCK_LOCK_WAIT s (default 60) with exit 5 and names the folder to remove.
+# excl <file> <text>: create <file> holding <text> only if it does not exist yet. The shell's own
+# noclobber open (O_EXCL) decides, so no external command's exit status is trusted for it.
+excl() { local r; set -C; { printf '%s\n' "$2" > "$1"; } 2>/dev/null; r=$?; set +C; return "$r"; }
+
+# append <kind> <to> <task_id> <text>: one line in this id's own file. A lock per id keeps seq
+# unique and increasing when one agent runs commands in parallel (Issue #145). The lock is the
+# folder <lock> holding the file <lock>/pid: a writer holds it only when its mkdir succeeded AND
+# it created <lock>/pid itself with excl. mkdir alone is not trusted: some mkdir builds report
+# success to the loser of a race (seen on a GitHub ubuntu runner). A waiter never breaks a lock
+# whose holder is alive: it breaks one only when the recorded pid is dead, holding the guard
+# file <lock>.break, and only if the pid it re-reads there is still that dead one. A lock with no
+# pid recorded (holder killed right after mkdir) or a .break left behind is never broken: the
+# send gives up after $PADDOCK_LOCK_WAIT s (default 60) with exit 5 and names what to remove.
 append() {
   local d=$state/events/$cur body lk=$state/events/$id.lock me=${BASHPID:-$$} n=0 o ok=0 end
   body=$(printf '%s\n' "$4" | json_esc)
   [ "${#body}" -le 32768 ] || die 2 "text is longer than 32 KiB"
   mkdir -p "$d" || die 5 "cannot create $d"
   end=$((SECONDS + ${PADDOCK_LOCK_WAIT:-60}))
-  until mkdir "$lk" 2>/dev/null; do
+  until mkdir "$lk" 2>/dev/null && excl "$lk/pid" "$me"; do
     n=$((n + 1))
     if [ $((n % 20)) -eq 0 ]; then
       o=$(cat "$lk/pid" 2>/dev/null)
       case "$o" in ''|*[!0-9]*) ;; *)
-        if ! kill -0 "$o" 2>/dev/null && mkdir "$lk.break" 2>/dev/null; then
+        if ! kill -0 "$o" 2>/dev/null && excl "$lk.break" "$me"; then
           [ "$(cat "$lk/pid" 2>/dev/null)" = "$o" ] && ! kill -0 "$o" 2>/dev/null \
             && rm -f "$lk/pid" && rmdir "$lk" 2>/dev/null
-          rmdir "$lk.break"
+          rm -f "$lk.break"
         fi ;;
       esac
       [ "$SECONDS" -lt "$end" ] || die 5 "lock $lk is held (pid ${o:-not recorded}); if no org command of $id is running, remove $lk and $lk.break"
     fi
     sleep 0.05 2>/dev/null || sleep 1
   done
-  # the pid file appears whole (rename), so a waiter never reads a half-written one
-  { echo "$me" > "$lk/pid.$me" && mv -f "$lk/pid.$me" "$lk/pid"; } \
-    || { rm -f "$lk/pid.$me"; rmdir "$lk"; die 5 "cannot write $lk/pid"; }
   printf '{"seq":%s,"ts":"%s","from":"%s","kind":"%s","to":"%s","task_id":"%s","text":"%s"}\n' \
     "$(next_seq)" "$now" "$id" "$1" "$2" "$3" "$body" >> "$d/$id.jsonl" && ok=1
   rm -f "$lk/pid"; rmdir "$lk" 2>/dev/null
