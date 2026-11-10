@@ -305,7 +305,7 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 - **Source.** Hand-written files per role, reviewed as code; or one schema rendered per role, which brings back a renderer ([Q11](#q11-what-happens-to-the-predecessors-python-gates-and-generators)).
 - **Skills.** In the user's skill folder for every agent; or per role, next to the role's settings.
 
-**Decided (2026-11-10, owner, for the channel and the moment; the Source and Skills questions are not decided here): a mix.**
+**Decided (2026-11-10, owner, for the channel and the moment; Source and Skills are decided below, 2026-11-11): a mix.**
 
 - **Role settings, (b):** one settings file per role, kept outside the worktrees and named in the role's template `command` with `--settings <path>`. (Placed first next to the templates; moved to the paddock bin folder, `~/.local/share/paddock/bin` by default, which the worker may read and not write, because herdr-core lists every `*.md` in its templates folder as a template, Issue #129.) It carries the sandbox, the deny list and the hooks. It is put in place when the templates are installed (`org-start` places them).
 - **Task-specific paths, (a):** a small `.claude/settings.local.json` written into the worktree at each delegation by the delegation skill, only for paths that change per task.
@@ -319,14 +319,14 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 - **Consequence, inventory:** the rows about permissions distribution (PRM-1, PRM-2, PRM-6, SK-9, RET-1, RET-4, L-K4, L-K7) point here.
 - **Not measured:** (1) that `--settings` in a template launch is honoured together with a per-worktree `settings.local.json`: P2 and P5 each used one channel, and no probe used both in one launch. **This is the probe to run**: launch a worker from a template whose `command` names a `--settings` file with a deny rule, with a worktree `settings.local.json` carrying a different deny rule, and check that both refuse their commands. (2) That a `--settings` file's sandbox applies: P5 showed its deny rule and hooks apply, and does not show its sandbox ([inventory](predecessor-inventory.md) L-K7). The same launch should run the negative checks of L-K1, L-K4, L-K5 and L-K7, so the sandbox's applying from `--settings` is settled there. (3) Which settings take precedence when the two files disagree; the Claude Code docs were not read for this here.
 
-**Draft for Source and Skills (Issue #18). Awaiting the owner; not decided.**
+**Decided (2026-11-11, owner, for Source and Skills): hand-written settings per role, reviewed as code; skills per role, next to the role's settings.**
 
-**Recommended picks.**
+**Picks.** Both are the drafted recommendations, adopted as written. The rejected options are the schema renderer and the user skill folder.
 
-1. **Source: hand-written files per role, reviewed as code.** Reason: the repository has one role file set that matters (the worker's) and it is 42 lines; a renderer for one file costs more than the file, and it would reopen the generator question of [Q11](#q11-what-happens-to-the-predecessors-python-gates-and-generators) and the "nothing to install beyond herdr" rule (goal G4).
+1. **Source: hand-written files per role, reviewed as code.** Why: the repository has one role file set that matters (the worker's) and it is 42 lines; a renderer for one file costs more than the file, and it would reopen the generator question of [Q11](#q11-what-happens-to-the-predecessors-python-gates-and-generators) and the "nothing to install beyond herdr" rule (goal G4).
 2. **Skills: per role, next to the role's settings, not in the user's skill folder.** Reason: the user's skill folder also serves the person's own Claude Code sessions, the same reason Q10 rejected user settings (c); and a skill with a script and a path is only reachable if its place is fixed per role.
 
-**What would change the picks.** Source: if the roles that need settings grow past about three, or a person must give different workers different allow lists per task, a schema starts to pay; then decide the renderer's language in Q11 first. Skills: if the owner wants the secretary's skills to be offered in the person's own sessions too (for example a skill that tells the person how to start the organization from their login shell; `org-start` itself refuses to run inside an agent, [`skills/org-start/scripts/org-start.sh`](../../skills/org-start/scripts/org-start.sh) line 38), the user folder is the place for those.
+**Revisit when.** Source: if the roles that need settings grow past three, or the allow rules must differ per task, a schema starts to pay; then decide the renderer's language in Q11 first. Skills: if the owner wants the secretary's skills to be offered in the person's own sessions too (for example a skill that tells the person how to start the organization from their login shell; `org-start` itself refuses to run inside an agent, [`skills/org-start/scripts/org-start.sh`](../../skills/org-start/scripts/org-start.sh) line 38), the user folder is the place for those.
 
 **What is in the repository today** (each line is a file; none of it is measured beyond what Q10 already cites).
 
@@ -352,7 +352,7 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 **Not measured here:** whether Claude Code lists a skill from the user folder to a template-launched agent; whether it can load skills from a per-role folder; which of two settings files wins when they disagree (already open as point (3) of "Not measured" in the decided block above). The probe for the first two is a template launch with one test skill in each place, asking the agent to name its skills.
 
-**Decides (Source and Skills).** The owner.
+**Skills measurement comes first.** Which place Claude Code recognises for a template-launched agent is not measured, so the per-role placement cannot be built until it is. The probe: launch an agent from a template with one test skill in the per-role folder (and one in the user folder), and ask it to name its skills; also run a script-backed skill from there, since skill scripts find `scripts/org` by their own place.
 
 ## Q11. What happens to the predecessor's Python gates and generators?
 
