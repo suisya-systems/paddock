@@ -20,6 +20,7 @@ clean prepare --repo a/b >/dev/null 2>&1; [ $? -eq 2 ]; check "prepare without -
 clean prepare --project . --repo nobody >/dev/null 2>&1; [ $? -eq 2 ]; check "--repo without a slash exits 2" $?
 clean prepare --project . --repo Suisya-Systems/Paddock >/dev/null 2>&1; [ $? -eq 6 ]; check "this repository is refused, any case" $?
 CLAUDECODE=1 XDG_STATE_HOME="$tmp" sh "$S" prepare --project . --repo a/b >/dev/null 2>&1; [ $? -eq 4 ]; check "prepare inside an agent exits 4" $?
+clean prepare --project "it's" --repo a/b >/dev/null 2>&1; [ $? -eq 2 ]; check "a path with an apostrophe exits 2" $?
 clean watch >/dev/null 2>&1; [ $? -eq 2 ]; check "watch without --task-id exits 2" $?
 clean watch --task-id 'Bad Id' >/dev/null 2>&1; [ $? -eq 2 ]; check "bad task id exits 2" $?
 clean collect --task-id p2-none >/dev/null 2>&1; [ $? -eq 6 ]; check "unknown run exits 6" $?

@@ -76,6 +76,7 @@ if [ "$phase" = prepare ]; then
     [ -z "$(printenv "$v" 2>/dev/null)" ] || die 4 "$v is set: run prepare from a plain login shell, not inside an agent"
   done
   [ -n "$project" ] && [ -n "$repo" ] || die 2 "prepare needs --project and --repo"
+  case "$project${PADDOCK_WORKERS_DIR:-}" in *"'"*) die 2 "a path with an apostrophe is not supported (the run file quotes paths with it)" ;; esac
   [ -n "$T" ] || T=p2-$(date -u +%Y%m%d%H%M)
   repo=$(printf '%s' "$repo" | lc)
   case "$repo" in */*) ;; *) die 2 "--repo must be OWNER/NAME" ;; esac
@@ -102,7 +103,7 @@ fi
 for c in hc git gh bash awk sed grep; do command -v "$c" >/dev/null 2>&1 || die 3 "$c not found on PATH"; done
 hcj() { hc get --json "$1" 2>/dev/null | one_line; }
 field() { grep -Eo "\"$1\": *(\"[^\"]*\"|[0-9]+)" | head -n 1 | sed 's/^[^:]*: *//; s/"//g'; }
-state_of() { hcj "$1" | grep -Eo '"status": *\{[^{}]*\}' | field state; }
+state_of() { hcj "$1" | grep -Eo '"status": *\{[^{}]*"state": *"[a-z]*"' | grep -Eo '"state": *"[a-z]*"' | tail -n 1 | sed 's/.*: *"//; s/"$//'; } # up to the state key: a status text may hold braces (org-suspend lib)
 orgstate() { bash "$ORG" --as secretary doc get org-state 2>/dev/null | one_line; }
 
 if [ "$phase" = prepare ]; then
@@ -209,7 +210,7 @@ if [ "$phase" = watch ]; then
     s=$(state_of secretary); w=$(state_of "$W")
     sb=0; wb=0; [ "$s" = blocked ] && [ "$prev_s" != blocked ] && sb=1; [ "$w" = blocked ] && [ "$prev_w" != blocked ] && wb=1
     [ "$s" = "$prev_s" ] || { log "secretary ${s:-none}"; prev_s=$s; }
-    [ "$w" = "$prev_w" ] || { log "$W ${w:-none} $(hcj "$W" | grep -Eo '"status": *\{[^{}]*\}')"; prev_w=$w; }
+    [ "$w" = "$prev_w" ] || { log "$W ${w:-none} $(hcj "$W" | grep -Eo '"status": *\{.*' | cut -c1-300)"; prev_w=$w; }
     os=$(orgstate)
     [ "$os" = "$prev_os" ] || { log "org-state $os"; printf '%s\t%s\n' "$(now)" "$os" >> "$RUN/org-state.log"; prev_os=$os; }
 
@@ -227,7 +228,7 @@ if [ "$phase" = watch ]; then
     fi
     # 3. worktree and settings
     if [ -d "$WT" ] && git -C "$PROJECT" worktree list --porcelain 2>/dev/null | grep -qxF "worktree $WT"; then
-      [ -f "$WT/.claude/settings.local.json" ] && res 3-worktree PASS "$WT on $BR, settings.local.json written"
+      [ -f "$WT/.claude/settings.local.json" ] && [ "$(git -C "$WT" symbolic-ref --short HEAD 2>/dev/null)" = "$BR" ] && res 3-worktree PASS "$WT on $BR, settings.local.json written"
     fi
     # 4. worker started, labelled; its own start report shows the template command ran ($PADDOCK_ORG)
     if [ -n "$w" ] && [ ! -f "$RUN/worker.created" ]; then
