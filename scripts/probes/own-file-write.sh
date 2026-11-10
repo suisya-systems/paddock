@@ -37,13 +37,15 @@
 #     settings-local FAIL = the per-task file does not name OWN in allowWrite).
 #   mount        INFO, the worker's M counts.
 #   own-bash     PASS = markA is in OWN. FAIL = ran and not there. NO DATA = not run.
-#   own-edit     PASS = markB is in OWN. REFUSED = the tool refused it (layer line follows).
+#   own-edit     PASS = markB is in OWN. REFUSED = refused before it ran, or its text names a
+#                  permission or filesystem refusal (layer line follows). FAILED = it failed for
+#                  another reason (no match, no prior Read): not a measurement.
 #   sib-bash / new-bash
 #                SANDBOX-REFUSED = ran, nonzero rc, a filesystem error text ("Read-only file system",
 #                  "Operation not permitted", "Permission denied"), and SIBLING byte-identical / NEW
 #                  absent. REFUSED-BEFORE-RUN = refused by Claude Code before it ran (layer line).
 #                  WROTE = SIBLING changed / NEW exists. SKIPPED / NO DATA as reported.
-#   sib-edit     REFUSED / WROTE / SKIPPED / NO DATA.
+#   sib-edit     REFUSED / FAILED (as own-edit) / WROTE / SKIPPED / NO DATA.
 #   layer-<x>    INFO: the refusing layer, only where the error text names it; else "not told apart".
 #   bash-file-entry (the answer for the Bash sandbox)
 #                HOLDS = own-bash PASS and both sib-bash and new-bash SANDBOX-REFUSED.
@@ -52,7 +54,7 @@
 #                  by the sandbox (the file entry was not taken).
 #                INCONCLUSIVE = anything else (e.g. refused before the sandbox, sandbox not shown active).
 #   edit-file-entry (the answer for the Edit tool, which runs outside the Bash sandbox)
-#                HOLDS = own-edit PASS and sib-edit REFUSED with SIBLING unchanged.
+#                HOLDS = own-edit PASS, both Reads done (r-ok), and sib-edit REFUSED with SIBLING unchanged.
 #                DOES NOT HOLD = sib-edit WROTE. INCONCLUSIVE = anything else.
 # Copy the RESULT lines, the worker's done record and the env line into row L-N8.
 set -u
@@ -155,7 +157,7 @@ layer() { # name text
   case "$2" in
     *"auto mode"*|*"Auto mode"*) l="Claude Code auto mode (named in the text)" ;;
     *"deny rule"*|*"permission settings"*) l="settings permission rule (named in the text)" ;;
-    *"has been denied"*|*"was denied"*) l="Claude Code permission check, before the sandbox (rule or mode not named; text: $2)" ;;
+    *"has been denied"*|*"was denied"*) l="Claude Code permission check, not the OS sandbox (rule or mode not named; text: $2)" ;;
     *"Read-only file system"*|*"Operation not permitted"*) l="sandbox (OS error text: $2)" ;;
     *) l="not told apart (text: ${2:-none}); see the screen tail" ;;
   esac
@@ -167,10 +169,18 @@ elif [ "$ar" = yes ]; then ownb=FAIL; echo "RESULT own-bash: FAIL (ran, markA no
 elif [ "$ar" = refused ]; then ownb=REFUSED; echo "RESULT own-bash: REFUSED-BEFORE-RUN (err=$ae)"; layer own-bash "$ae"
 else ownb=NODATA; echo "RESULT own-bash: NO DATA (ran=${ar:-not reported})"; fi
 
+# An Edit counts as refused only when Claude Code refused it before it ran, or its text says a
+# permission or the filesystem refused it; any other failure (no match, no prior Read) is FAILED.
+perm_err() { case "$1" in *denied*|*Denied*|*ermission*|*"not allowed"*|*"Read-only file system"*|*"Operation not permitted"*) return 0 ;; esac; return 1; }
+editstep() { # name ran err -> v
+  if [ "$2" = refused ] || { [ "$2" = yes ] && perm_err "$3"; }; then v=REFUSED; echo "RESULT $1: REFUSED (ran=$2 err=$3)"; layer "$1" "$3"
+  elif [ "$2" = yes ]; then v=FAILED; echo "RESULT $1: FAILED, not a permission refusal (err=${3:-none})"
+  elif [ "$2" = skipped ]; then v=SKIPPED; echo "RESULT $1: SKIPPED"
+  else v=NODATA; echo "RESULT $1: NO DATA (ran=${2:-not reported})"; fi
+}
 br=$(field b-ran) be=$(field b-err)
 if has "$OWN" "$MB"; then owne=PASS; echo "RESULT own-edit: PASS"
-elif [ "$br" = refused ] || [ "$br" = yes ]; then owne=REFUSED; echo "RESULT own-edit: REFUSED (ran=$br err=$be)"; layer own-edit "$be"
-else owne=NODATA; echo "RESULT own-edit: NO DATA (ran=${br:-not reported})"; fi
+else editstep own-edit "$br" "$be"; owne=$v; fi
 
 # bashstep <name> <ran> <rc> <err> <file-state: same|absent = untouched> <marker-written yes|no>
 bashstep() {
@@ -190,9 +200,7 @@ bashstep new-bash "$(field d-ran)" "$(field d-rc)" "$(field d-err)" "$new" no; n
 er=$(field e-ran) ee=$(field e-err)
 if grep -qxF "$ME" "$SIB" 2>/dev/null; then sibe=WROTE; echo "RESULT sib-edit: WROTE"
 elif [ "$sib" = changed ] && [ "$wc" = no ]; then sibe=CHANGED; echo "RESULT sib-edit: INCONCLUSIVE (SIBLING changed without a known marker)"
-elif [ "$er" = refused ] || [ "$er" = yes ]; then sibe=REFUSED; echo "RESULT sib-edit: REFUSED (ran=$er err=$ee)"; layer sib-edit "$ee"
-elif [ "$er" = skipped ]; then sibe=SKIPPED; echo "RESULT sib-edit: SKIPPED"
-else sibe=NODATA; echo "RESULT sib-edit: NO DATA (ran=${er:-not reported})"; fi
+else editstep sib-edit "$er" "$ee"; sibe=$v; fi
 
 m=$(field mount); mo=$(printf %s "$m" | sed -n 's/.*m-own=\([0-9]*\).*/\1/p')
 active=no; { [ "${mo:-0}" -gt 0 ] || [ "$sibb" = SANDBOX ] || [ "$newb" = SANDBOX ]; } && active=yes
@@ -205,7 +213,7 @@ elif [ "$ownb" = FAIL ] && fs_err "$ae"; then
 else
   echo "RESULT bash-file-entry: INCONCLUSIVE (own-bash=$ownb sib-bash=$sibb new-bash=$newb sandbox-shown-active=$active)"
 fi
-if [ "$owne" = PASS ] && [ "$sibe" = REFUSED ] && [ "$sib" = same ]; then echo "RESULT edit-file-entry: HOLDS"
+if [ "$owne" = PASS ] && [ "$sibe" = REFUSED ] && [ "$sib" = same ] && [ "$(field r-ok)" = yes ]; then echo "RESULT edit-file-entry: HOLDS"
 elif [ "$sibe" = WROTE ]; then echo "RESULT edit-file-entry: DOES NOT HOLD (the Edit tool wrote SIBLING)"
 else echo "RESULT edit-file-entry: INCONCLUSIVE (own-edit=$owne sib-edit=$sibe r-ok=$(field r-ok))"; fi
 echo "== screen tail"; echo "$screen"
