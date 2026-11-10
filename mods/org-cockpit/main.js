@@ -52,12 +52,15 @@ async function readDoc(on) {
   return msg.result; // { value, version }; version 0: never written
 }
 
-// The org commands, where org-start places them (its folder rules: APPDATA on Windows Git Bash).
+// The org commands, where org-start places them (Issue #128: PADDOCK_BIN_DIR, default
+// ${XDG_DATA_HOME:-~/.local/share}/paddock/bin). A machine whose org-start predates #128 has them
+// beside the herdr-core templates instead (APPDATA on Windows Git Bash).
 // The card answers through them, on the secretary's machine; it never writes org-state (L-N8).
-const ORG = '${PADDOCK_CORE_TEMPLATES_DIR:-${APPDATA:-${XDG_CONFIG_HOME:-$HOME/.config}}/herdr-core/templates}/org';
+const ORG = 'o=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}/org; ' +
+  '[ -f "$o" ] || o=${PADDOCK_CORE_TEMPLATES_DIR:-${APPDATA:-${XDG_CONFIG_HOME:-$HOME/.config}}/herdr-core/templates}/org';
 // ponytail: needs sh on that machine; a native Windows one without it shows "Not sent".
 async function sendAnswer(on, id, word) {
-  const r = await exec("sh", ["-c", `exec bash "${ORG}" --as person send_message secretary "$1"`, "sh", `ANSWER ${id} ${word}`], { on });
+  const r = await exec("sh", ["-c", `${ORG}; exec bash "$o" --as person send_message secretary "$1"`, "sh", `ANSWER ${id} ${word}`], { on });
   if (r.code !== 0) throw new Error(r.stderr.trim() || `org exited with ${r.code}`);
 }
 
