@@ -474,7 +474,59 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 **Options.** (a) Markdown files in a fixed folder on the primary host, read by skills; (b) a core document (needs a new name in decision 0004); (c) lines in the secretary's template body; (d) paddock's repository, for settings that are not personal.
 
-**Decides.** The owner.
+**Decided (2026-11-11, owner): (a), with defaults in the scripts (d).** The drafted recommendation, adopted as written. The worker folder, the worker cap, the merge approval mode and the projects registry (with each project's base branch) live in two plain files per machine, `org-config.md` and `projects.md`, in the paddock config folder: the folder `org-start` already resolves for the worker token file (`%APPDATA%` when set, else `$XDG_CONFIG_HOME`, else `~/.config`, plus `paddock`; [`org-start.sh`](../../skills/org-start/scripts/org-start.sh) lines 50, 51 and 82). The values used when a line is missing stay in the scripts, which is (d) for what is not personal. No new core document.
+
+**Why.**
+
+- The settings are read by shell scripts: the worker folder and the cap by `org-delegate` and `org-resume`, the approval mode by `org-pull-request`. A `key: value` line is read with one `sed`; it needs no core round trip and no parser (goal G4).
+- The projects table is read by the secretary only, as Markdown, without a parser ([inventory](predecessor-inventory.md) REG-1). The secretary passes the project's path and base branch as `--project` and `--base` to both `org-delegate` and `org-pull-request`, as it passes `--project` today, so no script parses the table.
+- The person never writes the format. They tell the secretary ("add this project", "merge on green CI"), and the secretary edits the file; `org-start` creates both files with the defaults when they are missing. The person can open either file to read it. A core document has no `hc` verb ([`org-pull-request.sh`](../../skills/org-pull-request/scripts/org-pull-request.sh) line 118), so under (b) only the secretary or a mod that does not exist could change it.
+- These are settings, not work in progress, and [decision 0004](../decisions/0004-records-documents-and-jsonl.md) gives core documents to in-progress state.
+
+**Rejected.**
+
+- **(b) a core document:** no `hc` verb lets a person change it, so only the secretary or a mod that does not exist could; every script would need a core round trip; and decision 0004 keeps documents for in-progress state. Decision 0004 is not changed.
+- **(c) lines in the secretary template body:** `org-start` overwrites the installed template on every run, so a lasting edit is a repository edit; and only the secretary would see the value, not the scripts.
+- **(d) alone:** personal values (paths, the person's projects) would be committed. (d) keeps only the defaults, in the scripts.
+
+**What is in the repository today.**
+
+- Worker folder: `PADDOCK_WORKERS_DIR`, default `~/paddock-workers` ([`org-delegate.sh`](../../skills/org-delegate/scripts/org-delegate.sh) line 80). The script reads its own environment, so the variable works on one call; for it to hold for every call, it must be in the core's environment, set in the login shell that starts the core ([`org-start` SKILL.md](../../skills/org-start/SKILL.md) line 50).
+- Worker cap and projects registry: none. The secretary passes `--project <path>` on every delegation ([`org-delegate` SKILL.md](../../skills/org-delegate/SKILL.md) line 34).
+- Base branch: `--base`, default `main`, in both [`org-delegate.sh`](../../skills/org-delegate/scripts/org-delegate.sh) line 43 and [`org-pull-request.sh`](../../skills/org-pull-request/scripts/org-pull-request.sh) lines 40 and 77 (the PR's base). Nothing per project.
+- Merge approval mode: `--mode`, else a top-level `merge_approval_mode` in `org-state`, else `human` ([`org-pull-request.sh`](../../skills/org-pull-request/scripts/org-pull-request.sh) lines 118 to 120). Its SKILL.md calls this "the smallest reading" and notes that the prototype-1 shape has no such field ([`org-pull-request` SKILL.md](../../skills/org-pull-request/SKILL.md) line 49). So one setting already sits in a state document, as a stopgap.
+- Conversation language ([Q9](#q9-where-does-the-conversation-language-setting-live), open): the line `Conversation language: auto` in the secretary template body ([`templates/secretary.md`](../../templates/secretary.md) line 7), which is option (c) in use.
+- Allowed document names: `org-state` and `secretary-handover` only ([`scripts/org`](../../scripts/org) lines 249 to 251).
+
+**The options.**
+
+| Option | How a person changes a setting | What it costs | What it needs that does not exist | Feasible? |
+| --- | --- | --- | --- | --- |
+| (a) Files in the paddock config folder | Tells the secretary, which edits the file; or edits it in any editor. | One read line per value in each script that uses it. The files are per machine. | The two files and their creation by `org-start`; the reader in `org-delegate`, `org-resume` and `org-pull-request`; the cap check in `org-delegate` and `org-resume` (both launch workers), counting live terminals with the `task_id` label (REG-2); the secretary's instructions for both files. | Yes on the shell side: plain files, nothing from herdr. A worker must not write them. Its sandbox allows writes only to the state folder ([`worker-settings.json`](../../templates/worker-settings.json) lines 26 to 28), but whether a `--settings` sandbox applies at all is not measured (Q10, "Not measured" point 2). **Measurement:** in that same Q10 launch, the worker tries to write `org-config.md` in the default config folder, which must be refused. |
+| (b) A core document `org-config` | Tells the secretary, which runs `scripts/org doc update`. There is no `hc` verb and no mod form. | A decision 0004 row and a cap case in `scripts/org`; a core round trip in every script that reads a value; settings mixed into the in-progress store. | The row below, the `scripts/org` case, a mod form if the person is to change it on screen. | Yes: `doc.get` and `doc.set` through `hc connect` were observed (Store observation, Q8), and `scripts/org` uses them today. A mod can read it (decision 0004, Consequences). |
+| (c) Lines in the secretary template body | Edits the template. But `org-start` overwrites the installed template on every run ([`org-start.sh`](../../skills/org-start/scripts/org-start.sh) line 70), so a lasting edit goes into the repository copy, which is (d). | Only the secretary sees it, from its next start; the scripts would have to parse a template. | A template reader in each script. | Partly: templates are read fresh on each use, and the body is the first message (Core docs). That a body rule survives compaction has one weak measurement (Q12). |
+| (d) paddock's repository | Edits the file and opens a pull request. | The same value for everyone; personal values (paths, the person's projects) would be committed. | Nothing for the defaults: they are in the scripts today. | Yes, for values that are not personal only. |
+
+**Note on the rejected (b).** Decision 0004 is not changed. Had (b) been picked, its table would have gained this row (not sized against a real projects list; the predecessor's `registry/projects.md` was not measured):
+
+| Name | Writer | Holds | Cap | Pruning |
+| --- | --- | --- | --- | --- |
+| `org-config` | the secretary | the worker folder, the worker cap, the merge approval mode, and the projects with their base branches | 16 KiB | replaced whole on every write; a project leaves when the person drops it |
+
+**Consequences** (for the implementing task).
+
+- Order: argument, then `PADDOCK_*` variable, then file, then the script's default. A missing cap line means no cap, as today.
+- The cap counts live terminals with the `task_id` label, whatever their status. Two launches at the same moment can both pass the count; the secretary runs launches one at a time, and that is a known limit, not a lock.
+- `org-pull-request` reads the approval mode from the file instead of `org-state`.
+- The worker settings gain a write deny for the config folder, as they have for the bin folder (`worker-settings.json` lines 18 and 38), and `org-delegate` refuses an `--allow-write` path inside it. Like every path in that file, the deny names the default folder only; with `APPDATA` or `XDG_CONFIG_HOME` set elsewhere it does not follow ([`org-start` SKILL.md](../../skills/org-start/SKILL.md) line 46, the same open limit).
+- The conversation language may go into `org-config.md` too, so a change survives `org-start`; that is Q9's to decide.
+- The permission mode is not one of these settings: it belongs in each template's command (PRM-9). The shipped templates pass none today ([`templates/worker.md`](../../templates/worker.md) line 3, [`templates/secretary.md`](../../templates/secretary.md) line 3).
+
+**Revisit when.**
+
+- If the screen must show or change these settings: a mod reads documents through `hc connect`; whether a mod can read a plain file was not checked here (the App docs were not read for it). Then (b), for the values the screen needs.
+- If several people must share the same settings: (d) for those values.
+- If the measurement above shows that a worker can write the config folder and no deny closes it, the approval mode cannot stay in a file a worker writes. (b) is the fallback only once a worker's lack of core access is measured: that row is still unverified ([inventory](predecessor-inventory.md) L-N2).
 
 ## Q15. Which of the predecessor's optional organization features carry over?
 
