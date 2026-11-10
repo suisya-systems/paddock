@@ -64,7 +64,7 @@ TASK="Probe for paddock Issue #58. Change nothing. Run exactly these two command
 out=$(bash "$ROOT/skills/org-delegate/scripts/org-delegate.sh" --project "$PROJ" --task-id "$ID" --task "$TASK" 2>&1); rc=$?
 echo "$out"
 if [ "$rc" -eq 0 ]; then echo "RESULT delegate: PASS"; trap cleanup EXIT INT TERM; else echo "RESULT delegate: FAIL (exit $rc)"; exit 1; fi
-echo "RESULT hc-first-msg: INFO $(hc get --json "$W" 2>&1 | tr -d '\n' | sed -n 's/.*"first_message" *: *\({[^}]*}\).*/\1/p')"
+echo "RESULT hc-first-msg: INFO $(hc get --json "$W" 2>&1 | tr -d '\n' | cut -c1-300)"
 
 t=0
 while [ "$t" -lt "$WAIT" ]; do
