@@ -37,13 +37,14 @@
 #   a-checkin                hc checked in at its default timeout (informational).
 #   a2-/b-blocked            it held for about SLEEP seconds, not at once.
 #   a2-/b-output             the wait's output shows exit_code 5 (hc names a child by terminal address, not by name).
+#                            (a2 reuses a's child: its own hold is shorter than the child age; both are printed.)
 # The wait's own exit status and the seen-* text are printed for reading by eye (hc may
 # use its own status for the wait; the JSON line is the evidence). Paste the whole output back.
 set -u
 
 case "${1:-}" in
   "") ;;
-  -h|--help) sed -n '2,41p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,42p' "$0"; exit 0 ;;
   *) echo "hc-wait-in-claude: unknown argument: $1" >&2; exit 2 ;;
 esac
 
@@ -88,7 +89,8 @@ judge() { # judge <a|a2|b> <child> <exit|checkin> [origin-file]: verdicts from t
       if grep -Eq '"reason": *"timeout"' "$OUT/$p.out"; then result $p-checkin PASS "hc checked in (reason timeout) after ${el}s with the default timeout; the child was not over"
       else result $p-checkin NO DATA "no reason timeout in the output: read it below"; fi
     else
-      if [ $el -ge $((SLEEP - 15)) ]; then result $p-blocked PASS "held ${el}s of ${SLEEP}s"; else result $p-blocked FAIL "returned after ${el}s, long before ${SLEEP}s"; fi
+      own=$(( $(cat "$OUT/$p.end") - $(cat "$OUT/$p.start") ))
+      if [ $el -ge $((SLEEP - 15)) ]; then result $p-blocked PASS "returned when the child ended, ${el}s of ${SLEEP}s after it started; this call itself held ${own}s"; else result $p-blocked FAIL "returned after ${el}s, long before ${SLEEP}s"; fi
       if grep -Eq '"exit_code": *5[,}]' "$OUT/$p.out"; then result $p-output PASS "shows exit_code 5 ($child is a terminal address in the output, not a name)"
       else result $p-output FAIL "no exit_code 5 in the output"; fi
     fi
@@ -129,6 +131,7 @@ while [ $t -lt "$TOTAL_WAIT" ]; do
   if [ "$(state_of $SEC)" = blocked ] && [ $said -eq 0 ]; then said=1; echo "-- the secretary is blocked on a prompt: answer it with HC_SESSION=$HC_SESSION hc attach $SEC"; fi
   t=$((t + 5)); sleep 5
 done
+[ -f "$OUT/seen-b.txt" ] || result probe-finished FAIL "no seen-b.txt after ${TOTAL_WAIT}s: a prompt may have blocked the secretary"
 sleep 3
 echo "== finished after ~${t}s; secretary state: $(state_of $SEC)"
 judge a p117-w1 checkin
