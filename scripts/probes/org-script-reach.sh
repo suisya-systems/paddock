@@ -32,10 +32,12 @@ for c in hc git bash; do command -v $c >/dev/null 2>&1 || { echo "RESULT precond
 ID=p128-$$; W=w-$ID; WAIT=${PADDOCK_PROBE_WAIT:-180}
 ORGPATH=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}/org
 TMPD=$(mktemp -d) || exit 1
-WT=
+# Known before delegating, so cleanup works on every exit (10 keeps the worktree and prints no path).
+# git removes it only if it is a worktree of the scratch repository.
+WT=${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}/$ID
 cleanup() {
   hc kill "$W" >/dev/null 2>&1; hc rm "$W" >/dev/null 2>&1
-  [ -n "$WT" ] && git -C "$TMPD/proj" worktree remove --force "$WT" >/dev/null 2>&1
+  git -C "$TMPD/proj" worktree remove --force "$WT" >/dev/null 2>&1
   rm -rf "$TMPD"
 }
 trap cleanup EXIT INT TERM
@@ -51,7 +53,6 @@ TASK="Probe for paddock Issue #128. Change nothing. Run exactly these two comman
 2. bash \"\$PADDOCK_ORG\" --as $W report done --task $ID \"probe done write-rc=<the number printed by step 1>\""
 out=$(bash "$ROOT/skills/org-delegate/scripts/org-delegate.sh" --project "$TMPD/proj" --task-id "$ID" --task "$TASK" 2>&1); rc=$?
 echo "$out"
-WT=$(printf '%s\n' "$out" | sed -n 's/.* worktree=\([^ ]*\) .*/\1/p')
 [ "$rc" -eq 0 ] && echo "RESULT delegate: PASS" || { echo "RESULT delegate: FAIL (exit $rc)"; exit 1; }
 
 t=0; tab=$(printf '\t')
