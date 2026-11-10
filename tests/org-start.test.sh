@@ -75,6 +75,13 @@ cmp -s "$here/mods/org-agents/main.js" "$tmp/app/mods/org-agents/main.js" \
   && cmp -s "$here/mods/org-agents/mod.json" "$tmp/app/mods/org-agents/mod.json"; check "mod files placed" $?
 cmp -s "$here/scripts/org" "$tmp/bin-org/org" && [ ! -e "$tmp/core/templates/org" ]; check "scripts/org placed in the bin folder, not the templates folder (as PADDOCK_ORG, Issue #128)" $?
 ! grep -Eq '^server (stop|restart)' "$tmp/stub/calls"; check "never stops or restarts the core" $?
+# Issue #129: the worker's rules and settings go beside the org script, not into the templates folder
+# (hc lists every *.md there as a template).
+cmp -s "$here/templates/worker-rules.md" "$tmp/bin-org/worker-rules.md" \
+  && cmp -s "$here/templates/worker-settings.json" "$tmp/bin-org/worker-settings.json"; check "worker-rules.md and worker-settings.json placed in the bin folder (Issue #129)" $?
+[ ! -e "$tmp/core/templates/worker-rules.md" ] && [ ! -e "$tmp/core/templates/worker-settings.json" ]; check "no rules or settings file in the templates folder" $?
+bad=; for f in "$tmp/core/templates"/*.md; do [ "$(head -n 1 "$f")" = "---" ] || bad="$bad ${f##*/}"; done
+[ -z "$bad" ]; check "every *.md in the templates folder has a front matter${bad:+ (not:$bad)}" $?
 
 # Name override: the terminal gets the given name; the template stays "secretary".
 : > "$tmp/stub/calls"; rm -f "$tmp/stub/secretary"
@@ -89,5 +96,26 @@ out=$(run); rc=$?
 [ "$rc" -eq 0 ]; check "second run exits 0" $?
 ! grep -q '^run ' "$tmp/stub/calls"; check "second run starts no second secretary" $?
 [ "$(find "$tmp/app/mods" -mindepth 1 | wc -l)" -eq 3 ]; check "second run does not duplicate mods" $?
+
+# Issue #129: copies an older org-start left in the templates folder are removed.
+printf 'stale\n' > "$tmp/core/templates/worker-rules.md"; printf '{}\n' > "$tmp/core/templates/worker-settings.json"
+out=$(run); rc=$?
+[ "$rc" -eq 0 ] && [ ! -e "$tmp/core/templates/worker-rules.md" ] && [ ! -e "$tmp/core/templates/worker-settings.json" ]; check "stale rules and settings copies are removed from the templates folder" $?
+cmp -s "$here/templates/worker-rules.md" "$tmp/bin-org/worker-rules.md"; check "the bin folder copy is kept after the cleanup" $?
+# A stale copy that cannot be removed fails the run (exit 6), not a silent "ready".
+ro=$tmp/ro/templates; mkdir -p "$ro"
+cp "$here/templates/secretary.md" "$here/templates/worker.md" "$ro/"; printf 'stale\n' > "$ro/worker-rules.md"
+chmod a-w "$ro"
+out=$(run PADDOCK_CORE_TEMPLATES_DIR="$ro"); rc=$?
+chmod u+w "$ro"
+[ "$rc" -eq 6 ]; check "a stale copy that cannot be removed exits 6 ($rc)" $?
+# The bin folder must not be the templates folder, nor inside it, nor an alias of it.
+for b in "$tmp/core/templates" "$tmp/core/templates/sub"; do
+  out=$(run PADDOCK_BIN_DIR="$b"); rc=$?
+  [ "$rc" -eq 2 ]; check "PADDOCK_BIN_DIR $b refused (exit 2, $rc)" $?
+done
+ln -s "$tmp/core/templates" "$tmp/alias"
+out=$(run PADDOCK_BIN_DIR="$tmp/alias"); rc=$?
+[ "$rc" -eq 2 ] && [ -f "$tmp/core/templates/worker.md" ]; check "PADDOCK_BIN_DIR through a symlink to the templates folder refused ($rc)" $?
 
 exit $fail
