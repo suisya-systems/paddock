@@ -25,7 +25,7 @@ USAGE
 
 die() { code=$1; shift; echo "org-issue: $*" >&2; exit "$code"; }
 
-repo=; kind=; title=; goal=; deps=
+repo=; kind=; title=; goal=; deps=()
 question=; known=; options=; why=; seen=; ask=; done_=
 set_question=; set_known=; set_options=; set_why=; set_seen=; set_ask=; set_done=
 while [ $# -gt 0 ]; do
@@ -35,7 +35,7 @@ while [ $# -gt 0 ]; do
       [ $# -ge 2 ] || die 2 "$1 needs a value"
       case $1 in
         --repo) repo=$2 ;; --kind) kind=$2 ;; --title) title=$2 ;; --goal) goal=$2 ;;
-        --depends) deps="$deps $2" ;;
+        --depends) deps+=("$2") ;;
         --question) question=$2; set_question=1 ;; --known) known=$2; set_known=1 ;;
         --options) options=$2; set_options=1 ;; --why) why=$2; set_why=1 ;;
         --seen) seen=$2; set_seen=1 ;; --ask) ask=$2; set_ask=1 ;; --done) done_=$2; set_done=1 ;;
@@ -82,7 +82,7 @@ command -v gh >/dev/null 2>&1 || die 3 "gh not found"
 # Dependencies: numbers, once each, and existing. A self-dependency cannot be written: the
 # issue has no number yet.
 line=
-for d in $deps; do
+for d in ${deps[@]+"${deps[@]}"}; do
   case $d in ""|*[!0-9]*) die 2 "--depends must be an issue number: $d" ;; esac
   case " ${seen_deps:-} " in *" $d "*) die 2 "--depends $d given twice" ;; esac
   seen_deps="${seen_deps:-} $d"
