@@ -51,7 +51,7 @@ The full list of what the predecessor distributes, enforces and records, with a 
 
 ### 4.1 Windows
 
-What paddock needs on a native Windows machine, and what it does about it. Whether native Windows is supported at all, or only WSL2, is still open ([Q7](open-questions.md#q7-windows)); this section does not decide it.
+What paddock needs on a native Windows machine, and what it does about it. On Windows, core and agents run only inside WSL2; only the window runs natively (decided 2026-11-11, [Q7](open-questions.md#q7-windows)). So the points below concern the window, and `sh` for templates matters only to someone running a core natively, which is not supported.
 
 - **`pwsh` (PowerShell 7).** The `org-agents` mod reaches `hc connect` through `pwsh -NoProfile`, because Windows has no `sh` to pipe a request into it. Windows PowerShell 5 is not tried ([prototype 1](prototype-1.md)).
 - **`hc`.** The herdr-core install folder is not on the Windows `PATH` by default. The mod uses `hc` from `PATH` if it is there, and otherwise looks in herdr-core's default install folder. A person who installed herdr-core elsewhere, or whose folder is not the default, puts it on `PATH`.
