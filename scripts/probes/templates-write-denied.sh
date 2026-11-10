@@ -85,9 +85,11 @@ if [ -e "$MARKER" ] || [ -L "$MARKER" ] || [ -e "$WT" ] || hc get "$W" >/dev/nul
 fi
 KEEP=
 cleanup() {
-  rm -f -- "$MARKER"
-  [ -n "$KEEP" ] && { echo "terminal $W and worktree $WT kept (marker removed)"; return; }
+  # Stop the worker first so it cannot recreate the marker after the removal. With KEEP (the
+  # folder-trust dialog is up) the worker has not started its task yet; the terminal stays.
+  [ -n "$KEEP" ] && { rm -f -- "$MARKER"; echo "terminal $W and worktree $WT kept (marker removed)"; return; }
   hc kill "$W" >/dev/null 2>&1; hc rm "$W" >/dev/null 2>&1
+  rm -f -- "$MARKER"
   git -C "$PROJ" worktree remove --force "$WT" >/dev/null 2>&1
   git -C "$PROJ" branch -D "work/$ID" >/dev/null 2>&1
 }
