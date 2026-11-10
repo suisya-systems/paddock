@@ -61,8 +61,8 @@ ROOT=$(pwd)
 [ -f "$ROOT/scripts/org" ] && [ -f "$ROOT/templates/worker.md" ] || die 2 "run from the paddock repository root"
 ORG="$ROOT/scripts/org"
 STATE=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
-# Mailbox lines are under $STATE; org-pull-request writes ci_completed under its own events folder.
-evdirs() { printf '%s\n' "$STATE/events" "${PADDOCK_EVENTS_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock/events}" | sort -u; }
+# Mailbox lines and org-pull-request's ci_completed are both under $STATE (scripts/org, Issue #168).
+evdirs() { printf '%s\n' "$STATE/events"; }
 RUNS=${XDG_STATE_HOME:-$HOME/.local/state}/paddock-proto2
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 one_line() { tr -d '\n'; }
