@@ -71,7 +71,7 @@ reset() {
 run() { # run <env assignments...> -- <args...>
   local envs=()
   while [ "$1" != -- ]; do envs+=("$1"); shift; done; shift
-  env -u PADDOCK_ORG_ID STUB="$tmp/stub" STUB_PROJ="$proj" PATH="$stubdir:$PATH" PADDOCK_WORKERS_DIR="$workers" \
+  env -u PADDOCK_ORG_ID -u HC_TERMINAL_SOCKET PADDOCK_CORE_SOCKET_DIR="$tmp/run/herdr-core" STUB="$tmp/stub" STUB_PROJ="$proj" PATH="$stubdir:$PATH" PADDOCK_WORKERS_DIR="$workers" \
       PADDOCK_STATE_DIR="$tmp/state" PADDOCK_NOW=2026-11-10T01:02:03Z "${envs[@]}" bash "$script" "$@" 2>&1
 }
 calls=$tmp/stub/calls
@@ -117,7 +117,8 @@ fw=$(line '^file write '); r=$(line '^run '); g=$(line '^get ')
 check "order: name check, settings file written, run" $?
 [ -f "$tmp/stub/record-before-run" ]; check "the start record exists before hc run is called" $?
 grep -q "^file write .*$workers/t1/.claude/settings.local.json" "$calls"; check "settings go to <worktree>/.claude/settings.local.json" $?
-[ "$(tr -d ' \n' < "$workers/t1/.claude/settings.local.json")" = '{}' ]; check "no --allow-write writes an empty settings object" $?
+# Issue #155: the socket folder deny is always there (tests/worker-core-api-holders.test.sh checks it).
+[ "$(tr -d ' \n' < "$workers/t1/.claude/settings.local.json")" = "{\"sandbox\":{\"filesystem\":{\"denyRead\":[\"$tmp/run/herdr-core\"],\"denyWrite\":[\"$tmp/run/herdr-core\"]}}}" ]; check "no --allow-write writes only the socket folder deny" $?
 [ ! -e "$workers/t1/AGENTS.md" ] && [ ! -e "$workers/t1/CLAUDE.md" ] && [ ! -e "$workers/t1/CLAUDE.local.md" ]
 check "no rules or brief file is written into the worktree (Q12)" $?
 argv=$tmp/stub/run-argv

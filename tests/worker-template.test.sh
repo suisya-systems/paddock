@@ -44,7 +44,9 @@ cmd=$(cmdline "$tpl")
 seccmd=$(cmdline "$sec"); prefix=${seccmd% claude}
 [ -n "$cmd" ]; case "$cmd" in "$prefix "*) true ;; *) false ;; esac; check "command starts with the secretary's env -u prefix" $?
 [ -n "$(grep -o -- '-u [A-Z_]*' <<<"$seccmd")" ]; check "secretary's env -u list is not empty" $?
-[ -n "$cmd" ] && [ "$(grep -o -- '-u [A-Z_]*' <<<"$cmd" | sort)" = "$(grep -o -- '-u [A-Z_]*' <<<"$seccmd" | sort)" ]; check "env -u list equals the secretary's" $?
+# Issue #155: the worker also removes the core's variables (L-N2); the secretary keeps them (it runs hc).
+core=$(printf -- '-u %s\n' HC_SESSION HC_SOCKET HC_SCOPE HC_TERMINAL_ID HC_TERMINAL_SOCKET)
+[ -n "$cmd" ] && [ "$(grep -o -- '-u [A-Z_]*' <<<"$cmd" | sort)" = "$( { grep -o -- '-u [A-Z_]*' <<<"$seccmd"; printf '%s\n' "$core"; } | sort)" ]; check "env -u list is the secretary's plus the core variables" $?
 
 # 5. The command names the GH variables, the rules file, the settings file, the token file.
 grep -q 'GH_CONFIG_DIR=' <<<"$cmd"; check "command sets GH_CONFIG_DIR" $?
