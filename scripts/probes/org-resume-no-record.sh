@@ -24,13 +24,13 @@
 #   org-state-survived   PASS = after `hc server stop` and a new core, org-state still names the
 #                        task (the work list is what org-resume reads). FAIL = it is gone: then
 #                        org-resume cannot resume and exits 9 (that is the finding).
-#   terminal-gone        PASS = the worker's terminal is gone after the stop. FAIL = it survived
-#                        (then org-resume only keeps it; the apply step proves nothing).
+#   terminal-gone        PASS = after the stop the worker has no terminal or one without a status
+#                        (org-resume treats both as gone). FAIL = it still reports a status.
 #   no-record            PASS = no suspend.record exists before the resume (the arrangement).
 #   plan-exit            PASS = exit 0.
 #   plan-says-so         PASS = the plan names the missing record and the work list, and says
 #                        what it could not restore.
-#   plan-launched        PASS = the plan launched nothing (no worker terminal exists after it).
+#   plan-launched        PASS = the plan started nothing (the worker reports no status after it).
 #   apply-exit           PASS = exit 0 (13 = a worker could not be relaunched; read the output).
 #   apply-path           continue = relaunched with worker-continue; fresh = fell back to a fresh
 #                        worker; none = neither came up.
@@ -104,7 +104,8 @@ sleep 5 # let the first turn finish so the conversation is on disk
 hc server stop; echo "hc server stop exit: $?"
 sleep 3
 hc ls >/dev/null 2>&1 # starts the core again if hc starts it on demand
-if hc get "$NAME" >/dev/null 2>&1; then echo "RESULT terminal-gone: FAIL (the terminal survived the stop)"; else echo "RESULT terminal-gone: PASS"; fi
+echo "   after the stop, hc get: $(status_json | cut -c1-300)"
+if has_status; then echo "RESULT terminal-gone: FAIL (the terminal still reports a status after the stop)"; else echo "RESULT terminal-gone: PASS (no terminal, or one without a status)"; fi
 if PADDOCK_STATE_DIR="$STATE" bash "$ROOT/scripts/org" --as secretary doc get org-state 2>&1 | grep -q "\"$TASK\""; then
   echo "RESULT org-state-survived: PASS"; else echo "RESULT org-state-survived: FAIL"; fi
 
@@ -116,7 +117,7 @@ printf '%s\n' "$PLAN"
 [ $RC -eq 0 ] && echo "RESULT plan-exit: PASS" || echo "RESULT plan-exit: FAIL ($RC)"
 if printf '%s' "$PLAN" | grep -qi 'no suspend record' && printf '%s' "$PLAN" | grep -qi 'work list' && printf '%s' "$PLAN" | grep -Eqi 'could not restore'; then
   echo "RESULT plan-says-so: PASS"; else echo "RESULT plan-says-so: FAIL"; fi
-if hc get "$NAME" >/dev/null 2>&1; then echo "RESULT plan-launched: FAIL"; else echo "RESULT plan-launched: PASS"; fi
+if has_status; then echo "RESULT plan-launched: FAIL (a status appeared after the plan)"; else echo "RESULT plan-launched: PASS"; fi
 
 echo "== org-resume --apply"
 OUT=$(bash "$ROOT/skills/org-resume/scripts/org-resume.sh" --apply 2>&1); RC=$?
