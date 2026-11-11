@@ -255,7 +255,7 @@ case "$cmd" in
               for (i=1;i<=m;i++) { k=ao[i]; if ((k in a) && an[k]==i) { printf "%s%s", (c++?",":""), a[k] } }
               printf "]}\n" }') || die 5 "cannot read the history under $state/events"
     if [ -n "$print" ]; then printf '%s\n' "$val"; exit 0; fi
-    printf '%s\n' "$val" | bash "$0" --as "$id" doc set org-state; exit $? ;;
+    printf '%s\n' "$val" | PADDOCK_DOC_LOCKED=1 bash "$0" --as "$id" doc set org-state; exit $? ;;
 
   ci_completed)
     # Issue #168: org-pull-request records the watched CI run here, so it shares this id's
@@ -430,7 +430,6 @@ case "$cmd" in
         if [ "$sub" = flush ]; then
           [ $# -eq 0 ] || die 2 "usage: doc flush <name>"
           [ -s "$stage" ] || exit 0
-          sub=set; stdin_value=$(cat "$stage")
         elif [ "$sub" = update ]; then
           # --record KIND --task T --text TEXT: the history line of this change, written inside the
           # same lock as the document update (Issue #77), so replay order is the order of the writes.
@@ -470,19 +469,31 @@ case "$cmd" in
 
     if [ "$sub" = get ]; then read_doc; printf '%s\n' "$val"; exit 0; fi
 
-    if [ -n "${rkind:-}" ]; then
-      # one lock for the document write and its history line; released by the EXIT trap on any die
+    # One lock for the whole read-modify-write: the staged value, the doc.set, the history line of
+    # --record (Issue #77) and the stamp. rebuild holds it already and says so in PADDOCK_DOC_LOCKED
+    # for the doc set it runs (Issue #76); released by the EXIT trap on any die.
+    if [ -z "${PADDOCK_DOC_LOCKED:-}" ]; then
       doclk=$state/events/$name.lock
       mkdir -p "$state/events" || die 5 "cannot create the events folder"
       lock_take "$doclk"; trap 'lock_drop "$doclk"' EXIT
     fi
+    unstage() { rm -f "$stage" "$stage.ver"; }
     tries=0
     while [ "$tries" -lt 5 ]; do
       tries=$((tries + 1))
       read_doc; core_val=$val
       # Staged edits are the base of the next one: the core has not seen them yet.
-      [ ! -s "$stage" ] || val=$(cat "$stage")
-      if [ "$sub" = set ]; then new=$stdin_value
+      if [ -s "$stage" ]; then
+        if [ "$(cat "$stage.ver" 2>/dev/null)" = "$ver" ]; then val=$(cat "$stage")
+        else
+          # The core moved on after this was staged: the staged value would overwrite that change.
+          echo "org: staged $name was based on version $(cat "$stage.ver" 2>/dev/null), the core is at $ver; the staged edits are dropped" >&2
+          unstage
+          [ "$sub" != flush ] || exit 9
+        fi
+      fi
+      if [ "$sub" = flush ]; then [ -s "$stage" ] || exit 0; new=$val
+      elif [ "$sub" = set ]; then new=$stdin_value
       else
         new=$(printf '%s' "$val" | "$@") || die 10 "update command failed; $name not written"
         new=$(printf '%s' "$new" | tr -d '\n')
@@ -532,15 +543,15 @@ case "$cmd" in
           || die 2 "secretary-handover must be null or an object with exactly last_exchange, unrecorded_decisions, open_threads and written_at (UTC ISO 8601, ending in Z); nothing written"
       fi
       # org-state again as the core holds it: no doc.set, so no doc event.
-      if [ "$name" = org-state ] && [ "$new" = "$core_val" ]; then rm -f "$stage"; exit 0; fi
+      if [ "$name" = org-state ] && [ "$new" = "$core_val" ]; then unstage; exit 0; fi
       if [ -n "$lazy" ] && [ -f "$stamp" ] && [ $(($(date +%s) - $(date -r "$stamp" +%s))) -lt "${PADDOCK_DOC_INTERVAL:-5}" ]; then
-        printf '%s' "$new" > "$stage"; exit 0
+        printf '%s' "$ver" > "$stage.ver"; printf '%s' "$new" > "$stage"; exit 0
       fi
       ans=$(rpc "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"doc.set\",\"params\":{\"name\":\"$name\",\"value\":$new,\"version\":$ver}}")
       case "$ans" in
         *'"error"'*conflict*) continue ;;
         *'"error"'*) die 5 "doc.set $name failed: ${ans:0:200}" ;;
-        *'"result"'*) rm -f "$stage"; mkdir -p "$state"; : > "$stamp"
+        *'"result"'*) unstage; mkdir -p "$state"; : > "$stamp"
                       [ -z "${rkind:-}" ] || append "$rkind" "" "$rtask" "$rtext"; exit 0 ;;
         *) die 5 "doc.set $name: no answer from hc connect" ;;
       esac
