@@ -399,7 +399,7 @@ case "$cmd" in
         command -v jq >/dev/null 2>&1 || die 3 "jq not found on PATH (needed to check secretary-handover)"
         printf '%s' "$new" | jq -e '. == null or (type == "object"
             and (keys | sort) == ["last_exchange","open_threads","unrecorded_decisions","written_at"]
-            and (.written_at | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$")))' >/dev/null 2>&1 \
+            and (.written_at | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$") and (sub("\\.[0-9]+";"") | try (fromdateiso8601 | true) catch false)))' >/dev/null 2>&1 \
           || die 2 "secretary-handover must be null or an object with exactly last_exchange, unrecorded_decisions, open_threads and written_at (UTC ISO 8601, ending in Z); nothing written"
       fi
       ans=$(rpc "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"doc.set\",\"params\":{\"name\":\"$name\",\"value\":$new,\"version\":$ver}}")
