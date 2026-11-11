@@ -10,7 +10,7 @@ Status: accepted (2026-11-11, owner). Settles the points [0004](0004-records-doc
 
 | Point | Value | Source |
 | --- | --- | --- |
-| Folder on the primary | `$PADDOCK_STATE_DIR/events/`, default `${XDG_STATE_HOME:-~/.local/state}/paddock` | `scripts/org:40`, `scripts/org:72` |
+| Folder on the primary | `$PADDOCK_STATE_DIR/events/`, default `${XDG_STATE_HOME:-~/.local/state}/paddock`. On a remote machine (`hc run --on`) the same folder name under that machine's `$PADDOCK_STATE_DIR`; readers pull it with `file.read --on` ([0006](0006-remote-worker-history-host.md)) | `scripts/org:40`, `scripts/org:72` |
 | Writer ids | The agent's `--as` id: `secretary`, `w-<task_id>`; lowercase letters, digits, `_`, `-`. One more: `codex-gate`, the writer of the Codex gate's lines, never a worker's id | `scripts/org:65`, `scripts/org:70` |
 | Line fields | `seq`, `ts`, `from`, `kind`, `to`, `task_id`, `text` for mailbox and run lines. `ci_completed` keeps its own fields after `seq` and `ts` (`kind`, `task_id`, `pr`, `sha`, `run_id`, `exit_code`, `conclusion`), but its writer field is `from`, not `writer` (a change in `scripts/org`, its own Issue; the reader's pattern skips such a line, which is wanted) | `scripts/org:109`, `scripts/org:152`, `scripts/org:215` |
 | Kept kinds | The next table | below |

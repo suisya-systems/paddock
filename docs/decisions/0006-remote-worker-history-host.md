@@ -1,6 +1,6 @@
 # 0006. Where a remote (`--on`) worker's history file lands
 
-Status: draft for the owner (Refs #75, depends on [0005](0005-history-log-settings.md)). Not decided; 0005's layout is unchanged until it is.
+Status: accepted (2026-11-11, owner): B. Closes #75; depends on [0005](0005-history-log-settings.md), whose Folder row carries the sentence below.
 
 ## Context
 
@@ -18,15 +18,17 @@ Status: draft for the owner (Refs #75, depends on [0005](0005-history-log-settin
 
 Sources: `hc schema` for `file.write` (`cwd`, `data`, `on`, `path`; swapped in whole) and `file.read` (`cwd`, `limit`, `offset`, `on`, `path`; lines from offset, 8 MB) in [open-questions.md](../design/open-questions.md) line 274; `scripts/org:95`, `scripts/org:109`; [0004](0004-records-documents-and-jsonl.md) one writer per file; Q8 point 3 / the owner's decision of 2026-11-11, no events bridge.
 
-## Recommendation: B, with the pull inside the readers
+## Decision: B, with the pull inside the readers (the secretary pulls)
 
 - It keeps the append local and the one-writer rule as 0004 states it; A turns every append into a whole-file read and write across machines, which is the lost-update shape 0004 avoided.
 - It needs no bridge process (decided: Q8, no events bridge); the pull is part of the reader that already merges files.
 - A failed link delays lines instead of blocking the worker.
 
-If chosen, 0005's folder row gains one sentence: "On a remote machine the same folder name under that machine's `$PADDOCK_STATE_DIR`; readers pull it with `file.read --on`." The remote worker's id stays `w-<task_id>`, so ids stay unique across machines.
+0005's Folder row gained one sentence: "On a remote machine the same folder name under that machine's `$PADDOCK_STATE_DIR`; readers pull it with `file.read --on`." The remote worker's id stays `w-<task_id>`, so ids stay unique across machines.
 
 ## Not measured (a probe, not a guess)
+
+No second machine is planned for now, so nothing below is measured. These 5 points are measured when a second machine is first used.
 
 Both options depend on something not run on a second machine. A probe on one registered machine (`hc machine add`, then `hc run --on`) has to show:
 
@@ -36,7 +38,8 @@ Both options depend on something not run on a second machine. A probe on one reg
 4. Whether core serializes two `file.write` calls on one path (also open in Q8 point 1). (A.)
 5. The remote file's `ts` against the primary's clock: the same UTC format is used, but skew is not measured. (Both; order is by `seq` per writer, so only cross-writer order is affected.)
 
-## Consequences once decided
+## Consequences
 
-- 0005: one sentence in the "Folder on the primary" row, as above (B) or a note that `org` must run `file.write` on the primary (A).
+- 0005: the Folder row has the sentence above.
+- The way to move to A later (if the probe shows B does not hold) is recorded in a separate Issue; its number can be added here.
 - A follow-up Issue for the chosen reader or writer change in `scripts/org`; no code is changed by this draft.
