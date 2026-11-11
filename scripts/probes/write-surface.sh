@@ -77,7 +77,10 @@ OUT=$HOME/paddock-probe-$ID-outside
 MO=p42-org-$ID; MD=p42-direct-$ID
 case "$OUT$STATE" in *[[:space:]]*) echo "RESULT precondition-failed: HOME and the state dir must not contain whitespace (the worker commands are not quoted for it)"; exit 1 ;; esac
 KEEP=
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   [ -n "$KEEP" ] && { echo "terminal $W and worktree $WT kept"; return; }
   hc kill "$W" >/dev/null 2>&1; hc rm "$W" >/dev/null 2>&1
   git -C "$PROJ" worktree remove --force "$WT" >/dev/null 2>&1

@@ -79,7 +79,10 @@ case "$STATE$HOME" in *[[:space:]]*) echo "RESULT precondition-failed: HOME and 
 LEFT="/tmp/$ID $HOME/.cache/$ID $HOME/.npm/_cacache/$ID"
 [ ! -e "$WT" ] && ! hc get "$W" >/dev/null 2>&1 || { echo "RESULT precondition-failed: $W or $WT already exists (leftover of an earlier run)"; exit 1; }
 KEEP=
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   for f in $LEFT; do rm -f -- "$f"; done
   n=$(git -C "$PROJ" stash list 2>/dev/null | sed -n "s/^\(stash@{[0-9]*}\):.*$ID.*/\1/p" | head -n 1)
   [ -n "$n" ] && git -C "$PROJ" stash drop "$n" >/dev/null 2>&1

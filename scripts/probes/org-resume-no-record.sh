@@ -57,7 +57,10 @@ mkdir -p "$TPLS" "$STATE" "$WT" || exit 1
 WT=$(cd "$WT" && pwd -P) || exit 1
 HC_SESSION=p176-$$; export HC_SESSION
 XDG_CONFIG_HOME=$XDG; export XDG_CONFIG_HOME
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   hc kill "$NAME" >/dev/null 2>&1; hc rm "$NAME" >/dev/null 2>&1
   hc server stop >/dev/null 2>&1 # HC_SESSION is the temp core's: yours is untouched
   rm -rf "$WORK"

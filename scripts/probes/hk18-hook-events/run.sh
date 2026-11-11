@@ -33,7 +33,10 @@ WORK=$(mktemp -d) || exit 1
 MARKERS="$WORK/markers.txt"
 mkdir -p "$WORK/cwd" || exit 1
 : > "$MARKERS"
+. "$(dirname "$0")/../claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   hc kill $NAME >/dev/null 2>&1; hc rm $NAME >/dev/null 2>&1
   rm -f "$TPL"
 }

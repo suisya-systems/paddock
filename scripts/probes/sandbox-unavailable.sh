@@ -65,7 +65,9 @@ ukeys=$(keys "$US")
 echo "RESULT settings: INFO shipped=[$(keys "$SRC")] user($US)=[${ukeys:-none}]"
 
 T=$(mktemp -d "$HOME/paddock-probe-164.XXXXXX") || { echo "RESULT precondition-failed: mktemp"; exit 1; }
-trap 'rm -rf "$T"' EXIT INT TERM
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
+trap 'claude_link_restore; rm -rf "$T"' EXIT INT TERM
 
 # mkbin <dir> <name to leave out>: a symlink to the first program of each name on PATH.
 mkbin() {

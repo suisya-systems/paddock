@@ -66,7 +66,10 @@ PADDOCK_STATE_DIR=$WORK/state; export PADDOCK_STATE_DIR
 PADDOCK_WAIT_TIMEOUT=$WAIT_TIMEOUT; export PADDOCK_WAIT_TIMEOUT
 unset PADDOCK_ORG_ID PADDOCK_SECRETARY_NAME
 
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   for n in $SEC $WK; do hc kill $n >/dev/null 2>&1; hc rm $n >/dev/null 2>&1; done
   hc server stop >/dev/null 2>&1 # HC_SESSION is the temp core's: yours is untouched
   rm -rf "$WORK"

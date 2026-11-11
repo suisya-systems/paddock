@@ -83,7 +83,10 @@ if [ -e "$DECOY" ] || [ -L "$DECOY" ] || [ -e "$WT" ] || hc get "$W" >/dev/null 
   echo "RESULT precondition-failed: $DECOY, $WT or $W already exists; remove it yourself and rerun"; exit 1
 fi
 KEEP=
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   rm -f -- "$DECOY"
   [ -n "$KEEP" ] && { echo "terminal $W and worktree $WT kept (decoy removed)"; return; }
   hc kill "$W" >/dev/null 2>&1; hc rm "$W" >/dev/null 2>&1

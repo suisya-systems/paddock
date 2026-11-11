@@ -37,7 +37,10 @@ for n in p46-parent p46-child; do
   fi
 done
 
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   for n in p46-child p46-parent; do hc kill "$n" >/dev/null 2>&1; hc rm "$n" >/dev/null 2>&1; done
   rm -f "$TPL"
   echo "CLEANUP done. Folders kept: $PARENT and $CHILD"

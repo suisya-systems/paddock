@@ -101,7 +101,10 @@ done
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/probe34.XXXXXX") || exit 1 # private (0700): dumps hold secrets
 OUT="$WORK/out"; CWD="$WORK/cwd"
 mkdir -p "$OUT" "$CWD" "$TPL_DIR" || exit 1
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   for n in $NAMES; do hc kill $n >/dev/null 2>&1; hc rm $n >/dev/null 2>&1; done
   for t in p34-control p34-parent p34-child-sh p34-child-claude; do rm -f "$TPL_DIR/$t.md"; done
   rm -rf "$WORK"

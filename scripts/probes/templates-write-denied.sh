@@ -84,7 +84,10 @@ if [ -e "$MARKER" ] || [ -L "$MARKER" ] || [ -e "$WT" ] || hc get "$W" >/dev/nul
   echo "RESULT precondition-failed: $MARKER, $WT or $W already exists; remove it yourself and rerun"; exit 1
 fi
 KEEP=
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   # Stop the worker first so it cannot recreate the marker after the removal. With KEEP (the
   # folder-trust dialog is up) the worker has not started its task yet; the terminal stays.
   [ -n "$KEEP" ] && { rm -f -- "$MARKER"; echo "terminal $W and worktree $WT kept (marker removed)"; return; }

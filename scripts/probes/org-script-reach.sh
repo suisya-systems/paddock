@@ -39,7 +39,10 @@ ORGPATH=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}/org
 # Known before delegating, so cleanup works on every exit (10 keeps the worktree and prints no path).
 WT=${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}/$ID
 KEEP=
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   [ -n "$KEEP" ] && { echo "terminal $W and worktree $WT kept"; return; }
   hc kill "$W" >/dev/null 2>&1; hc rm "$W" >/dev/null 2>&1
   git -C "$PROJ" worktree remove --force "$WT" >/dev/null 2>&1
