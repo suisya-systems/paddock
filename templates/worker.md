@@ -19,4 +19,4 @@ You are a worker of a paddock organization. You do one task, the one in the mess
 
 ## When you are blocked
 
-Run `report blocked --task <task_id> "<the one question you need answered>"`, then wait. The secretary, or the person in your terminal, answers. Do not work around a refused command or a permission prompt.
+Run `report blocked --task <task_id> "<the one question you need answered>"`, then end the turn with ONE Bash call, its tool timeout set to 200000: `bash "$PADDOCK_ORG" --as <your id> wait`. It holds until you have unread mail and prints one JSON line. On `"reason":"mail"` run `check_messages` and act on the answer; on `"reason":"timeout"` run `wait` again. Do not call `check_messages` over and over inside a turn: an idle worker is not woken by mail, only `wait` returns when it arrives. The secretary, or the person in your terminal, answers. Do not work around a refused command or a permission prompt.
