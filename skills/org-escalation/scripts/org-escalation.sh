@@ -1,8 +1,3 @@
-  # Issue #77: the history line that lets `org rebuild` replay this change.
-  case $1 in
-    add) secretary record approval_asked --task "$task" "$ESC_ENTRY" >/dev/null ;;
-    remove) secretary record approval_removed --task "${task:-$(printf %s "$2" | sed "s/-[0-9TZ]*\$//")}" "$2" >/dev/null ;;
-  esac || die 5 "org-state was written, but its history line was not (record $1 $2)"
 #!/usr/bin/env bash
 # org-escalation: the secretary's side of a worker's question. `ask` records an entry in
 # org-state.approvals; `answer` forwards the person's answer to the worker through the

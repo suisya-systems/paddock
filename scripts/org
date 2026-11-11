@@ -232,7 +232,7 @@ case "$cmd" in
     print=
     case "${1:-}" in --print) print=1; shift ;; esac
     [ $# -eq 0 ] || die 2 "usage: rebuild [--print]"
-    [ -n "$print" ] || [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || die 7 "only secretary writes org-state"
+    [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || die 7 "only secretary rebuilds org-state"
     val=$(cat "$state"/events/*/"$id".jsonl 2>/dev/null | tsv | sort -s -t "$tab" -k1,1n \
       | awk -F"$tab" "$AWK_UNESC"'
         $4=="work_added" { if ($6 in w) del_w($6); w[$6]=unesc($7); wn[$6]=++n; wo[n]=$6 }
