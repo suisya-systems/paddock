@@ -160,9 +160,8 @@ EOF
 
 1. In this login shell (not inside an agent): start the organization and the screen.
      bash skills/org-start/scripts/org-start.sh            # expect: ready, exit 0
-     copy layouts/paddock.json to herdr-app's layouts/ and mods/org-cockpit/ to its mods/ (README, "The screen")
-     herdr-app check <herdr-app folder>/mods/org-cockpit
-     herdr-app do layout.switch '{"name":"paddock"}'
+     (org-start places the layout and mods/org-cockpit/ on the app's host and runs herdr-app check)
+     run the layout.switch command org-start printed (herdr-app by its Windows path on WSL)
    Then look at the window: the secretary is in the centre. Record it:
      sh scripts/probes/prototype-2.sh note --task-id $T "layout open, secretary in the centre"
 2. Start the watcher and keep it running (another shell is fine; an agent may run it):
