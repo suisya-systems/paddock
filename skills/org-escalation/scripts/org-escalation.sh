@@ -9,6 +9,8 @@ export LC_ALL=C
 usage() {
   cat <<'USAGE'
 Usage: org-escalation.sh ask --task TASK_ID --question TEXT [--answer-in worker|secretary]
+                           [--background TEXT] [--if-yes TEXT] [--if-no TEXT]
+                           [--recommend yes|no --why TEXT]
        org-escalation.sh answer --id APPROVAL_ID --text TEXT
        org-escalation.sh remove --id APPROVAL_ID
        org-escalation.sh list
@@ -17,6 +19,11 @@ Usage: org-escalation.sh ask --task TASK_ID --question TEXT [--answer-in worker|
   ask     add an entry to org-state.approvals; prints APPROVAL_ID=<task_id>-<UTC time>
           --answer-in: who the person answers. worker = the worker's own permission prompt
           or dialog, in its terminal; secretary (default) = through you (card Yes / No, words)
+          The card shows the context the person decides with; write all of it:
+          --background  why this is asked, one or two sentences (at most 600 bytes)
+          --if-yes      what happens on Yes (at most 300 bytes); --if-no likewise
+          --recommend   your recommendation, yes or no, with --why (at most 400 bytes)
+          A field left out is shown on the card as not written.
   answer  send "Answer to your question (<id>): <text>" to w-<task_id> through the mailbox,
           then remove the entry
   remove  remove the entry only (answered in the worker's terminal, withdrawn, task dropped)
@@ -129,15 +136,27 @@ valid_id() { case "$1" in ''|-*|*[!a-z0-9_-]*) return 1 ;; esac; }
 valid_aid() { case "$1" in ''|-*|*[!A-Za-z0-9_-]*) return 1 ;; esac; }  # approval ids hold the UTC time: T and Z are upper case
 # clean: control characters (newline, tab ...) become spaces.
 clean() { printf '%s' "$1" | tr '\000-\037\177' ' '; }
+jstr() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+# ctx <key> <option> <max bytes> <value if set>: append ,"<key>":"<value>" to $ctx when the option
+# was given; exit 2 when it is empty or too long.
+ctx() {
+  [ $# -ge 4 ] || return 0
+  local v; v=$(clean "$4")
+  [ -n "${v//[ ]/}" ] || die 2 "$2 is empty"
+  [ "${#v}" -le "$3" ] || die 2 "$2 is over $3 bytes"
+  ctx="$ctx,\"$1\":\"$(jstr "$v")\""
+}
 
 cmd=${1:-}; [ $# -eq 0 ] || shift
 case $cmd in -h|--help|help) usage; exit 0 ;; esac
 task=; question=; text=; id=; answer_in=secretary
+unset background if_yes if_no recommend why
 while [ $# -gt 0 ]; do
   case $1 in
-    --task|--question|--text|--id|--answer-in)
+    --task|--question|--text|--id|--answer-in|--background|--if-yes|--if-no|--recommend|--why)
       [ $# -ge 2 ] || die 2 "$1 needs a value"
-      case $1 in --task) task=$2 ;; --question) question=$2 ;; --text) text=$2 ;; --id) id=$2 ;; --answer-in) answer_in=$2 ;; esac
+      case $1 in --task) task=$2 ;; --question) question=$2 ;; --text) text=$2 ;; --id) id=$2 ;; --answer-in) answer_in=$2 ;;
+        --background) background=$2 ;; --if-yes) if_yes=$2 ;; --if-no) if_no=$2 ;; --recommend) recommend=$2 ;; --why) why=$2 ;; esac
       shift 2 ;;
     *) echo "org-escalation: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -168,8 +187,19 @@ case $cmd in
     now=${PADDOCK_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
     id=$task-$(printf '%s' "$now" | tr -d ':-')
     valid_aid "$id" || die 2 "cannot build an approval id from the clock: $now"
-    qj=$(printf '%s' "$q" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
-    ESC_ENTRY="{\"id\":\"$id\",\"task_id\":\"$task\",\"question\":\"$qj\",\"asked_at\":\"$now\",\"answer_in\":\"$answer_in\"}"
+    case ${recommend-unset}:${why+set} in
+      unset:|yes:set|no:set) ;;
+      unset:set) die 2 "--why needs --recommend yes|no" ;;
+      yes:|no:) die 2 "--recommend needs --why <reason>" ;;
+      *) die 2 "--recommend is yes or no" ;;
+    esac
+    ctx=
+    ctx background --background 600 ${background+"$background"}
+    ctx if_yes --if-yes 300 ${if_yes+"$if_yes"}
+    ctx if_no --if-no 300 ${if_no+"$if_no"}
+    ctx recommend --recommend 3 ${recommend+"$recommend"}
+    ctx why --why 400 ${why+"$why"}
+    ESC_ENTRY="{\"id\":\"$id\",\"task_id\":\"$task\",\"question\":\"$(jstr "$q")\",\"asked_at\":\"$now\",\"answer_in\":\"$answer_in\"$ctx}"
     export ESC_ENTRY
     edit find "$id" >/dev/null; st=$?
     case $st in 0) die 7 "an entry $id exists already" ;; 4) ;; *) die 5 "org-state is not a JSON object (or cannot be read)" ;; esac

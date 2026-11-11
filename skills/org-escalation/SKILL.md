@@ -8,7 +8,9 @@ description: Record a worker's question or blocked status as an org-state.approv
 Implements inventory row [SK-5](../../docs/design/predecessor-inventory.md) and Issue #66. The secretary runs it from a shell in its own terminal. Bash only, plus `awk`, `sed`, `tr` and `scripts/org` (which needs `hc` for documents).
 
 ```sh
-bash skills/org-escalation/scripts/org-escalation.sh ask    --task <task_id> --question "<one sentence>" [--answer-in worker|secretary]
+bash skills/org-escalation/scripts/org-escalation.sh ask    --task <task_id> --question "<one sentence>" [--answer-in worker|secretary] \
+         --background "<why it is asked>" --if-yes "<what Yes does>" --if-no "<what No does>" \
+         --recommend yes|no --why "<reason>"
 bash skills/org-escalation/scripts/org-escalation.sh answer --id <approval_id> --text "<answer>"
 bash skills/org-escalation/scripts/org-escalation.sh remove --id <approval_id>
 bash skills/org-escalation/scripts/org-escalation.sh list
@@ -19,6 +21,7 @@ bash skills/org-escalation/scripts/org-escalation.sh sweep
 
 1. A worker reports a question, or a `blocked` status, to the secretary through the mailbox. The secretary answers what it can itself. What it cannot decide goes on:
 2. `ask` adds `{"id","task_id","question","asked_at","answer_in"}` to `org-state.approvals` ([shape](../../docs/design/prototype-1.md)). The id is `<task_id>-<UTC yyyymmddThhmmssZ>`; the script prints `APPROVAL_ID=<id>`. The mod shows the entry as a card. `question` is one sentence, at most 400 bytes; control characters become spaces. `--answer-in` says who the person answers ([architecture 7.1](../../docs/design/architecture.md#71-approvals)): `secretary` (the default) for a question answered through the secretary, `worker` for a worker's own permission prompt or dialog; any other value exits 2.
+   The card is all the person sees when deciding, so write the context with it (Issue #258): `--background` (why this is asked, one or two sentences, at most 600 bytes), `--if-yes` and `--if-no` (what each answer leads to, at most 300 bytes each), and `--recommend yes|no` with `--why` (your recommendation and its reason, at most 400 bytes; one without the other exits 2). They are kept in the entry as `background`, `if_yes`, `if_no`, `recommend` and `why`. Each is optional to the script, but leave one out only when it truly does not apply: the card names every one that is missing ("Not written: ..."). An empty or too long value exits 2 and writes nothing; control characters become spaces.
 3. The person answers, in conversation with the secretary or from the card.
 4. `answer` sends `Answer to your question (<approval_id>): <text>` to `w-<task_id>` with `scripts/org send_message`, then removes the entry. Nothing is typed into the worker ([decision 0002](../../docs/decisions/0002-org-mailbox-not-hc-send.md)).
 
