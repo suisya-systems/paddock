@@ -27,6 +27,7 @@ Counts are the predecessor's last 30 days (from its state DB, 2026-11-11). The p
 | `secretary_handover`, `suspend`, `self_edit_approval_sent` | 13, 16, 41 | Keep | Audit of a person-facing step. Small. |
 | `work_added`, `work_removed`, `approval_asked`, `approval_removed` | none (new in paddock) | Keep | `org rebuild` replays them to rewrite `org-state` (Issue #77). `text` is the entry as written to the document (`work_added`, `approval_asked`) or the approval id (`approval_removed`); written by `scripts/org doc update org-state --record`, in the same lock as the document write. |
 | `codex_round_started`, `codex_round_denied` | 553, 12 | Keep | The review-round cap is enforced by counting these. See below. |
+| `codex_round_passed`, `codex_round_failed` | none (new in paddock) | Keep | How a counted round ended, written by the gate itself (Issue #253). Not counted against the cap. See below. |
 | `worker_spawned`, `worker_spawn_verified`, `pane_closed`, `worker_pane_closed`, `pr_watch_pane_started` | 360, 350, 127, 2, 399 | Drop | Copies of herdr facts, available from `hc get` and `hc events` (inventory REC-3). |
 | `acceptance_gate`, `worker_model_set`, `fix_pushed`, `pr_opened`, `notify_sent`, `work_discovery_scanned` | 256, 315, 215, 208, 448, 241 | Drop | The tool's own measurements or facts on the PR. If wanted later, a counter (Q8 point 7). |
 | `hook_denied` | 1,212 (21% of rows) | Drop | Nothing reads it: the defense report is dropped for now (Q11, inventory REC-10). |
@@ -39,6 +40,7 @@ The cap on Codex review rounds only holds if it is counted, not asked for in tex
 
 - The gate hook writes `codex_round_started` and `codex_round_denied` only through a `scripts/org` subcommand, as writer `codex-gate`. Nobody appends such a line by hand.
 - The limit check counts the same lines with the same tool.
+- The gate script (`scripts/second-model-review.sh`) writes `codex_round_passed` or `codex_round_failed` through `scripts/org codex_round result`, as writer `codex-gate`, with the round and its last line (Issue #253). Whether a review passed is read from this line, not from the worker's report.
 - The counted file must be one the worker cannot rewrite from Bash. Today a worker's sandbox allows the whole state folder (`templates/worker-settings.json` lines 26 to 28), so this holds only by convention until the write surface is narrowed to the worker's own file (#160, inventory L-K4).
 - This decision fixes the kinds and the writer. The counter itself is a separate Issue; inventory L-K10, GT-2 and HK-14 stay Open for that part.
 

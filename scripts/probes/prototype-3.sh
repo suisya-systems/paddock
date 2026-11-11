@@ -347,9 +347,16 @@ claude_link_save
       else res 8-test-commit FAIL "first own commit ${first:-none} does not declare $TESTF alone (Acceptance-Test trailer)"; fi
       git -C "$PROJECT" log --format=%H -n 1 "$BR" -- "$FILE" 2>/dev/null | grep -q . \
         && res 8-done PASS "$W reported done; $BR has the commit with $FILE" || res 8-done FAIL "$W reported done; no commit with $FILE on $BR"
-      n=$(of codex-gate | grep -Ec "\"kind\":\"codex_round_started\",\"to\":\"[^\"]*\",\"task_id\":\"$T\"")
-      if [ "$n" -ge 1 ] && first_of "$W" "$dq" | grep -q 'CODEX_GATE: passed'; then res 8-review PASS "$n round(s) counted by codex-gate; the report quotes CODEX_GATE: passed"
-      else res 8-review FAIL "$n round(s) counted; the report does not quote CODEX_GATE: passed (see the done text)"; fi
+      # the gate's own record of the task's last diff round (Issue #253), not the worker's done text:
+      # the task's last diff line from codex-gate, so a later round with no result is not covered by an older pass
+      r=$(of codex-gate | grep -E "\"kind\":\"codex_round_(started|passed|failed)\",\"to\":\"[^\"]*\",\"task_id\":\"$T\",\"text\":\"diff round" | tail -n 1 \
+        | sed -n 's/.*"kind":"\(codex_round_[a-z]*\)".*"text":"\([^"]*\)".*/\1: \2/p')
+      case "$r" in
+        codex_round_passed:*) res 8-review PASS "codex-gate recorded $r" ;;
+        '') res 8-review FAIL "no diff round from codex-gate for $T (did the worker run the gate?)" ;;
+        codex_round_started:*) res 8-review FAIL "the last round has no result: $r" ;;
+        *) res 8-review FAIL "codex-gate recorded $r" ;;
+      esac
       acked "$W" "$(seq_of "$W" "$dq")" && res 8-secretary-read PASS "the secretary read the completion"
     fi
     # 9. the pull request (gh read-only), the CI record, the acceptance job
