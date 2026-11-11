@@ -147,6 +147,8 @@ git -C "$project" rev-parse --verify -q "$base^{commit}" >/dev/null || die 6 "ba
 mkdir -p "$workers" || die 6 "cannot create $workers"
 git -C "$project" worktree add -q -b "$branch" "$wt" "$base" >/dev/null 2>&1 \
   || die 6 "git worktree add failed for branch $branch at $base (does the branch exist already?)"
+# Issue #177: the review gate reads the base back, so a worker on a non-main base is reviewed against it.
+git -C "$project" config "branch.$branch.paddockBase" "$base" >/dev/null 2>&1 || true
 
 # undo removes the worktree and branch, which are new and ours, and says so if it cannot. Used only
 # where no worker can exist: before the launch, or after the core answered that the terminal is not there.
@@ -197,9 +199,25 @@ for p in ${allow[@]+"${allow[@]}"}; do list="$list,\"$p\""; done
 tpl=$(cat "$root/templates/worker-settings.json") || fail_undone 6 "cannot read templates/worker-settings.json"
 [ "$(grep -c '"allowWrite": \[\]' <<<"$tpl")" = 1 ] \
   || fail_undone 6 "templates/worker-settings.json must hold exactly one empty \"allowWrite\": [] to fill in"
+# Issue #177: the review CLI starts its own sandbox, which cannot start inside the worker sandbox, so the two
+# argument-free gate calls (diff, --design) run outside it: exact strings, no wildcard, the path quoted and not,
+# in excludedCommands and (the same strings) in permissions.allow. The worker cannot choose what runs outside:
+# the base is the one recorded above and the design file a fixed path. A call with a redirect, a cd or a command
+# substitution stays inside the sandbox. The gate sits in the bin folder, which the worker cannot write.
+gate=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}/second-model-review.sh
+case "$gate" in /*) ;; *) fail_undone 2 "PADDOCK_BIN_DIR must be an absolute path: $gate" ;; esac
+case "$gate" in *[\"\\]*|*[[:cntrl:]]*) fail_undone 2 "the gate path has a quote, backslash or control character: $gate" ;; esac
+ex= al=
+for c in "bash \\\"$gate\\\"" "bash $gate" "bash \\\"$gate\\\" --design" "bash $gate --design"; do
+  ex="$ex${ex:+,}\"$c\""; al="$al${al:+,}\"Bash($c)\""
+done
+[ "$(grep -c '"excludedCommands": \[\]' <<<"$tpl")" = 1 ] && [ "$(grep -c '"allow": \[\]' <<<"$tpl")" = 1 ] \
+  || fail_undone 6 "templates/worker-settings.json must hold exactly one empty \"excludedCommands\": [] and one empty \"allow\": [] to fill in"
 ws=$state/settings/$id.json
 # both sides quoted: an & in a path stays literal (bash 5.2 patsub_replacement)
 old='"allowWrite": []' new="\"allowWrite\": [$list]"
+xr="\"excludedCommands\": [$ex]" ar="\"allow\": [$al]"
+tpl=${tpl/'"excludedCommands": []'/"$xr"}; tpl=${tpl/'"allow": []'/"$ar"}
 { mkdir -p "$state/settings" && printf '%s\n' "${tpl/"$old"/"$new"}" > "$ws.tmp" && mv -f "$ws.tmp" "$ws"; } 2>/dev/null \
   || fail_undone 6 "cannot write the worker's settings file $ws"
 # Issue #189: caches go to the sandbox temporary folder of the worker. Claude Code does not expand $TMPDIR in a

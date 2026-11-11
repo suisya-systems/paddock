@@ -22,6 +22,12 @@ These rules apply to every paddock worker, for every task. They are appended to 
 - You may fetch and pull. Never push, and never write to GitHub in any way (pull request, comment, review, issue, release, workflow run): your token is read-only and GitHub refuses it. Do not look for another login, and do not unset `GH_TOKEN` or `GH_CONFIG_DIR`.
 - When your work is committed, say so in your completion report. The secretary pushes.
 
+## Review by a second model
+
+- Before you report a task done, ask for a review of your diff: commit, then run `bash "$PADDOCK_CODEX_GATE"` alone in the foreground (no other argument, no `cd`, no pipe). For a design you wrote down in `.worker-scratch/design.md`, run `bash "$PADDOCK_CODEX_GATE" --design` once, before you build on it. The sandbox lets these two calls out as exact text, so write the value of `$PADDOCK_CODEX_GATE` out as the path (read it with `printenv PADDOCK_CODEX_GATE` first): `bash "<that path>"` or `bash "<that path>" --design`, in that form only. With a variable, a redirect, a `cd` or a substitution in the command, the review runs inside the sandbox and cannot reach its host.
+- Read the last line. Only `CODEX_GATE: passed` is a review that happened: act on its Blocker and Major findings with a new commit, then ask again. `not-established` (an empty pass: no command ran, a failure, or nothing to review), `dirty-worktree` and `unavailable` are not a clean review; do not call the work reviewed, say which one it was in your report.
+- Rounds are counted outside you: 3 diff rounds and 1 design review per task. On `CODEX_ROUND_DENIED` stop asking and report the open findings. Never run the reviewing CLI yourself; the hook refuses it.
+
 ## Blocked
 
 When you cannot go on (a question only the secretary can answer, a command refused by a rule, a missing permission), report `blocked` with one clear question and wait. The secretary or the person answers in your terminal. A refusal is an answer: do not retry it another way.

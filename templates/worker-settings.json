@@ -1,5 +1,6 @@
 {
   "permissions": {
+    "allow": [],
     "deny": [
       "Bash(git push:*)",
       "Bash(hc:*)",
@@ -38,6 +39,7 @@
     "enabled": true,
     "failIfUnavailable": true,
     "allowUnsandboxedCommands": false,
+    "excludedCommands": [],
     "filesystem": {
       "allowWrite": [],
       "denyRead": [
