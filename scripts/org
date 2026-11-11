@@ -472,6 +472,23 @@ case "$cmd" in
               o = o c }
             exit 1 }') || refuse "cannot read the Bash command from the hook payload"
         printf '%s' "$cmd" | names || exit 0
+        # A worker's own mailbox call may say codex in its text (the brief tells it to report a
+        # refusal): `bash "$PADDOCK_ORG" --as <id> <mail command> ...` passes when the rest is one
+        # simple command: no ; & | < > ( ) { } or newline outside quotes, no $ or ` outside single quotes.
+        mp='bash "$PADDOCK_ORG" --as '
+        case "$cmd" in "$mp"*)
+          rest=${cmd#"$mp"}
+          case "${rest#* }" in send_message\ *|report\ *|set_summary\ *|check_messages|check_messages\ *|wait|wait\ *|list_runs)
+            printf '%s' "$rest" | awk 'BEGIN { RS = "\001" } { q = ""
+                for (i = 1; i <= length($0); i++) { c = substr($0, i, 1)
+                  if (q == "\047") { if (c == "\047") q = ""; continue }
+                  if (q == "\"") { if (c == "\\") { i++; continue } if (c == "\"") q = ""; else if (c == "$" || c == "`") exit 1; continue }
+                  if (c == "\\") { i++; continue }
+                  if (c == "\047" || c == "\"") { q = c; continue }
+                  if (index(";&|<>()`${}\n", c)) exit 1 }
+                exit (q != "") }' && exit 0 ;;
+          esac ;;
+        esac
         [ -n "$g" ] || refuse "no Codex gate is set up for workers (PADDOCK_CODEX_GATE is empty), so no Bash command may name codex"
         case "$cmd" in
           "bash \"$g\"") mode=diff ;;
