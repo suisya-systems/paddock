@@ -6,7 +6,7 @@ set -u
 usage() {
   cat <<'USAGE'
 Usage: org-delegate.sh --project <git repo> --task-id <id> (--task <text> | --task-file <file|->)
-                       [--base <ref>] [--no-fetch] [--branch <name>] [--allow-write <path>]...
+                       [--title <text>] [--base <ref>] [--no-fetch] [--branch <name>] [--allow-write <path>]...
 
 Creates a git worktree for the task under the workers folder, writes
 .claude/settings.local.json into it (hc file write), starts the worker with
@@ -19,6 +19,8 @@ brief file into the worktree (rules: --append-system-prompt-file in the template
   --task-id      [a-z0-9_-], at most 30 characters; the worker is w-<id>, the label task_id=<id>
   --task         the task text (what to change, what not to touch, how to report)
   --task-file    the task text from a file, or - for stdin
+  --title        a few words for people; with it, the work entry (task_id, title, since, worktree, task) is added to
+                 org-state after the launch (without it, nothing is written there)
   --base         start point of the new branch (default: the project row's base, else main); when the project has an
                  origin, it is fetched first and origin/<base> is used if it exists
   --no-fetch     do not fetch origin; branch from the local base
@@ -36,14 +38,15 @@ Exit codes: 0 worker running and recorded, 2 bad argument, 3 hc or git not found
 exist; if the terminal may exist they are kept and named), 6 project, base, worktree or
 settings path problem (the worktree is removed), 7 a terminal w-<id> exists,
 10 the worker started but its first message was not sent (left as it is),
-12 the start record could not be written (nothing was started).
+12 the start record could not be written (nothing was started),
+13 the worker runs but the org-state entry could not be written (--title; add it by hand).
 USAGE
 }
 
 die() { code=$1; shift; echo "org-delegate: $*" >&2; exit "$code"; }
 needs() { [ $# -ge 2 ] || die 2 "$1 needs a value"; }
 
-project= id= task= taskfile= base= branch= allow=() fetch=1
+project= id= task= taskfile= title= base= branch= allow=() fetch=1
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
@@ -51,6 +54,7 @@ while [ $# -gt 0 ]; do
     --task-id) needs "$@"; id=$2; shift 2 ;;
     --task) needs "$@"; task=$2; shift 2 ;;
     --task-file) needs "$@"; taskfile=$2; shift 2 ;;
+    --title) needs "$@"; title=$2; havetitle=1; shift 2 ;;
     --base) needs "$@"; base=$2; shift 2 ;;
     --branch) needs "$@"; branch=$2; shift 2 ;;
     --no-fetch) fetch=; shift ;;
@@ -68,6 +72,7 @@ if [ -n "$taskfile" ]; then
   if [ "$taskfile" = - ]; then task=$(cat); else task=$(cat "$taskfile") || die 2 "cannot read $taskfile"; fi
 fi
 [ -n "$task" ] || die 2 "the task text is empty: give --task or --task-file"
+[ -z "${havetitle:-}" ] || [ -n "${title//[[:space:]]/}" ] || die 2 "--title is empty"
 [ -n "$branch" ] || branch=work/$id
 # Issue #186: a --project without a "/" is a name in projects.md; its path and base come from the row.
 case "$project" in
@@ -184,3 +189,28 @@ if ! printf '%s' "$out" | tr -d '\n' | grep -Eq '"sent": *true'; then
 fi
 
 echo "org-delegate: worker=$name worktree=$wt branch=$branch"
+
+# 6. Issue #182: with --title, the work entry goes into org-state after the launch (a failed
+# launch leaves no entry). Strings are JSON-escaped; the entry is added at the end of "work" by a
+# scan that skips string contents, so braces and brackets in the task do not matter.
+if [ -n "${havetitle:-}" ]; then
+  esc() { printf '%s\n' "$1" | tr -d '\000-\010\013\014\016-\037' \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e "s/$(printf '\t')/\\\\t/g" -e "s/$(printf '\r')/\\\\r/g" \
+    | awk 'NR>1{printf "%s","\\n"} {printf "%s",$0}'; }
+  since=${PADDOCK_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
+  entry="{\"task_id\":\"$id\",\"title\":\"$(esc "$title")\",\"since\":\"$since\",\"worktree\":\"$(esc "$wt")\",\"task\":\"$(esc "$task")\"}"
+  ENTRY=$entry bash "$org" --as secretary doc update org-state -- awk '
+    { s = s $0 "\n" }
+    END {
+      e = ENVIRON["ENTRY"]
+      if (s ~ /^[ \t\n]*(null)?[ \t\n]*$/) { printf "{\"work\":[%s],\"approvals\":[]}", e; exit }
+      if (!match(s, /"work": *\[/)) {
+        p = index(s, "{"); r = substr(s, p + 1)
+        printf "%s\"work\":[%s]%s%s", substr(s, 1, p), e, (r ~ /^[ \t\n]*\}/ ? "" : ","), r; exit }
+      a = RSTART + RLENGTH; n = length(s); q = 0; d = 1
+      for (i = a; i <= n; i++) { c = substr(s, i, 1)
+        if (q) { if (c == "\\") i++; else if (c == "\"") q = 0; continue }
+        if (c == "\"") q = 1; else if (c == "[") d++; else if (c == "]" && --d == 0) break }
+      printf "%s%s%s%s", substr(s, 1, i - 1), (substr(s, a, i - a) ~ /[^ \t\n]/ ? "," : ""), e, substr(s, i) }' >/dev/null 2>&1 \
+    || die 13 "$name runs, but the org-state entry could not be written (bash scripts/org --as secretary doc update org-state); add the work entry by hand"
+fi

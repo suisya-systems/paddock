@@ -102,7 +102,10 @@ while IFS=$'\t' read -r kind id wt head dirty task title; do
   echo "$id: terminal $name is gone: try $cont_t (claude --continue in $wt), else a fresh worker ($fresh_t) with the original task"
   [ -n "$apply" ] || continue
   if [ "$task" = - ]; then echo "$id: no original task in the record; not relaunched"; failed=1; continue; fi
-  task=$(printf '%s' "$task" | sed 's/\\"/"/g; s/\\\\/\\/g') # ponytail: only \" and \\ unescaped
+  # Undo the JSON escapes the entry was written with (\" \\ \n \t \r); other escapes stay as written.
+  task=$(printf '%s' "$task" | awk '{ o = ""; for (i = 1; i <= length($0); i++) { c = substr($0, i, 1)
+    if (c == "\\") { n = substr($0, ++i, 1); o = o (n == "n" ? "\n" : n == "t" ? "\t" : n == "r" ? "\r" : n == "\"" || n == "\\" || n == "/" ? n : "\\" n) } else o = o c }
+    printf "%s", o }')
   [ "$st" = none ] && end "$name" "$id"
   if launch "$cont_t" "$name" "$wt" "$id" "$task"; then
     echo "$id: resumed with $cont_t as $name"

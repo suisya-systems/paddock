@@ -29,7 +29,7 @@ With `--drop` (the work is abandoned, or the launch failed): no report needed. I
 
 ## Known limits
 
-- The `work` entries of `org-state` are read as flat objects with no `]` or `},{` inside a string, like [org-suspend](../org-suspend/SKILL.md).
+- The `work` entries of `org-state` are cut out with a scan that skips string contents, so a `]` or a brace inside a task or title does not end an entry (Issue #182); the entries are flat objects, like [org-suspend](../org-suspend/SKILL.md).
 - `git branch -d` keeps an unused branch when the project's `HEAD` is not at or past the branch's base.
 
 ## Not measured

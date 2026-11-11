@@ -15,7 +15,7 @@ bash skills/org-delegate/scripts/org-delegate.sh \
 
 `--project` may be a name instead of a path: a value without a `/` (and not `.` or `..`) is looked up in `projects.md` (`$XDG_CONFIG_HOME/paddock/projects.md`, `%APPDATA%\paddock` when set; `PADDOCK_PROJECTS_FILE` overrides). The header row names the columns `name`, `path` and `base` (any order; other columns are ignored), for example `| app | /home/me/app | dev |`. The row gives the project path and the default base; an explicit `--base` wins; an empty base is `main`. A missing file or name exits 2 before anything is created.
 
-`--task-file <file>` (or `-` for stdin) replaces `--task` for a long text. Bash only, plus `git` and `hc`.
+`--task-file <file>` (or `-` for stdin) replaces `--task` for a long text. `--title "<a few words>"` makes it add the `work` entry to `org-state` after the launch (step 7). Bash only, plus `git` and `hc`.
 
 ## What it does
 
@@ -26,19 +26,21 @@ bash skills/org-delegate/scripts/org-delegate.sh \
 5. **Launch.** `hc run --bg --outlive-parent --name w-<id> --cwd <worktree> --label task_id=<id> worker "<text>"`. The text is `Your org id is w-<id>. Your task id is <id>.` and a blank line, then the task. The task travels in the launch, so nothing is typed into the worker afterwards. If `hc run` fails, the request may still have been accepted: the worktree and branch are removed only when `hc get w-<id>` answers `not_found`; otherwise everything is kept and the terminal, worktree and branch are named (exit 5).
 6. **First message.** `first_message.sent` must be `true`; a missing or unreadable answer counts as not sent. If not (exit 10), the script prints the result and leaves the worktree and terminal as they are. It presses no keys and kills nothing ([Q13](../../docs/design/open-questions.md#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog); raising it as an incident on the screen is a follow-up named in [Q3](../../docs/design/open-questions.md)). Read the worker with `hc read w-<id>`.
 
+7. **Work entry (`--title` only).** After the first message was sent, adds `{"task_id","title","since","worktree","task"}` to `org-state.work` with `bash scripts/org --as secretary doc update org-state` (a null or absent document becomes `{"work":[<entry>],"approvals":[]}`; other entries are kept). `since` is the UTC time of the write, `worktree` the worktree path, `task` the task text as given; strings are JSON-escaped, and the entry is placed by a scan that skips string contents, so braces and brackets in the task do not matter ([org-suspend](../org-suspend/SKILL.md) and [org-resume](../org-resume/SKILL.md) read it back). A failure to write it leaves the worker running and exits 13. After a failed launch (any exit above) no entry is written.
+
 It prints `org-delegate: worker=w-<id> worktree=<path> branch=<branch>` on success.
 
 ## What it does not do
 
 - **No `AGENTS.md`, no `CLAUDE.md`, no rules file in the worktree.** The role rules are `templates/worker-rules.md`, passed by the template with `--append-system-prompt-file`; the task is the launch's text ([Q12](../../docs/design/open-questions.md#q12-where-do-a-workers-role-rules-and-task-brief-live), decided). Writing `AGENTS.md` would collide with a target repository's own files.
 - **No token.** The worker template sets `GH_CONFIG_DIR` and the read-only `GH_TOKEN` itself ([Q20](../../docs/design/open-questions.md#q20-how-is-a-workers-github-access-held-to-read-only)). The script never reads or passes a token, and the task text must not hold one.
-- **No `org-state` entry.** The secretary adds the `work` entry itself, as its template says.
+- **No `org-state` entry without `--title`.** With `--title` it adds the `work` entry itself (step 7); without it the secretary adds one.
 - **No worker cap** (only `projects.md` is read, for `--project <name>`; [Q14](../../docs/design/open-questions.md#q14-where-do-organization-settings-and-registries-live)).
 - **No answer to the trust dialog.** The first time a workers folder is used, a person accepts the dialog once in the window (or the secretary answers it once from the screen, never with a blind Enter: the default is "No, exit").
 
 ## Exit codes
 
-0 worker running (first message sent) and recorded, 2 bad argument, 3 `hc` or `git` not found, 5 core unreachable or `hc` failed (the new worktree and branch are removed when no worker can exist, so the same `task_id` can be tried again; if the terminal may exist they are kept and named; a removal that fails is named too), 6 project, base, worktree path or settings path problem (the worktree is removed), 7 a terminal `w-<id>` exists, 10 started but the first message was not sent (left as it is), 12 the start record could not be written (nothing was started).
+0 worker running (first message sent) and recorded, 13 the worker runs but the `--title` entry could not be written to `org-state`, 2 bad argument, 3 `hc` or `git` not found, 5 core unreachable or `hc` failed (the new worktree and branch are removed when no worker can exist, so the same `task_id` can be tried again; if the terminal may exist they are kept and named; a removal that fails is named too), 6 project, base, worktree path or settings path problem (the worktree is removed), 7 a terminal `w-<id>` exists, 10 started but the first message was not sent (left as it is), 12 the start record could not be written (nothing was started).
 
 After exit 10, or exit 5 with things kept, the same `task_id` is refused (the terminal, worktree or branch exists). Inspect the worker, then end it with `org-close --task <id> --drop` ([org-close](../org-close/SKILL.md)) before trying again.
 
