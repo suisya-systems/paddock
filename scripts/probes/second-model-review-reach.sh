@@ -19,11 +19,12 @@
 # Reading the output. Every verdict line starts with "RESULT <name>:".
 #   env        INFO = versions.
 #   run        INFO = exit code of claude -p (124 = timeout).
-#   gate       the last line the gate printed, read from the run's log: passed = the CLI ran inside
-#              the sandbox (REACHES); not-established, unavailable or dirty-worktree = it did not
-#              run to a review there (the secretary must run it for the worker, or the settings need
-#              an excluded command and the CLI's hosts); no such line = INCONCLUSIVE (the run did not
-#              make the call, or a layer refused it: see the log tail).
+#   gate       the last line the gate printed, read from the run's log: passed = called from the worker
+#              in the excluded form, the CLI ran to a review (REACHES; the gate runs outside the worker
+#              sandbox through sandbox.excludedCommands, not inside it); not-established, unavailable or
+#              dirty-worktree = it did not (DOES NOT REACH: the secretary must run the review for the
+#              worker, or the excluded form does not match); no such line = INCONCLUSIVE (the run did
+#              not make the call, or a layer refused it: see the log tail).
 #   count      INFO = codex_round_started lines in the probe's own counter (1 = the hook counted the call).
 set -u
 ROOT=$(pwd)
@@ -66,7 +67,7 @@ log=$T/log
 echo "RESULT run: INFO claude -p exited $? (124 = timeout)"
 line=$(grep -o 'CODEX_GATE: [a-z-]*' "$log" | tail -n 1)
 case "$line" in
-  "CODEX_GATE: passed") echo "RESULT gate: REACHES ($line: the reviewing CLI ran inside the worker sandbox)" ;;
+  "CODEX_GATE: passed") echo "RESULT gate: REACHES ($line: called from the worker in the excluded form, the reviewing CLI ran to a review; the gate runs outside the worker sandbox)" ;;
   "") echo "RESULT gate: INCONCLUSIVE (no CODEX_GATE line in the log)"; tail -c 1500 "$log" | cut -c1-500 ;;
   *) echo "RESULT gate: DOES NOT REACH ($line)"; grep -o 'CODEX_GATE: [^"]*' "$log" | tail -n 1 | cut -c1-400 ;;
 esac
