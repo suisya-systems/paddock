@@ -27,14 +27,19 @@ Usage: org [--as <id>] <command> [args]
                                                 against the core and adds "gone" (no terminal or it
                                                 ended, no done record), "waiting" (blocked),
                                                 "unreported" (done in the core, no done record),
-                                                "unreadable" or "watch_error"; nothing when quiet
+                                                "unreadable", "watch_error" or "flush_error"; nothing when quiet
   brief                                         read-only: print secretary-handover, org-state and
                                                 each terminal labelled task_id with its status
   doc get <name>                                print a core document's value
-  doc set <name>                                set it from stdin (secretary only)
+  doc set <name>                                set it from stdin (secretary only); a value equal to
+                                                the core's is not written (no doc event)
+  doc flush <name>                              write what --lazy staged (secretary only; wait does it)
   doc update <name> -- <command...>             re-read, run command (old value on stdin, new
                                                 value on stdout), set; on a version conflict
-                                                re-read and reapply (secretary only)
+                                                re-read and reapply (secretary only). With --lazy
+                                                (org-state) after the name the result is staged and
+                                                written once per $PADDOCK_DOC_INTERVAL s (default 5);
+                                                not with --record
   doc update org-state --record <kind> --task <id> --text <t> -- <command...>
                                                 same, and the history line of the change (work_added,
                                                 work_removed, approval_asked, approval_removed) is
@@ -250,7 +255,7 @@ case "$cmd" in
               for (i=1;i<=m;i++) { k=ao[i]; if ((k in a) && an[k]==i) { printf "%s%s", (c++?",":""), a[k] } }
               printf "]}\n" }') || die 5 "cannot read the history under $state/events"
     if [ -n "$print" ]; then printf '%s\n' "$val"; exit 0; fi
-    printf '%s\n' "$val" | bash "$0" --as "$id" doc set org-state; exit $? ;;
+    printf '%s\n' "$val" | PADDOCK_DOC_LOCKED=1 bash "$0" --as "$id" doc set org-state; exit $? ;;
 
   ci_completed)
     # Issue #168: org-pull-request records the watched CI run here, so it shares this id's
@@ -307,6 +312,14 @@ case "$cmd" in
     fi
     finish() { [ -z "$hpid" ] || kill "$hpid" 2>/dev/null; [ -z "$hout" ] || rm -f "$hout"; }
     trap finish EXIT
+    # flush_staged: exit 7 is "not the writer" (a worker waiting), not a failure; any other failure
+    # (a stale stage dropped, the core unreachable) is reported as "flush_error" in the return.
+    flushmsg=
+    flush_staged() {
+      local m rc
+      m=$(bash "$0" --as "$id" doc flush org-state 2>&1 >/dev/null); rc=$?
+      [ "$rc" -eq 0 ] || [ "$rc" -eq 7 ] || flushmsg=${m:0:160}
+    }
     # Issue #175: on every return, each task in org-state.work is checked against the core.
     # watch prints extra JSON members: "gone" (no terminal or it ended, and no done record),
     # "waiting" (status blocked), "unreported" (status done, no done record), "unreadable"
@@ -314,6 +327,8 @@ case "$cmd" in
     # ponytail: done records are looked for in this and the last month.
     watch() {
       local doc ids t j st fin g= w= u= x= runs
+      flush_staged # lazy edits reach the core before the check (Issue #76)
+      [ -z "$flushmsg" ] || printf ',"flush_error":"%s"' "$(printf '%s' "$flushmsg" | json_esc)"
       doc=$(bash "$0" --as "$id" doc get org-state 2>&1) || {
         printf ',"watch_error":"%s"' "$(printf '%s' "${doc:0:120}" | json_esc)"; return; }
       # The work array is cut out with a scan that skips string contents, so a "]" in a title
@@ -352,6 +367,7 @@ case "$cmd" in
       [ -z "$u" ] || printf ',"unreported":[%s]' "$u"
       [ -z "$x" ] || printf ',"unreadable":[%s]' "$x"
     }
+    flush_staged # the turn ended: its staged edits are the change set (Issue #76)
     end=$((SECONDS + timeout))
     while :; do
       clock
@@ -412,10 +428,18 @@ case "$cmd" in
     esac
     case "$sub" in
       get) ;;
-      set|update)
+      set|update|flush)
         # PADDOCK_SECRETARY_NAME is the terminal name (org-start); accept it as well as `secretary`.
         [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || die 7 "only secretary writes $name"
-        if [ "$sub" = update ]; then
+        # Issue #76: --lazy stages the result and writes it once per PADDOCK_DOC_INTERVAL s, so a
+        # burst of edits is one doc event. Without it the write is at once (an approval card).
+        lazy=; [ "${1:-}" = --lazy ] && { lazy=1; shift; }
+        [ -z "$lazy" ] || [ "$name" = org-state ] || die 2 "--lazy is for org-state"
+        stage=$state/$name.staged; stamp=$state/$name.written
+        if [ "$sub" = flush ]; then
+          [ $# -eq 0 ] || die 2 "usage: doc flush <name>"
+          [ -s "$stage" ] || exit 0
+        elif [ "$sub" = update ]; then
           # --record KIND --task T --text TEXT: the history line of this change, written inside the
           # same lock as the document update (Issue #77), so replay order is the order of the writes.
           rkind=; rtask=; rtext=
@@ -424,6 +448,8 @@ case "$cmd" in
             rkind=$2; rtask=$4; rtext=$6; shift 6
             case "$rkind" in work_added|work_removed|approval_asked|approval_removed) ;; *) die 2 "doc update --record: unknown kind $rkind" ;; esac
             valid_id "$rtask" || die 2 "doc update --record: bad task id"
+            # A record is the history of a change that has happened; a staged change has not.
+            [ -z "$lazy" ] || die 2 "doc update: --lazy and --record do not go together (a recorded change is written at once)"
           fi
           [ "${1:-}" = -- ] && shift
           [ $# -gt 0 ] || die 2 "usage: doc update <name> -- <command...>"
@@ -432,7 +458,7 @@ case "$cmd" in
           stdin_value=$(tr -d '\n')
           [ -n "$stdin_value" ] || die 2 "doc set: empty value on stdin"
         fi ;;
-      *) die 2 "usage: doc get|set|update <name>" ;;
+      *) die 2 "usage: doc get|set|update|flush <name>" ;;
     esac
     command -v hc >/dev/null 2>&1 || die 3 "hc not found on PATH (install herdr-core)"
 
@@ -452,17 +478,31 @@ case "$cmd" in
 
     if [ "$sub" = get ]; then read_doc; printf '%s\n' "$val"; exit 0; fi
 
-    if [ -n "${rkind:-}" ]; then
-      # one lock for the document write and its history line; released by the EXIT trap on any die
+    # One lock for the whole read-modify-write: the staged value, the doc.set, the history line of
+    # --record (Issue #77) and the stamp. rebuild holds it already and says so in PADDOCK_DOC_LOCKED
+    # for the doc set it runs (Issue #76); released by the EXIT trap on any die.
+    if [ -z "${PADDOCK_DOC_LOCKED:-}" ]; then
       doclk=$state/events/$name.lock
       mkdir -p "$state/events" || die 5 "cannot create the events folder"
       lock_take "$doclk"; trap 'lock_drop "$doclk"' EXIT
     fi
+    unstage() { rm -f "$stage" "$stage.ver"; }
     tries=0
     while [ "$tries" -lt 5 ]; do
       tries=$((tries + 1))
-      read_doc
-      if [ "$sub" = set ]; then new=$stdin_value
+      read_doc; core_val=$val
+      # Staged edits are the base of the next one: the core has not seen them yet.
+      if [ -s "$stage" ]; then
+        if [ "$(cat "$stage.ver" 2>/dev/null)" = "$ver" ]; then val=$(cat "$stage")
+        else
+          # The core moved on after this was staged: the staged value would overwrite that change.
+          echo "org: staged $name was based on version $(cat "$stage.ver" 2>/dev/null), the core is at $ver; the staged edits are dropped" >&2
+          unstage
+          [ "$sub" != flush ] || exit 9
+        fi
+      fi
+      if [ "$sub" = flush ]; then [ -s "$stage" ] || exit 0; new=$val
+      elif [ "$sub" = set ]; then new=$stdin_value
       else
         new=$(printf '%s' "$val" | "$@") || die 10 "update command failed; $name not written"
         new=$(printf '%s' "$new" | tr -d '\n')
@@ -511,11 +551,17 @@ case "$cmd" in
             exit 0 }' \
           || die 2 "secretary-handover must be null or an object with exactly last_exchange, unrecorded_decisions, open_threads and written_at (UTC ISO 8601, ending in Z); nothing written"
       fi
+      # org-state again as the core holds it: no doc.set, so no doc event.
+      if [ "$name" = org-state ] && [ "$new" = "$core_val" ]; then unstage; exit 0; fi
+      if [ -n "$lazy" ] && [ -f "$stamp" ] && [ $(($(date +%s) - $(date -r "$stamp" +%s))) -lt "${PADDOCK_DOC_INTERVAL:-5}" ]; then
+        printf '%s' "$ver" > "$stage.ver"; printf '%s' "$new" > "$stage"; exit 0
+      fi
       ans=$(rpc "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"doc.set\",\"params\":{\"name\":\"$name\",\"value\":$new,\"version\":$ver}}")
       case "$ans" in
         *'"error"'*conflict*) continue ;;
         *'"error"'*) die 5 "doc.set $name failed: ${ans:0:200}" ;;
-        *'"result"'*) [ -z "${rkind:-}" ] || append "$rkind" "" "$rtask" "$rtext"; exit 0 ;;
+        *'"result"'*) unstage; mkdir -p "$state"; : > "$stamp"
+                      [ -z "${rkind:-}" ] || append "$rkind" "" "$rtask" "$rtext"; exit 0 ;;
         *) die 5 "doc.set $name: no answer from hc connect" ;;
       esac
     done

@@ -158,8 +158,8 @@ reset_doc; echo '{"work":[]}' | org --as secretary doc set org-state >/dev/null
 out=$(STUB_CONFLICT_ONCE=1 ORGENV=STUB_CONFLICT_ONCE=1 org --as secretary doc update org-state -- sed 's/\[\]/[{"task_id":"t1"}]/'); r=$?
 [ "$r" -eq 0 ] && [ "$(cat "$STUB/docval-org-state")" = '{"work":[{"task_id":"t1"}],"x":1}' ]; check "on a conflict doc update re-reads, reapplies and sets (the other writer's change is kept)" $?
 reset_doc; echo '{"work":[]}' | org --as secretary doc set org-state >/dev/null
-[ "$(ORGENV=STUB_CONFLICT_ALWAYS=1 rc org --as secretary doc update org-state -- cat)" -eq 9 ]; check "a conflict that never clears exits 9" $?
-[ "$(ORGENV=STUB_SET_ERROR=1 rc org --as secretary doc update org-state -- cat)" -eq 5 ]; check "another doc.set error exits 5, not retried as a conflict" $?
+[ "$(ORGENV=STUB_CONFLICT_ALWAYS=1 rc org --as secretary doc update org-state -- sed 's/\[\]/[1]/')" -eq 9 ]; check "a conflict that never clears exits 9" $?
+[ "$(ORGENV=STUB_SET_ERROR=1 rc org --as secretary doc update org-state -- sed 's/\[\]/[1]/')" -eq 5 ]; check "another doc.set error exits 5, not retried as a conflict" $?
 [ "$(rc org --as secretary doc update org-state -- false)" -ne 0 ]; check "a failing update command writes nothing and fails" $?
 big=$(head -c 70000 /dev/zero | tr '\0' a)
 [ "$(printf '"%s"' "$big" | rc org --as secretary doc set org-state)" -eq 8 ]; check "a value over org-state's 64 KiB cap exits 8" $?
