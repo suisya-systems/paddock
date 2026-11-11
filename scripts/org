@@ -40,7 +40,8 @@ Your id comes from --as or $PADDOCK_ORG_ID (lowercase letters, digits, _ and -).
 History is JSON lines, events/<YYYY-MM>/<id>.jsonl under $PADDOCK_STATE_DIR
 (default ${XDG_STATE_HOME:-~/.local/state}/paddock); each id appends only to its own file.
 Readers look at this month and the last. $PADDOCK_NOW (UTC ISO 8601) fixes the clock for tests.
-Documents are the names of decision 0004: org-state (64 KiB), secretary-handover (32 KiB);
+Documents are the names of decision 0004: org-state (64 KiB), secretary-handover (32 KiB; null, or
+an object with exactly last_exchange, unrecorded_decisions, open_threads and a UTC written_at; needs jq);
 the writer is secretary (or the terminal name in $PADDOCK_SECRETARY_NAME, for a probe beside a real one). $PADDOCK_HC_HOLD seconds (default 1)
 is how long hc connect's input stays open after a request. $PADDOCK_WAIT_POLL seconds (default 2)
 is how often wait looks at the mailbox. $PADDOCK_LOCK_WAIT seconds (default 60) is how long a
@@ -394,6 +395,13 @@ case "$cmd" in
       fi
       [ -n "$new" ] || die 10 "update command printed no value; $name not written"
       [ "${#new}" -le "$cap" ] || die 8 "value is ${#new} bytes, over the $cap cap of $name"
+      if [ "$name" = secretary-handover ]; then
+        command -v jq >/dev/null 2>&1 || die 3 "jq not found on PATH (needed to check secretary-handover)"
+        printf '%s' "$new" | jq -e '. == null or (type == "object"
+            and (keys | sort) == ["last_exchange","open_threads","unrecorded_decisions","written_at"]
+            and (.written_at | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$")))' >/dev/null 2>&1 \
+          || die 2 "secretary-handover must be null or an object with exactly last_exchange, unrecorded_decisions, open_threads and written_at (UTC ISO 8601, ending in Z); nothing written"
+      fi
       ans=$(rpc "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"doc.set\",\"params\":{\"name\":\"$name\",\"value\":$new,\"version\":$ver}}")
       case "$ans" in
         *'"error"'*conflict*) continue ;;
