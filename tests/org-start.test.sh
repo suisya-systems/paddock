@@ -39,7 +39,7 @@ run() { # run <extra env...> -- ; uses fresh dirs under $tmp/w unless reused
       -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN \
       STUB="$tmp/stub" PATH="$stubdir:$PATH" \
       PADDOCK_CORE_TEMPLATES_DIR="$tmp/core/templates" \
-      PADDOCK_APP_MODS_DIR="$tmp/app/mods" PADDOCK_BIN_DIR="$tmp/bin-org" \
+      PADDOCK_APP_MODS_DIR="$tmp/app/mods" PADDOCK_APP_LAYOUTS_DIR="$tmp/app/layouts" PADDOCK_BIN_DIR="$tmp/bin-org" \
       PADDOCK_READY_TRIES=2 "$@" bash "$script" 2>&1
 }
 mkdir -p "$tmp/stub"
@@ -97,7 +97,7 @@ rm -f "$tmp/stub/secretary"; run >/dev/null # back to the first-run state for th
 out=$(run); rc=$?
 [ "$rc" -eq 0 ]; check "second run exits 0" $?
 ! grep -q '^run ' "$tmp/stub/calls"; check "second run starts no second secretary" $?
-[ "$(find "$tmp/app/mods" -mindepth 1 | wc -l)" -eq 3 ]; check "second run does not duplicate mods" $?
+[ "$(find "$tmp/app/mods" -mindepth 1 | wc -l)" -eq 6 ]; check "second run does not duplicate mods" $?
 
 # Issue #129: copies an older org-start left in the templates folder are removed.
 printf 'stale\n' > "$tmp/core/templates/worker-rules.md"; printf '{}\n' > "$tmp/core/templates/worker-settings.json"
