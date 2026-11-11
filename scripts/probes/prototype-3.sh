@@ -14,9 +14,10 @@
 #
 # prepare: from a plain login shell (no agent above it; its first hc call may start the core,
 #   which inherits this shell's environment). Checks the paddock checkout, the fixture and the
-#   host, saves the run, prints the setup commands and the request the person types. It starts nothing.
-# watch: start it BEFORE typing the request and keep it running. Polls every 5 s and prints one
-#   RESULT line per step as it holds, and "NOW:" lines when the person must act. Re-runnable;
+#   host, saves the run and the request, prints the setup commands. It starts nothing.
+# watch: start it and keep it running. Polls every 5 s and prints one RESULT line per step as it
+#   holds, and "NOW:" lines when the person must act. It sends the request itself (hc send to the
+#   secretary) once the secretary reports a status, and records that in the notes. Re-runnable;
 #   the history files last, so most steps are read back after the fact.
 # note: records an observation by eye (--touch: a person touched a terminal; it counts as a finding).
 # collect: writes the evidence into the run folder and prints it. cleanup: removes only what
@@ -32,7 +33,7 @@
 set -u
 
 die() { c=$1; shift; echo "prototype-3: $*" >&2; exit "$c"; }
-usage() { sed -n '2,31p' "$0"; }
+usage() { sed -n '2,32p' "$0"; }
 
 phase=${1:-}; [ $# -gt 0 ] && shift
 case "$phase" in
@@ -109,6 +110,14 @@ if [ "$phase" = note ]; then
   echo "recorded ($k)"; exit 0
 fi
 
+# herdr-app is a Windows program when the core runs in WSL: not on PATH there, so find it by its path.
+HERDR_APP=$(command -v herdr-app 2>/dev/null)
+if [ -z "$HERDR_APP" ]; then
+  for f in "${PADDOCK_HERDR_APP:-}" /mnt/c/Users/*/AppData/Local/Programs/herdr-app/herdr-app.exe; do
+    [ -n "$f" ] && [ -x "$f" ] && { HERDR_APP=$f; break; }
+  done
+fi
+[ -n "$HERDR_APP" ] || HERDR_APP=herdr-app # not found: the commands say so when run (PADDOCK_HERDR_APP names it)
 for c in hc git gh bash awk sed grep cmp; do command -v "$c" >/dev/null 2>&1 || die 3 "$c not found on PATH"; done
 hcj() { hc get --json "$1" 2>/dev/null | one_line; }
 field() { grep -Eo "\"$1\": *(\"[^\"]*\"|[0-9]+)" | head -n 1 | sed 's/^[^:]*: *//; s/"//g'; }
@@ -182,6 +191,10 @@ EOF
   { if command -v codex >/dev/null 2>&1 && [ -e "${CODEX_HOME:-$HOME/.codex}/auth.json" ]; then
       echo "RESULT codex-cli: PASS ($(codex --version 2>/dev/null | head -n 1); login file exists, not read)"
     else echo "RESULT codex-cli: FAIL (codex not on PATH or no ${CODEX_HOME:-~/.codex}/auth.json; the gate would end 'unavailable' or 'not-established')"; fi; } | tee -a "$RUN/prepare.txt"
+  # The request is test scaffolding (fixed text, so the results can be checked): watch sends it.
+  cat > "$RUN/request.txt" <<EOF
+Delegate one task to a worker with the org-delegate skill: project $project, task id $T, title "paddock prototype 3", base $base. The task text: "Add an acceptance test, then the file it checks. (1) Add $TESTF, a bash script that exits 0 only when the file $FILE at the repository root holds exactly the one line 'paddock prototype 3, task $T', and exits 1 otherwise. Commit it alone, as the first commit of your branch, with the line 'Acceptance-Test: $TESTF' in the last paragraph of the commit message (no blank line inside that paragraph). Check that git log -1 --format='%(trailers)' shows the line and that bash $TESTF fails. (2) Before you create $FILE, report blocked with the question 'May I add $FILE at the repository root?' and wait for the answer as your instructions say. On no, report done without the file. (3) On yes, add $FILE with that one line, commit it as a second commit, and check that bash $TESTF passes. Commit only these two files. Never change the test after its commit; if a review finding is about the test, leave it and say so in your report. (4) Ask for the review by the second model as your rules say, and fix Blocker and Major findings in new commits. (5) Report done with both commit SHAs, the test result and the last line of the review gate." When the worker asks its question, do not answer it yourself: put it on the card with org-escalation ask --answer-in secretary, and when the ANSWER from the card is in your mailbox, forward it with org-escalation answer. When the worker reports done, open the pull request with the org-pull-request skill, --mode human --base $base --task-id $T, title "paddock prototype 3 run $T", and tell me its URL and the skill's exit code. Do not merge. This is a test run; the pull request goes to the throwaway repository $repo.
+EOF
   tee "$RUN/steps.txt" <<EOF
 
 == Run $T prepared ($RUN). Do these in order:
@@ -189,18 +202,16 @@ EOF
 1. In this login shell (not inside an agent): start the organization. org-start places the
    templates, the bin files, the cockpit mod and the layout itself.
      bash skills/org-start/scripts/org-start.sh            # expect: "org-start: ready", exit 0
-     herdr-app do layout.switch '{"name":"paddock"}'
+     "$HERDR_APP" do layout.switch '{"name":"paddock"}'
    Then look at the window: the secretary is in the centre. Record it:
      sh $HERE/prototype-3.sh note --task-id $T "layout open, secretary in the centre"
-2. Start the watcher and keep it running (another shell is fine; an agent may run it):
+2. Start the watcher and keep it running (another shell is fine; an agent may run it). It sends
+   the request itself to the secretary (hc send), once the secretary reports a status, and notes
+   that it did; nobody types it. The request is saved in $RUN/request.txt:
      sh $HERE/prototype-3.sh watch --task-id $T
-3. Type this request into the secretary's pane in herdr-app (one paragraph, as it is):
-
-Delegate one task to a worker with the org-delegate skill: project $project, task id $T, title "paddock prototype 3", base $base. The task text: "Add an acceptance test, then the file it checks. (1) Add $TESTF, a bash script that exits 0 only when the file $FILE at the repository root holds exactly the one line 'paddock prototype 3, task $T', and exits 1 otherwise. Commit it alone, as the first commit of your branch, with the line 'Acceptance-Test: $TESTF' in the last paragraph of the commit message (no blank line inside that paragraph). Check that git log -1 --format='%(trailers)' shows the line and that bash $TESTF fails. (2) Before you create $FILE, report blocked with the question 'May I add $FILE at the repository root?' and wait for the answer as your instructions say. On no, report done without the file. (3) On yes, add $FILE with that one line, commit it as a second commit, and check that bash $TESTF passes. Commit only these two files. Never change the test after its commit; if a review finding is about the test, leave it and say so in your report. (4) Ask for the review by the second model as your rules say, and fix Blocker and Major findings in new commits. (5) Report done with both commit SHAs, the test result and the last line of the review gate." When the worker asks its question, do not answer it yourself: put it on the card with org-escalation ask --answer-in secretary, and when the ANSWER from the card is in your mailbox, forward it with org-escalation answer. When the worker reports done, open the pull request with the org-pull-request skill, --mode human --base $base --task-id $T, title "paddock prototype 3 run $T", and tell me its URL and the skill's exit code. Do not merge. This is a test run; the pull request goes to the throwaway repository $repo.
-
-4. When watch prints "NOW: click Yes", click Yes on the card. Answer nothing else in any terminal;
+3. When watch prints "NOW: click Yes", click Yes on the card. Answer nothing else in any terminal;
    if you have to, do it, and record it: note --task-id $T --touch "<what and why>".
-5. When watch ends: collect, then cleanup (both with --task-id $T).
+4. When watch ends: collect, then cleanup (both with --task-id $T).
 EOF
   exit 0
 fi
@@ -268,6 +279,15 @@ claude_link_save
         if cmp -s "$ROOT/$src" "$dst"; then echo "$dst $(cksum < "$dst")" >> "$RUN/placed-files.txt"; else bad="$bad $dst"; fi
       done
       [ -z "$bad" ] && res 1-placed-files PASS "8 files equal this checkout" || res 1-placed-files FAIL "missing or not this checkout's:$bad"
+    fi
+    # 2. the request: sent by the runbook once the secretary reports a status that is not a prompt; once per run.
+    # It is test scaffolding, not what a person would write; recorded as a note ("sent"), not a touch.
+    if [ -n "$s" ] && [ "$s" != blocked ] && [ ! -f "$RUN/request.sent" ]; then
+      if hc send secretary "$(cat "$RUN/request.txt")" >/dev/null 2>&1; then
+        : > "$RUN/request.sent"
+        printf '%s\tsent\t%s\n' "$(now)" "the runbook sent the request to the secretary with hc send (status $s)" >> "$RUN/notes.tsv"
+        res 2-request PASS "sent with hc send to the secretary (status $s); the person types nothing"
+      else once sendfail "NOW: hc send to the secretary failed; will retry. If it keeps failing, send $RUN/request.txt by hand and record it: note --task-id $T --touch \"sent the request by hand\""; fi
     fi
     # 3. worktree, its settings.local.json, and the task's own settings file (Issues #160, #177)
     if [ -d "$WT" ] && git -C "$PROJECT" worktree list --porcelain 2>/dev/null | grep -qxF "worktree $WT"; then
@@ -357,7 +377,7 @@ claude_link_save
   {
   echo "== summary of run $T"
   rc=0
-  for st in 1-secretary 1-placed-files 3-worktree 3-own-settings 4-worker 4-worker-report 4-work-entry 5-blocked 5-approval \
+  for st in 1-secretary 1-placed-files 2-request 3-worktree 3-own-settings 4-worker 4-worker-report 4-work-entry 5-blocked 5-approval \
     6-card-answer 7-secretary-read 7-forwarded 7-approval-removed 8-test-commit 8-review 8-done 8-secretary-read \
     9-pull-request 9-ci-record 9-acceptance; do
     if [ -f "$RUN/res.$st" ]; then cat "$RUN/res.$st"; grep -q ': PASS' "$RUN/res.$st" || rc=1
@@ -374,7 +394,7 @@ fi
 
 if [ "$phase" = collect ]; then
   E="$RUN/evidence"; mkdir -p "$E" || die 6 "cannot create $E"
-  { echo "== versions"; hc --version 2>&1; herdr-app --version 2>&1; claude --version 2>&1; codex --version 2>&1; gh --version 2>&1 | head -n 1
+  { echo "== versions"; hc --version 2>&1; "$HERDR_APP" --version 2>&1; claude --version 2>&1; codex --version 2>&1; gh --version 2>&1 | head -n 1
     echo "== paddock main at the run: $PADDOCK_HEAD"
     echo "== results (prepare, then each step watch recorded: kept even when watch was stopped)"; cat "$RUN/prepare.txt" "$RUN"/res.* 2>/dev/null
     echo "== the last watch summary (none when watch was stopped)"; cat "$RUN/watch-summary.txt" 2>/dev/null

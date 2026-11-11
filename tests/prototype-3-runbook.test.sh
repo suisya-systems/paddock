@@ -35,4 +35,28 @@ check "note --touch records a touch" $?
 l='bash "$RUNNER_TEMP/acceptance-check.sh" "$base"'
 grep -qF "$l" scripts/probes/prototype-3-acceptance.yml && grep -qF "$l" .github/workflows/ci.yml
 check "the fixture job calls the checker as ci.yml does" $?
+# The request is sent by the runbook (Issue #247): watch sends the saved request once the secretary
+# reports a status, records that it did (not as a touch), and does not send it twice.
+R="$tmp/paddock-proto3/p3-s"; mkdir -p "$R" "$tmp/bin" "$tmp/home"
+printf "PROJECT='%s'\nREPO='a/b'\nBASE='main'\nWT='%s'\nBR='work/p3-s'\nSTART='2000-01-01T00:00:00Z'\n" "$tmp/none" "$tmp/none-wt" > "$R/run.env"
+printf 'REQUEST TEXT for p3-s\n' > "$R/request.txt"
+cat > "$tmp/bin/hc" <<'EOF2'
+#!/bin/sh
+case "$1" in
+  get) printf '{"name":"secretary","status":{"app":"claude-code","state":"idle"}}\n'; exit 0 ;;
+  send) shift; echo "$*" >> "$STUBSENT"; exit 0 ;;
+  events) exit 0 ;;
+esac
+exit 1
+EOF2
+# the runbook wants the GitHub CLI on PATH; a stub that fails is enough (watch reads it only after a done report)
+printf '#!/bin/sh\nexit 1\n' > "$tmp/bin/g$(printf h)"; chmod +x "$tmp/bin/hc" "$tmp/bin/g$(printf h)"
+watch_once() { env PATH="$tmp/bin:$PATH" HOME="$tmp/home" XDG_STATE_HOME="$tmp" PADDOCK_STATE_DIR="$tmp/state" STUBSENT="$tmp/sent" \
+  sh "$S" watch --task-id p3-s --timeout 1 </dev/null; }
+watch_once > "$tmp/w1.out" 2>&1; watch_once > "$tmp/w2.out" 2>&1
+[ "$(grep -c '^secretary .*REQUEST TEXT for p3-s' "$tmp/sent" 2>/dev/null)" = 1 ]; check "watch sends the request to the secretary, once over two runs" $?
+grep -q "$(printf '\tsent\t')" "$R/notes.tsv" && ! grep -q "$(printf '\ttouch\t')" "$R/notes.tsv"; check "watch records that it sent the request, not as a touch" $?
+grep -q 'RESULT 2-request: PASS' "$tmp/w1.out"; check "the summary has a 2-request PASS" $?
+# herdr-app is called through one place that finds the Windows program when it is not on PATH.
+! grep -nE '^[[:space:]]+herdr-app (do|--version)|; herdr-app --version' "$S" >/dev/null; check "herdr-app is not called by its bare name" $?
 exit $fail
