@@ -90,7 +90,7 @@ if [ -n "$drop" ] && [ -e "$wt" ]; then
 fi
 
 # 4. Remove the work entry (approvals with the same task_id are not touched). Entries are flat objects.
-TASK=$task bash "$org" --as secretary doc update org-state -- awk '
+TASK=$task bash "$org" --as secretary doc update org-state --record work_removed --task "$task" --text "" -- awk '
   { s = s $0 "\n" }
   END {
     t = ENVIRON["TASK"]
@@ -108,7 +108,5 @@ TASK=$task bash "$org" --as secretary doc update org-state -- awk '
     }
     printf "%s%s%s", substr(s, 1, a - 1), out, substr(s, i)
   }' >/dev/null 2>&1 || die 5 "org-state was not written; the terminal is already ended, run again"
-bash "$org" --as secretary record work_removed --task "$task" >/dev/null 2>&1 \
-  || die 5 "org-state was written, but the history line could not be written (bash scripts/org --as secretary record work_removed --task $task)"
 
 echo "org-close: closed $name${drop:+ (dropped: worktree and unused branch removed)}"

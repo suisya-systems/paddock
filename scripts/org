@@ -35,9 +35,10 @@ Usage: org [--as <id>] <command> [args]
   doc update <name> -- <command...>             re-read, run command (old value on stdin, new
                                                 value on stdout), set; on a version conflict
                                                 re-read and reapply (secretary only)
-  record <kind> --task <task_id> [text]            (secretary) a history line for a change to org-state:
-                                                work_added, work_removed, approval_asked,
-                                                approval_removed (the skills call it)
+  doc update org-state --record <kind> --task <id> --text <t> -- <command...>
+                                                same, and the history line of the change (work_added,
+                                                work_removed, approval_asked, approval_removed) is
+                                                written inside the same lock, for rebuild
   rebuild [--print]                             (secretary) org-state again from all of the history
                                                 files (--print: show it, write nothing); updated_at,
                                                 hand-set keys and secretary-handover are not in the log
@@ -70,7 +71,7 @@ cmd=${1:-}; [ $# -eq 0 ] || shift
 
 valid_id() { case "$1" in ''|-*|*[!a-z0-9_-]*) return 1 ;; esac; }
 case "$cmd" in
-  send_message|check_messages|set_summary|report|ci_completed|list_runs|doc|wait|brief|record|rebuild) ;;
+  send_message|check_messages|set_summary|report|ci_completed|list_runs|doc|wait|brief|rebuild) ;;
   *) echo "org: unknown command: $cmd" >&2; usage >&2; exit 2 ;;
 esac
 valid_id "$id" || die 2 "no valid id: give --as <id> or set PADDOCK_ORG_ID (lowercase letters, digits, _ and -)"
@@ -132,9 +133,8 @@ append() {
 # file <lock>.break, and only if the pid it re-reads there is still that dead one. A lock with no
 # pid recorded (holder killed right after mkdir) or a .break left behind is never broken: the
 # send gives up after $PADDOCK_LOCK_WAIT s (default 60) with exit 5 and names what to remove.
-put() {
-  local d=$state/events/$cur lk=$state/events/$id.lock me=${BASHPID:-$$} n=0 o ok=0 end s
-  mkdir -p "$d" || die 5 "cannot create $d"
+lock_take() {
+  local lk=$1 me=${BASHPID:-$$} n=0 o end
   end=$((SECONDS + ${PADDOCK_LOCK_WAIT:-60}))
   until mkdir "$lk" 2>/dev/null && excl "$lk/pid" "$me"; do
     n=$((n + 1))
@@ -151,10 +151,16 @@ put() {
     fi
     sleep 0.05 2>/dev/null || sleep 1
   done
+}
+lock_drop() { rm -f "$1/pid"; rmdir "$1" 2>/dev/null; }
+put() {
+  local d=$state/events/$cur lk=$state/events/$id.lock ok=0 s
+  mkdir -p "$d" || die 5 "cannot create $d"
+  lock_take "$lk"
   s=$(next_seq)
   # high-water first: a crash between the two leaves a gap in seq, never a reused number
   printf '%s\n' "$s" > "$state/events/$id.seq" && printf '{"seq":%s,%s}\n' "$s" "$1" >> "$d/$id.jsonl" && ok=1
-  rm -f "$lk/pid"; rmdir "$lk" 2>/dev/null
+  lock_drop "$lk"
   [ "$ok" -eq 1 ] || die 5 "cannot write $d/$id.jsonl"
 }
 
@@ -211,18 +217,6 @@ case "$cmd" in
     valid_id "$to" || die 2 "invalid recipient: $to"
     [ -n "$*" ] || die 2 "report needs text"
     append "$kind" "$to" "$task" "$*" ;;
-
-  record)
-    # Issue #77: the skills that change org-state say so here, so `rebuild` can replay it.
-    # work_added / approval_asked: text is the entry as written to the document;
-    # work_removed: no text; approval_removed: text is the approval id.
-    kind=${1:-}; [ $# -eq 0 ] || shift
-    case "$kind" in work_added|work_removed|approval_asked|approval_removed) ;;
-      *) die 2 "usage: record <work_added|work_removed|approval_asked|approval_removed> --task <task_id> [text]" ;; esac
-    [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || die 7 "only secretary records $kind"
-    [ "${1:-}" = --task ] && [ $# -ge 2 ] && valid_id "$2" || die 2 "record needs --task <task_id> (lowercase letters, digits, _ and -)"
-    task=$2; shift 2
-    append "$kind" "" "$task" "$*" ;;
 
   rebuild)
     # Issue #77: org-state again from the history alone (all months, not only the window). The
@@ -414,6 +408,15 @@ case "$cmd" in
         # PADDOCK_SECRETARY_NAME is the terminal name (org-start); accept it as well as `secretary`.
         [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || die 7 "only secretary writes $name"
         if [ "$sub" = update ]; then
+          # --record KIND --task T --text TEXT: the history line of this change, written inside the
+          # same lock as the document update (Issue #77), so replay order is the order of the writes.
+          rkind=; rtask=; rtext=
+          if [ "${1:-}" = --record ]; then
+            [ $# -ge 7 ] && [ "$2" != "" ] && [ "$3" = --task ] && [ "$5" = --text ] || die 2 "usage: doc update <name> --record KIND --task T --text TEXT -- <command...>"
+            rkind=$2; rtask=$4; rtext=$6; shift 6
+            case "$rkind" in work_added|work_removed|approval_asked|approval_removed) ;; *) die 2 "doc update --record: unknown kind $rkind" ;; esac
+            valid_id "$rtask" || die 2 "doc update --record: bad task id"
+          fi
           [ "${1:-}" = -- ] && shift
           [ $# -gt 0 ] || die 2 "usage: doc update <name> -- <command...>"
         else
@@ -441,6 +444,12 @@ case "$cmd" in
 
     if [ "$sub" = get ]; then read_doc; printf '%s\n' "$val"; exit 0; fi
 
+    if [ -n "${rkind:-}" ]; then
+      # one lock for the document write and its history line; released by the EXIT trap on any die
+      doclk=$state/events/$name.lock
+      mkdir -p "$state/events" || die 5 "cannot create the events folder"
+      lock_take "$doclk"; trap 'lock_drop "$doclk"' EXIT
+    fi
     tries=0
     while [ "$tries" -lt 5 ]; do
       tries=$((tries + 1))
@@ -498,7 +507,7 @@ case "$cmd" in
       case "$ans" in
         *'"error"'*conflict*) continue ;;
         *'"error"'*) die 5 "doc.set $name failed: ${ans:0:200}" ;;
-        *'"result"'*) exit 0 ;;
+        *'"result"'*) [ -z "${rkind:-}" ] || append "$rkind" "" "$rtask" "$rtext"; exit 0 ;;
         *) die 5 "doc.set $name: no answer from hc connect" ;;
       esac
     done

@@ -25,7 +25,7 @@ Counts are the predecessor's last 30 days (from its state DB, 2026-11-11). The p
 | `run_started`, `run_completed`, `run_blocked` | `worker_completed` 141, `pr_merged` 297 | Keep | `list_runs` reads them. |
 | `ci_completed` | 414 | Keep | A GitHub fact `hc` does not have; the secretary reads it. |
 | `secretary_handover`, `suspend`, `self_edit_approval_sent` | 13, 16, 41 | Keep | Audit of a person-facing step. Small. |
-| `work_added`, `work_removed`, `approval_asked`, `approval_removed` | none (new in paddock) | Keep | `org rebuild` replays them to rewrite `org-state` (Issue #77). `text` is the entry as written to the document (`work_added`, `approval_asked`) or the approval id (`approval_removed`); written through `scripts/org record`. |
+| `work_added`, `work_removed`, `approval_asked`, `approval_removed` | none (new in paddock) | Keep | `org rebuild` replays them to rewrite `org-state` (Issue #77). `text` is the entry as written to the document (`work_added`, `approval_asked`) or the approval id (`approval_removed`); written by `scripts/org doc update org-state --record`, in the same lock as the document write. |
 | `codex_round_started`, `codex_round_denied` | 553, 12 | Keep | The review-round cap is enforced by counting these. See below. |
 | `worker_spawned`, `worker_spawn_verified`, `pane_closed`, `worker_pane_closed`, `pr_watch_pane_started` | 360, 350, 127, 2, 399 | Drop | Copies of herdr facts, available from `hc get` and `hc events` (inventory REC-3). |
 | `acceptance_gate`, `worker_model_set`, `fix_pushed`, `pr_opened`, `notify_sent`, `work_discovery_scanned` | 256, 315, 215, 208, 448, 241 | Drop | The tool's own measurements or facts on the PR. If wanted later, a counter (Q8 point 7). |

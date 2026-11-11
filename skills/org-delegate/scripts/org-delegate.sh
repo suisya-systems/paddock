@@ -231,7 +231,7 @@ if [ -n "${havetitle:-}" ]; then
     | awk 'NR>1{printf "%s","\\n"} {printf "%s",$0}'; }
   since=${PADDOCK_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
   entry="{\"task_id\":\"$id\",\"title\":\"$(esc "$title")\",\"since\":\"$since\",\"worktree\":\"$(esc "$wt")\",\"task\":\"$(esc "$task")\"}"
-  ENTRY=$entry bash "$org" --as secretary doc update org-state -- awk '
+  ENTRY=$entry bash "$org" --as secretary doc update org-state --record work_added --task "$id" --text "$entry" -- awk '
     { s = s $0 "\n" }
     END {
       e = ENVIRON["ENTRY"]
@@ -245,6 +245,4 @@ if [ -n "${havetitle:-}" ]; then
         if (c == "\"") q = 1; else if (c == "[") d++; else if (c == "]" && --d == 0) break }
       printf "%s%s%s%s", substr(s, 1, i - 1), (substr(s, a, i - a) ~ /[^ \t\n]/ ? "," : ""), e, substr(s, i) }' >/dev/null 2>&1 \
     || die 13 "$name runs, but the org-state entry could not be written (bash scripts/org --as secretary doc update org-state); add the work entry by hand"
-  bash "$org" --as secretary record work_added --task "$id" "$entry" >/dev/null 2>&1 \
-    || die 13 "$name runs, and org-state has its entry, but the history line could not be written (bash scripts/org --as secretary record work_added); org rebuild would miss it"
 fi
