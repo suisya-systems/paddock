@@ -36,5 +36,5 @@ Not set by this change; the job is advisory until they are:
 ## Known limits
 
 - A pull request without a declaration passes (`none`). In `acceptance` mode, [org-pull-request](../../skills/org-pull-request/SKILL.md) would merge it on green required checks; the predecessor stopped it for the person. Whether to refuse an undeclared PR in `acceptance` mode (in the skill, or by a rule in the job) is open.
-- The workflow and the checker are read from the pull request, so a PR can change them. Rule 4 fails a declared PR that does; an undeclared PR is not checked. Review of `.github/` changes stays with the person.
+- The checker is taken from the base revision, so a PR cannot weaken the rules it is judged by. The workflow file, though, is read from the pull request (`pull_request` event), so a PR that edits the `acceptance` job itself is not stopped by the job; rule 4 reports a `.github/` change only while the job still runs the base checker. Review of `.github/` changes stays with the person. (`pull_request_target` would read the base workflow but runs PR code with the base's token; not used.)
 - The pull request that adds this check fails its own `acceptance` job: it must create the checker after its test commit. It is merged in `human` mode.
