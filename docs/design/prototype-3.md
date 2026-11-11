@@ -1,6 +1,6 @@
 # Prototype 3
 
-Status: prototype, a host run (Issue #243). The runbook is ready; the run is not recorded yet ([Result](#result)). [Prototype 2](prototype-2.md) ran the loop once on 2026-11-10. Since then most parts of that loop were replaced, each tested and measured alone. This prototype runs the same loop again on a clean checkout of today's `main`, with all of them together: a person types one request to the secretary, a worker does one small task with an acceptance test first, asks one question that the person answers on the card, has its diff reviewed by a second model through the gate, and finishes; a pull request exists at the end and passes the acceptance job. Its goal clause is G1 (ledger, 2026-11-12): a request alone gets a worker going, approvals on screen, and a PR, with today's `main`.
+Status: prototype, a host run (Issue #243). Run on 2026-11-11: the loop stopped at the worker's first report, before the card was answered; four stops are filed ([Result](#result)). [Prototype 2](prototype-2.md) ran the loop once on 2026-11-10. Since then most parts of that loop were replaced, each tested and measured alone. This prototype runs the same loop again on a clean checkout of today's `main`, with all of them together: a person types one request to the secretary, a worker does one small task with an acceptance test first, asks one question that the person answers on the card, has its diff reviewed by a second model through the gate, and finishes; a pull request exists at the end and passes the acceptance job. Its goal clause is G1 (ledger, 2026-11-12): a request alone gets a worker going, approvals on screen, and a PR, with today's `main`.
 
 Nothing in the product changes for this prototype. It adds this document, the host runbook [`scripts/probes/prototype-3.sh`](../../scripts/probes/prototype-3.sh), the fixture workflow [`scripts/probes/prototype-3-acceptance.yml`](../../scripts/probes/prototype-3-acceptance.yml) and the runbook's guard test. Every stop found by the run becomes an Issue.
 
@@ -112,4 +112,47 @@ No local paths and no company matters go into this document.
 
 ## Result
 
-Not run yet.
+Run 2026-11-11, task `p3-202611111622`, paddock `main` at `65f869a`, the runbook at this branch's head (called by its path from another checkout). Versions: hc 0.1.18, Claude Code 2.1.322, codex-cli 0.157.0, gh 2.96.0; herdr-app ran on Windows with the core in WSL, and its version was not recorded (`collect` runs in WSL, where `herdr-app` is not on `PATH`). The person was the secretary of the organization that ran the runbook.
+
+**The loop did not hold.** It stopped at step 5: the worker's `report start` and `report blocked` failed, so nothing the worker wrote reached the mailbox, and the card was not shown on the screen although the approval was in `org-state`. The owner chose to stop and fix. G1 does not hold yet. Before the stop, three touches were already needed to get the organization and the screen up.
+
+| Step | `RESULT` |
+| --- | --- |
+| 0 | `preconditions`, `worker-token`, `codex-cli`: PASS. `notes-off`: FAIL (no `notes = false` in the core's config at `prepare`; the operator reports it was set for the run and removed at cleanup). |
+| 1 | `1-secretary`, `1-placed-files` (the 8 files equal the checkout): PASS. The secretary first stopped at a folder-trust dialog (touch 1). The layout did not put the secretary in the centre (touches 1 and 2). |
+| 2 | The request was sent into the secretary's conversation with `hc send` by the operator's assistant, not typed in the window (note). |
+| 3 | `3-worktree`, `3-own-settings`: PASS. The task's settings file named the worker's own files and the gate's four calls in `excludedCommands` and `permissions.allow`. |
+| 4 | `4-worker`, `4-work-entry`: PASS. `4-worker-report`: NO DATA; the worker's `report start` exited 5. |
+| 5 | `5-approval`: PASS (the secretary asked `p3-202611111622-20261111T170334Z` with `answer_in: secretary`). `5-blocked`: NO DATA; the worker's `report blocked` exited 5. The card did not show the approval. |
+| 6 to 10 | Not reached: the run was stopped before Yes. The worker had made its test commit (the status text named it), so `8-test-commit` was not judged; no review round was taken (no `codex-gate` line). |
+
+Times (UTC, from the status log, the history and the notes):
+
+| What | When | Delay |
+| --- | --- | --- |
+| `prepare` | 16:22:40 | |
+| Trust dialog answered and layout fixed by hand (touches 1, 2) | 16:53:08 to 16:56:44 | |
+| Request sent | 16:58:13 | |
+| `run_started` by the secretary (org-delegate), `work_added` | 16:58:28, 16:58:30 | 15 s, 17 s |
+| Worker terminal `working` | 16:58:31 | 18 s |
+| Worker status `done` with "test commit ... done; awaiting yes" (its turn ended, not in `org wait`) | 17:02:15 | 4 min 2 s |
+| `approval_asked` | 17:03:35 | 1 min 20 s after the worker's turn ended |
+| Secretary status `done` (idle at its prompt with work and an approval open) | 17:03:52 | |
+| Stopped | 17:05:40 | |
+
+Touches and stops:
+
+| Step | What happened | Cause | Issue |
+| --- | --- | --- | --- |
+| 4, 5 | The worker's `report start` and `report blocked` exited 5: "lock ... is held (pid not recorded)"; the lock folder `locks/w-<task_id>` was there and empty. No line of the worker reached the history, so the secretary had no `run_blocked` to act on. | The worker's own-files write surface (#241) and the per-id lock inside it: the worker could not take its lock. Root cause to be found under the Issue. | #245 |
+| 1, 5 | herdr-app runs on Windows and reads `C:/Users/<user>/.config/herdr-app`; `org-start` placed the cockpit mod and the layout only under WSL's `~/.config`. The app ran an older cockpit with a `secretary` prop naming another machine's secretary, so the centre did not adopt the secretary and the card did not show the approval. The operator labelled the secretary by hand (`hc label`) and copied the new mod and layout to the Windows folder (touch 2); the card still did not show. | `org-start` places the screen files on the core's side only. | #246 |
+| 1 | The secretary started from `org-start` stopped at the folder-trust dialog for the paddock folder; the operator answered it with `hc keys` (touch 1, against the host rule). | A secretary's working folder that is not yet trusted. | #244 |
+| 2, collect | The runbook asks the person to type the request into the window, and runs `herdr-app` (`layout.switch`, `--version`) in WSL, where it is not on `PATH`; the request went in by `hc send`, `layout.switch` through the Windows program's path. | Runbook and setup assume herdr-app on the core's side. | #247 |
+| 5 | The worker ended its turn idle ("awaiting yes") after its `report blocked` failed, instead of waiting in `org wait`; an answer by mail would not wake it. | The worker template's fallback for a failed `org` command ("say so once in your reply and wait") ends the turn. Follows from #245, but stands alone. | Proposed: "Worker: when an org command fails, the turn still ends in a state an answer can reach" |
+| 5 | The secretary went `done` at its prompt 17 s after asking the approval, with work and an approval in `org-state`; the template says to end such a turn in `org wait --children` (Prototype 2 saw it stay `working`). Seen in the status log only; what the secretary's pane showed was not recorded. | Not established. | Proposed: "Secretary ended its turn idle with an approval open (Prototype 3)" |
+| 0 | `notes-off` FAIL at `prepare`. | Host configuration, not the loop. | None |
+| Runbook | `5-approval` passes on the history line alone; the card is checked only by eye, so a PASS there does not mean the card was on the screen. | By design (the runbook cannot see the window). Kept; the screen is a note. | None |
+
+Not exercised by this run: the answer through the card, the review gate and its `excludedCommands` (#242), the round counter, the pull request and the acceptance job (#240).
+
+New Issues for the secretary to file: the two marked "Proposed" above. #244, #245, #246 and #247 are filed. The run is to be repeated once #245 and #246 are fixed.
