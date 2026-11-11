@@ -643,7 +643,21 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 **Options.** Per feature: carry it as a skill; leave it out for now; or carry it later once its records exist.
 
-**Decides.** The owner.
+**Decided (2026-11-11, owner): the recommendations below, plus the contract's place.** One line per feature. "Kept?" is against [decision 0005](../decisions/0005-history-log-settings.md) (kept kinds) and Q8 point 7; the defense row follows [Q11](#q11-what-happens-to-the-predecessors-python-gates-and-generators).
+
+| Feature | Records it needs | Kept? | Recommendation | Source |
+|---|---|---|---|---|
+| Conveyor (an approved scope worked through without asking) | The scope contract (core document `conveyor-contract`, see below); the work list in `org-state`; `run_started` / `run_completed`; `ci_completed` | Kinds kept (0005). The contract is a document, not a history kind. | **Carry as a skill.** It is in use today (see below), and it only reads records paddock already keeps. | inventory SK-13, ST-8, MON-12; 0005 |
+| Work discovery with goal ledgers and a judge | Goal ledger per repository (REG-3, a Markdown file the secretary reads); judge cache, spend log, put-aside list (ST-8); `work_discovery_scanned` (241 rows / 30 d) | Ledger and put-aside list need no history kind. `work_discovery_scanned` is **dropped** (0005); the judge cache and spend log have no kind either. | **Carry as a skill, ledger first.** The conveyor takes its candidates from it. Leave the judge cache and spend log out until a cost is seen (a `claude -p` call per scan is the cost). | inventory SK-13, ST-8, REG-3; 0005 |
+| Next-work proposals after a merge | The same scan run when a task closes, so the same records as work discovery, plus a merge fact (`run_completed`, `ci_completed`) | Merge facts kept; scan record dropped. | **Carry as part of the work-discovery skill**, not a separate one: the inventory lists it only as the triage scan in the close flow. | inventory MON-9, SK-13; 0005 |
+| Metrics report | Runs, messages, summaries, CI results | Kept. Time blocked, crashes and exit codes are **not** in the history (only a core-side bridge would fill that). | **Carry later.** Not used today and no reader asks; the kept kinds allow a count by `awk` when one does. | inventory REC-10; Q8 point 7 (retrospectives); 0005 |
+| Defense report | `hook_denied` lines (1,212 rows / 30 d) | **Dropped** (0005). | **Leave out for now.** Already decided in Q11; revisit only if `hook_denied` is kept again. | inventory REC-10, HK-16; Q11; 0005 |
+
+**How the owner uses these today** (from the secretary, 2026-11-11, not from a record in this repository). The owner runs paddock's own work through the predecessor's conveyor: one approval of a scope contract (the Issues under goal clauses G1 to G5, four in parallel, a time budget), then triage by goal-ledger order, dispatch, the acceptance-test CI gate and an automatic merge, repeated. 26 pull requests of paddock were merged this way from 16:30 on that day. A person steps in for decision drafts, for a pull request that changed an existing test, and for a pull request the automatic check stopped (merged by hand). Triage offers candidates whenever a slot frees up, and the contract turns away candidates from repositories outside the scope. The metrics and defense reports were not used that day.
+
+**The scope contract's place.** The contract body (approved scope, parallel count, deadline, how merges are handled) is a fixed-name core document, `conveyor-contract`, written by the secretary only, handled like `org-state`; its row (writer, cap, pruning) is added to the table in [decision 0004](../decisions/0004-records-documents-and-jsonl.md). Core keeps it across a core stop ([Q8](#q8-what-is-each-component-written-in) and the #176 measurement) and the window's mods can read it. Progress (dispatches, merges) is carried by the kinds 0005 keeps (`run_*`, `ci_completed`, ...); no new kind is added. The judge cache and spend log are not carried (closed).
+
+**Consequences:** inventory SK-13, ST-8, REG-3 and REC-10 carry these decisions. Building the skills and the `conveyor-contract` writer are separate Issues.
 
 ## Q16. How is the secretary's context renewed?
 
