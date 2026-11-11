@@ -49,20 +49,27 @@ wt=${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}/$task
 
 # 1. Checks first; nothing is ended until they pass.
 if [ -z "$drop" ]; then
+  # The done must be at or after the latest start of this task id, so a done from an earlier,
+  # dropped delegation of the same id does not count.
   # ponytail: reads the mailbox file layout of scripts/org directly; ask scripts/org if that changes.
-  cat "$state"/events/*/"$name".jsonl 2>/dev/null \
-    | grep -Fq "\"from\":\"$name\",\"kind\":\"run_completed\",\"to\":\"secretary\",\"task_id\":\"$task\"," \
-    || die 6 "no done record for $task from $name addressed to secretary; ask the worker to report, or use --drop"
+  # ts has one-second resolution: a done in the same second as the start counts.
+  ts_of() { sed -n 's/^{"seq":[0-9]*,"ts":"\([^"]*\)".*/\1/p' | sort | tail -1; }
+  started=$(cat "$state"/events/*/secretary.jsonl 2>/dev/null \
+    | grep -F "\"kind\":\"run_started\"" | grep -F "\"task_id\":\"$task\"," | ts_of)
+  done_at=$(cat "$state"/events/*/"$name".jsonl 2>/dev/null \
+    | grep -F "\"from\":\"$name\",\"kind\":\"run_completed\",\"to\":\"secretary\",\"task_id\":\"$task\"," | ts_of)
+  { [ -n "$done_at" ] && [ ! "$done_at" \< "$started" ]; } \
+    || die 6 "no done record for $task from $name addressed to secretary since its start; ask the worker to report, or use --drop"
 fi
 hc ls >/dev/null 2>&1 || die 5 "cannot reach the herdr core (hc ls failed)"
-if hc get "$name" >/dev/null 2>&1; then
+# Only the core's own not_found means the terminal is gone; any other failure stops here.
+have=1; got=$(hc get "$name" 2>&1) || { have=; printf '%s' "$got" | grep -q 'not_found' || die 5 "hc get $name failed: ${got:0:200}"; }
+if [ -n "$have" ]; then
   [ "$(term_label "$name")" = "$task" ] || die 7 "terminal $name does not carry the label task_id=$task; it is not ended"
-elif [ -z "$drop" ]; then
-  die 7 "no terminal $name with the label task_id=$task"
 fi
 
-# 2. End the terminal.
-if hc get "$name" >/dev/null 2>&1; then
+# 2. End the terminal. A terminal already gone (an earlier run stopped after it) is not an error.
+if [ -n "$have" ]; then
   hc kill "$name" >/dev/null 2>&1 || die 5 "hc kill $name failed; nothing else was done"
   hc rm "$name" >/dev/null 2>&1 || die 5 "hc rm $name failed (killed); run it again"
 fi
@@ -89,7 +96,7 @@ TASK=$task bash "$org" --as secretary doc update org-state -- awk '
     t = ENVIRON["TASK"]
     if (!match(s, /"work": *\[/)) { printf "%s", s; exit }
     a = RSTART + RLENGTH; rest = substr(s, a); e = index(rest, "]")
-    n = split(substr(rest, 1, e - 1), p, "},{"); out = ""
+    n = split(substr(rest, 1, e - 1), p, /\}[ \t\n]*,[ \t\n]*\{/); out = ""
     for (k = 1; k <= n; k++) {
       sub(/^[ \n]*\{/, "", p[k]); sub(/\}[ \n]*$/, "", p[k])
       if (p[k] == "" || p[k] ~ ("\"task_id\": *\"" t "\"")) continue
