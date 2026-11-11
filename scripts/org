@@ -249,23 +249,32 @@ case "$cmd" in
     # watch prints extra JSON members: "gone" (no terminal or it ended, and no done record),
     # "waiting" (status blocked), "unreported" (status done, no done record), "unreadable"
     # (hc get failed some other way), or "watch_error" (org-state not readable). Nothing when quiet.
-    # ponytail: done records are looked for in this and the last month; work entries are flat and
-    # a title holding "]" cuts the list short (as in org-close).
+    # ponytail: done records are looked for in this and the last month.
     watch() {
-      local doc ids t j st g= w= u= x= runs
+      local doc ids t j st fin g= w= u= x= runs
       doc=$(bash "$0" --as "$id" doc get org-state 2>&1) || {
         printf ',"watch_error":"%s"' "$(printf '%s' "${doc:0:120}" | json_esc)"; return; }
-      ids=$(printf '%s' "$doc" | tr -d '\n' | sed -n 's/.*"work": *\[\([^]]*\)\].*/\1/p' \
-        | grep -o '"task_id": *"[^"]*"' | sed 's/.*: *"//; s/"$//')
+      # The work array is cut out with a scan that skips string contents, so a "]" in a title
+      # does not end it.
+      ids=$(printf '%s' "$doc" | tr -d '\n' | awk '{
+          if (!match($0, /"work": *\[/)) exit
+          s = substr($0, RSTART + RLENGTH); d = 1; q = 0; o = ""
+          for (i = 1; i <= length(s); i++) { c = substr(s, i, 1)
+            if (q) { if (c == "\\") { o = o c substr(s, ++i, 1); continue } if (c == "\"") q = 0 }
+            else if (c == "\"") q = 1; else if (c == "[") d++; else if (c == "]" && --d == 0) break
+            o = o c }
+          print o }' | grep -o '"task_id": *"[^"]*"' | sed 's/.*: *"//; s/"$//')
       runs=$(window | awk -F"$tab" '$4=="run_completed" { print $6 }')
       for t in $ids; do
-        printf '%s\n' "$runs" | grep -qxF "$t" && continue
+        # A done record silences "gone" and "unreported" only; a worker blocked again is still listed.
+        fin=; ! printf '%s\n' "$runs" | grep -qxF "$t" || fin=1
         if ! j=$(hc get --json "w-$t" 2>&1); then
-          case "$j" in *not_found*) g="$g${g:+,}\"$t\"" ;; *) x="$x${x:+,}\"$t\"" ;; esac
+          case "$j" in *not_found*) [ -n "$fin" ] || g="$g${g:+,}\"$t\"" ;; *) x="$x${x:+,}\"$t\"" ;; esac
           continue
         fi
         j=$(printf '%s' "$j" | tr -d '\n')
         st=$(printf '%s' "$j" | grep -o '"status": *{[^{}]*"state": *"[^"]*"' | grep -o '"state": *"[^"]*"' | tail -1 | sed 's/.*: *"//; s/"$//')
+        [ -z "$fin" ] || [ "$st" = blocked ] || continue
         case "$st" in
           blocked) w="$w${w:+,}\"$t\"" ;;
           done) u="$u${u:+,}\"$t\"" ;;
