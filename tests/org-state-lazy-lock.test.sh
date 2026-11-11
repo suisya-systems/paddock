@@ -68,4 +68,17 @@ reset
 printf '%s' '{"work":["x"],"approvals":[]}' > "$STUB/value"
 SECONDS=0; PADDOCK_LOCK_WAIT=3 org rebuild >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 0 ] && [ "$SECONDS" -lt 3 ] && [ "$(cat "$STUB/value")" = '{"work":[],"approvals":[]}' ]; check "rebuild writes without waiting on its own document lock" $?
+
+# 4. wait reports a stale stage it had to drop (flush_error), and stays quiet otherwise.
+reset
+add 1 --lazy; add 2 --lazy
+printf '%s' '{"work":["t1","other"],"approvals":[]}' > "$STUB/value"; echo 3 > "$STUB/version"
+out=$(PADDOCK_WAIT_POLL=0 org wait --timeout 1 2>/dev/null)
+case "$out" in *'"flush_error":"org: staged org-state was based on version'*) ok=0 ;; *) ok=1 ;; esac
+[ "$ok" -eq 0 ]; check "org wait reports the dropped stale stage as flush_error ($out)" $?
+reset
+add 1 --lazy; add 2 --lazy
+out=$(PADDOCK_WAIT_POLL=0 org wait --timeout 1 2>/dev/null)
+case "$out" in *flush_error*) ok=1 ;; *) ok=0 ;; esac
+[ "$ok" -eq 0 ]; check "org wait with a good stage has no flush_error" $?
 [ "$fail" -eq 0 ]

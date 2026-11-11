@@ -27,7 +27,7 @@ Usage: org [--as <id>] <command> [args]
                                                 against the core and adds "gone" (no terminal or it
                                                 ended, no done record), "waiting" (blocked),
                                                 "unreported" (done in the core, no done record),
-                                                "unreadable" or "watch_error"; nothing when quiet
+                                                "unreadable", "watch_error" or "flush_error"; nothing when quiet
   brief                                         read-only: print secretary-handover, org-state and
                                                 each terminal labelled task_id with its status
   doc get <name>                                print a core document's value
@@ -312,6 +312,14 @@ case "$cmd" in
     fi
     finish() { [ -z "$hpid" ] || kill "$hpid" 2>/dev/null; [ -z "$hout" ] || rm -f "$hout"; }
     trap finish EXIT
+    # flush_staged: exit 7 is "not the writer" (a worker waiting), not a failure; any other failure
+    # (a stale stage dropped, the core unreachable) is reported as "flush_error" in the return.
+    flushmsg=
+    flush_staged() {
+      local m rc
+      m=$(bash "$0" --as "$id" doc flush org-state 2>&1 >/dev/null); rc=$?
+      [ "$rc" -eq 0 ] || [ "$rc" -eq 7 ] || flushmsg=${m:0:160}
+    }
     # Issue #175: on every return, each task in org-state.work is checked against the core.
     # watch prints extra JSON members: "gone" (no terminal or it ended, and no done record),
     # "waiting" (status blocked), "unreported" (status done, no done record), "unreadable"
@@ -319,7 +327,8 @@ case "$cmd" in
     # ponytail: done records are looked for in this and the last month.
     watch() {
       local doc ids t j st fin g= w= u= x= runs
-      bash "$0" --as "$id" doc flush org-state >/dev/null 2>&1 # lazy edits reach the core before the check (Issue #76)
+      flush_staged # lazy edits reach the core before the check (Issue #76)
+      [ -z "$flushmsg" ] || printf ',"flush_error":"%s"' "$(printf '%s' "$flushmsg" | json_esc)"
       doc=$(bash "$0" --as "$id" doc get org-state 2>&1) || {
         printf ',"watch_error":"%s"' "$(printf '%s' "${doc:0:120}" | json_esc)"; return; }
       # The work array is cut out with a scan that skips string contents, so a "]" in a title
@@ -358,7 +367,7 @@ case "$cmd" in
       [ -z "$u" ] || printf ',"unreported":[%s]' "$u"
       [ -z "$x" ] || printf ',"unreadable":[%s]' "$x"
     }
-    bash "$0" --as "$id" doc flush org-state >/dev/null 2>&1 # the turn ended: its staged edits are the change set (Issue #76)
+    flush_staged # the turn ended: its staged edits are the change set (Issue #76)
     end=$((SECONDS + timeout))
     while :; do
       clock
