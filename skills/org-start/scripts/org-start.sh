@@ -53,7 +53,7 @@ cfg=${XDG_CONFIG_HOME:-$HOME/.config}
 [ -n "${APPDATA:-}" ] && cfg=$APPDATA # Windows (Git Bash)
 templates=${PADDOCK_CORE_TEMPLATES_DIR:-$cfg/herdr-core/templates}
 mods=${PADDOCK_APP_MODS_DIR:-$cfg/herdr-app/mods}
-layouts=${PADDOCK_APP_LAYOUTS_DIR:-$cfg/herdr-app/layouts}
+layouts=${PADDOCK_APP_LAYOUTS_DIR:-$(dirname "$mods")/layouts} # beside mods: an overridden mods folder never touches the real layouts
 # Issue #128: the org script goes where a worker may read it and may not write (see worker-settings.json).
 orgbin=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}
 case "$orgbin" in /*) ;; *) die 2 "PADDOCK_BIN_DIR must be an absolute path: $orgbin" ;; esac
@@ -100,7 +100,7 @@ cp -f "$root/mods/org-cockpit/main.js" "$root/mods/org-cockpit/mod.json" "$mods/
   || die 6 "cannot copy the org-cockpit mod"
 # Keep the "secretary" prop (a secretary on another machine) the person put in the installed layout.
 # ponytail: the first prop found goes into every org-cockpit block; per-block props if they differ.
-keep=$(grep -Eo '"secretary": *"[^"]*"' "$layouts/paddock.json" 2>/dev/null | head -n 1)
+keep=$(grep -Eo '"secretary"[[:space:]]*:[[:space:]]*"[^"]*"' "$layouts/paddock.json" 2>/dev/null | head -n 1)
 if [ -n "$keep" ]; then
   sed "s|\"props\": { \"role\"|\"props\": { $keep, \"role\"|" "$root/layouts/paddock.json" > "$layouts/paddock.json.new" \
     && mv -f "$layouts/paddock.json.new" "$layouts/paddock.json" || die 6 "cannot place the layout"
