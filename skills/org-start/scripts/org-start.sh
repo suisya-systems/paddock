@@ -16,6 +16,9 @@ Environment overrides:
   PADDOCK_CORE_TEMPLATES_DIR  herdr-core templates folder
   PADDOCK_APP_MODS_DIR        herdr-app mods folder
   PADDOCK_APP_LAYOUTS_DIR     herdr-app layouts folder
+  PADDOCK_APP_MACHINE         machine name the app gives this core; the layout's secretary prop
+                              becomes <machine>/<name> (default wsl when the app is herdr-app for
+                              Windows and this is WSL)
   PADDOCK_BIN_DIR          folder of the org script and the worker rules and settings (absolute;
                               default ${XDG_DATA_HOME:-~/.local/share}/paddock/bin)
   PADDOCK_READY_TRIES         seconds to wait for a status (default 15)
@@ -52,7 +55,25 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 cfg=${XDG_CONFIG_HOME:-$HOME/.config}
 [ -n "${APPDATA:-}" ] && cfg=$APPDATA # Windows (Git Bash)
 templates=${PADDOCK_CORE_TEMPLATES_DIR:-$cfg/herdr-core/templates}
-mods=${PADDOCK_APP_MODS_DIR:-$cfg/herdr-app/mods}
+# Issue #246: on WSL, herdr-app for Windows reads the Windows user's .config/herdr-app and sees this
+# core as another machine (wsl). A herdr-app on PATH that is not an .exe is a Linux app: WSL's folder.
+app=$(command -v herdr-app 2>/dev/null); appcfg=$cfg/herdr-app; appmachine=
+# readlink only on a found app: some readlink builds answer "" with the current folder.
+case "${app:+$(readlink -f "$app" 2>/dev/null)}" in ""|*.exe) winapp=1 ;; *) winapp= ;; esac
+if [ -n "${WSL_DISTRO_NAME:-}" ] && [ -n "$winapp" ] && [ -z "${PADDOCK_APP_MODS_DIR:-}" ]; then
+  winhome=$(wslpath "$(cmd.exe /d /c echo %USERPROFILE% 2>/dev/null | tr -d '\r')" 2>/dev/null)
+  if [ -n "$winhome" ] && [ -d "$winhome" ]; then
+    appcfg=$winhome/.config/herdr-app; appmachine=wsl
+    # ponytail: the installer's default folder; LOCALAPPDATA moved elsewhere needs herdr-app(.exe) on PATH.
+    exe=$winhome/AppData/Local/Programs/herdr-app/herdr-app.exe
+    # Bash adds no .exe, so herdr-app.exe on PATH is looked up by that name.
+    [ -n "$app" ] || app=$(command -v herdr-app.exe 2>/dev/null) || { [ ! -x "$exe" ] || app=$exe; }
+  else
+    echo "org-start: warning: WSL, but the Windows user folder was not found (cmd.exe, wslpath); placing the mods under $cfg/herdr-app" >&2
+  fi
+fi
+apppath() { if [ -n "$appmachine" ]; then wslpath -w "$1"; else printf '%s\n' "$1"; fi; } # a path herdr-app reads
+mods=${PADDOCK_APP_MODS_DIR:-$appcfg/mods}
 layouts=${PADDOCK_APP_LAYOUTS_DIR:-$(dirname "$mods")/layouts} # beside mods: an overridden mods folder never touches the real layouts
 # Issue #128: the org script goes where a worker may read it and may not write (see worker-settings.json).
 orgbin=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}
@@ -85,9 +106,9 @@ rm -f "$templates/worker-rules.md" "$templates/worker-settings.json" \
 tokfile=${PADDOCK_WORKER_GH_TOKEN_FILE:-$cfg/paddock/worker-gh-token}
 [ -s "$tokfile" ] || echo "org-start: warning: no read-only GitHub token in $tokfile; workers will refuse to start until you create it (see skills/org-start/SKILL.md)" >&2
 
-if [ ! -d "$mods/org-agents" ] && [ -z "${PADDOCK_APP_MODS_DIR:-}" ] && command -v herdr-app >/dev/null 2>&1; then
+if [ ! -d "$mods/org-agents" ] && [ -z "${PADDOCK_APP_MODS_DIR:-}" ] && [ -n "$app" ]; then
   # First time: let herdr-app create the folder so it gets the type files.
-  herdr-app do mod.clone '{"name":"agents","as":"org-agents"}' >/dev/null 2>&1 \
+  "$app" do mod.clone '{"name":"agents","as":"org-agents"}' >/dev/null 2>&1 \
     || echo "org-start: mod.clone failed; copying the mod without type files" >&2
 fi
 mkdir -p "$mods/org-agents" || die 6 "cannot create $mods/org-agents"
@@ -101,6 +122,11 @@ cp -f "$root/mods/org-cockpit/main.js" "$root/mods/org-cockpit/mod.json" "$mods/
 # Keep the "secretary" prop (a secretary on another machine) the person put in the installed layout.
 # ponytail: the first prop found goes into every org-cockpit block; per-block props if they differ.
 keep=$(grep -Eo '"secretary"[[:space:]]*:[[:space:]]*"[^"]*"' "$layouts/paddock.json" 2>/dev/null | head -n 1)
+# Issue #246: when the app sees this core as another machine, the prop names this secretary there.
+# The machine: PADDOCK_APP_MACHINE, else the one in the installed prop (a stale name is replaced), else wsl.
+machine=${PADDOCK_APP_MACHINE:-$(printf '%s' "$keep" | sed -n 's|.*:[[:space:]]*"\([^/"]*\)/.*|\1|p')}
+machine=${machine:-$appmachine}
+[ -z "$machine" ] || keep="\"secretary\": \"$machine/$name\""
 if [ -n "$keep" ]; then
   sed "s|\"props\": { \"role\"|\"props\": { $keep, \"role\"|" "$root/layouts/paddock.json" > "$layouts/paddock.json.new" \
     && mv -f "$layouts/paddock.json.new" "$layouts/paddock.json" || die 6 "cannot place the layout"
@@ -108,9 +134,10 @@ else
   cp -f "$root/layouts/paddock.json" "$layouts/paddock.json" || die 6 "cannot place the layout"
 fi
 # The app's check needs a display; a failure warns and does not stop the start.
-if command -v herdr-app >/dev/null 2>&1; then
-  herdr-app check "$mods/org-cockpit" >/dev/null 2>&1 \
+if [ -n "$app" ]; then
+  "$app" check "$(apppath "$mods/org-cockpit")" >/dev/null 2>&1 \
     || echo "org-start: warning: herdr-app check failed for $mods/org-cockpit (run it by hand to see why)" >&2
+  echo "org-start: to open the screen: $(printf '%q' "$app") do layout.switch '{\"name\":\"paddock\"}'"
 fi
 
 # 3. Start the secretary unless one exists. Never stops or restarts the core.
