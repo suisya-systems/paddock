@@ -72,6 +72,18 @@ function duration(ms) {
   const h = Math.floor(m / 60);
   return h < 48 ? `${h}h` : `${Math.floor(h / 24)}d`;
 }
+// Text on a filled state colour: black or white, whichever contrasts more with it (WCAG relative
+// luminance), so a label on the amber or red fill stays readable in light and dark themes alike.
+function ink(hex) {
+  const m = /^#?([0-9a-f]{6})/i.exec(hex ?? "");
+  if (!m) return "#ffffff";
+  const [r, g, b] = [0, 2, 4].map((i) => {
+    const v = parseInt(m[1].slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return (l + 0.05) / 0.05 >= 1.05 / (l + 0.05) ? "#000000" : "#ffffff";
+}
 const since = (iso, now) => (iso ? duration(now - Date.parse(iso)) : "");
 
 // The last meaningful lines of a screen. Claude Code draws an input box and footer hints at the
@@ -299,13 +311,13 @@ export default class Cockpit extends View {
     const c = t.blocked;
     return h_flex().id(`${word}-${a.id}`).flex_1().min_w(0).h(36).rounded(8).gap(6).items_center().justify_center()
       .text_size(13).font_semibold()
-      .when(primary, (el) => el.bg(c).text_color(t.background))
+      .when(primary, (el) => el.bg(c).text_color(ink(c)))
       .when(!primary, (el) => el.border(1).border_color(t.foreground + "29").text_color(t.foreground))
       .when(busy, (el) => el.opacity(mine ? 0.6 : 0.35))
       .when(!busy, (el) => el.cursor_pointer().hover((st) => st.bg(primary ? c + "d9" : t.hover)))
       .on_click(() => this.answer(a, word))
       .child(mine ? "Sending…" : label)
-      .when(primary && !mine, (el) => el.child(div().text_size(11).font_medium().opacity(0.8).child("Recommended")));
+      .when(primary && !mine, (el) => el.child(div().text_size(12).font_medium().child("Recommended")));
   }
 
 
@@ -357,7 +369,7 @@ export default class Cockpit extends View {
       .child(text(s, t.foreground).flex_1().min_w(0));
     const open = term && div().id("open").h(36).rounded(8).flex().items_center().justify_center().cursor_pointer()
       .text_size(13).font_semibold()
-      .when(stillBlocked, (el) => el.bg(c).text_color(t.background))
+      .when(stillBlocked, (el) => el.bg(c).text_color(ink(c)))
       .when(!stillBlocked, (el) => el.border(1).border_color(t.foreground + "29").text_color(t.foreground))
       .hover((st) => st.bg(stillBlocked ? c + "d9" : t.hover))
       .on_click(() => run("terminal.peek", { terminal: term.address }))
@@ -391,8 +403,8 @@ export default class Cockpit extends View {
           .when(Boolean(rec || a.why), (el) => el.child(v_flex().rounded(8).bg(t.background).px(12).py(10).gap(6)
             .child(h_flex().gap(8).items_center()
               .child(this.label(t, rec ? "SECRETARY RECOMMENDS" : "FROM THE SECRETARY", t.muted))
-              .when(Boolean(rec), (e) => e.child(div().flex_none().px(6).h(18).rounded(5).bg(c + "2e").flex().items_center()
-                .text_size(11).font_semibold().text_color(c).child(rec === "yes" ? "Yes" : "No"))))
+              .when(Boolean(rec), (e) => e.child(div().flex_none().px(6).h(18).rounded(5).bg(c).flex().items_center()
+                .text_size(12).font_semibold().text_color(ink(c)).child(rec === "yes" ? "Yes" : "No"))))
             .when(Boolean(a.why), (e) => e.child(text(a.why, t.foreground)))))
           .when(gone(rec ? [] : ["recommendation"]), (el) => el.child(unwritten(["recommendation"])))
           .when(none, (el) => el.child(unwritten(missing))));
