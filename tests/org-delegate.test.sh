@@ -148,6 +148,7 @@ grep -Eq '^t1[[:space:]]+w-t1[[:space:]]+done' <<<"$list"; check "a worker's lat
 # Options.
 reset; out=$(run -- "${good[@]}" --branch feat/x --base main --allow-write "$tmp/out dir" --allow-write '~/notes' --allow-write "$tmp/a&b"); rc=$?
 [ "$rc" -eq 0 ] && [ "$(git -C "$workers/t1" rev-parse --abbrev-ref HEAD)" = feat/x ]; check "--branch names the branch" $?
+[ "$(git -C "$workers/t1" config --get branch.feat/x.paddockBase)" = main ]; check "the base is recorded for the review gate (branch.<name>.paddockBase)" $?
 # Issue #160: in the worker's own --settings file (Claude Code ignores allowWrite in settings.local.json once
 # allowUnsandboxedCommands is false there), not in settings.local.json.
 sj=$(tr -d '\n' < "$tmp/state/settings/t1.json")

@@ -20,7 +20,9 @@ set -uo pipefail
 [ "$#" -eq 0 ] || { [ "$#" -eq 1 ] && [ "$1" = --design ]; } || {
   echo "usage: bash \"\$PADDOCK_CODEX_GATE\" [--design]" >&2; exit 2; }
 mode=diff; [ "${1:-}" = --design ] && mode=design
-base=origin/main
+# The base org-delegate recorded for this branch (Issue #177), else origin/main.
+base=$(git config --get "branch.$(git rev-parse --abbrev-ref HEAD 2>/dev/null).paddockBase" 2>/dev/null) || base=
+base=${base:-origin/main}
 design=.worker-scratch/design.md
 
 if [ "$mode" = design ]; then
@@ -32,8 +34,8 @@ else
     printf '%s\n' "$dirty"
     echo "CODEX_GATE: dirty-worktree (commit first; HEAD=$(git rev-parse --short HEAD 2>/dev/null))"; exit 4
   fi
-  ahead=$(git rev-list --count "$base..HEAD" 2>/dev/null) && [ "$ahead" -gt 0 ] \
-    || { echo "CODEX_GATE: not-established (no commit ahead of $base, or no $base: nothing to review)"; exit 1; }
+  git rev-parse --verify -q "$base^{commit}" >/dev/null && ! git diff --quiet "$base...HEAD" 2>/dev/null \
+    || { echo "CODEX_GATE: not-established (no change against $base, or no $base: nothing to review)"; exit 1; }
 fi
 
 command -v codex >/dev/null 2>&1 || { echo "CODEX_GATE: unavailable (the reviewing CLI is not installed)"; exit 3; }

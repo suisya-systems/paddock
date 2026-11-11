@@ -147,6 +147,8 @@ git -C "$project" rev-parse --verify -q "$base^{commit}" >/dev/null || die 6 "ba
 mkdir -p "$workers" || die 6 "cannot create $workers"
 git -C "$project" worktree add -q -b "$branch" "$wt" "$base" >/dev/null 2>&1 \
   || die 6 "git worktree add failed for branch $branch at $base (does the branch exist already?)"
+# Issue #177: the review gate reads the base back, so a worker on a non-main base is reviewed against it.
+git -C "$project" config "branch.$branch.paddockBase" "$base" >/dev/null 2>&1 || true
 
 # undo removes the worktree and branch, which are new and ours, and says so if it cannot. Used only
 # where no worker can exist: before the launch, or after the core answered that the terminal is not there.
