@@ -66,7 +66,10 @@ CWD="$WORK/cwd"; XDG="$WORK/xdg"; MODS="$WORK/mods"; TPLS="$XDG/herdr-core/templ
 mkdir -p "$CWD" "$XDG" "$MODS" || exit 1
 HC_SESSION=p52-$$; export HC_SESSION
 XDG_CONFIG_HOME=$XDG; export XDG_CONFIG_HOME
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   [ -n "${OSPID:-}" ] && kill "$OSPID" >/dev/null 2>&1
   hc kill "$NAME" >/dev/null 2>&1; hc rm "$NAME" >/dev/null 2>&1
   hc server stop >/dev/null 2>&1 # HC_SESSION is the temp core's: yours is untouched

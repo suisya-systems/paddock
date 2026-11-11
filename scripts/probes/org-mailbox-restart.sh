@@ -5,6 +5,9 @@
 #        3) `check`; paste the output of both phases into the Issue. It uses its own state folder
 #        and ids (probe-*), never org-state or the real mailbox.
 set -u
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
+trap claude_link_restore EXIT
 here=$(cd "$(dirname "$0")/../.." && pwd)
 export PADDOCK_STATE_DIR=${PADDOCK_PROBE_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock-probe}
 org() { bash "$here/scripts/org" "$@"; }

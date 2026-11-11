@@ -32,7 +32,10 @@ if [ -e "$TPL" ]; then echo "RESULT precondition-failed: $TPL exists; remove it 
 if has "$NAME"; then echo "RESULT precondition-failed: terminal $NAME already exists"; exit 1; fi
 
 WORK=$(mktemp -d) || exit 1
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   hc kill "$NAME" >/dev/null 2>&1; hc rm "$NAME" >/dev/null 2>&1
   rm -f "$TPL"
   rmdir "$WORK" 2>/dev/null

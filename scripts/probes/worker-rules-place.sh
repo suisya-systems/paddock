@@ -63,7 +63,10 @@ WT=${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}/$ID
 if hc get "$W" >/dev/null 2>&1 || [ -e "$WT" ] || git -C "$PROJECT" show-ref --verify -q "refs/heads/work/$ID"; then
   echo "RESULT precondition-failed: $W, $WT or branch work/$ID already exists; remove it yourself and rerun"; exit 1
 fi
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   hc kill "$W" >/dev/null 2>&1; hc rm "$W" >/dev/null 2>&1
   git -C "$PROJECT" worktree remove --force "$WT" >/dev/null 2>&1
   git -C "$PROJECT" branch -D "work/$ID" >/dev/null 2>&1

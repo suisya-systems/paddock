@@ -82,7 +82,10 @@ SD=${PADDOCK_CORE_SOCKET_DIR:-${HC_TERMINAL_SOCKET:+$(dirname "$HC_TERMINAL_SOCK
 [ -n "$SD" ] || { echo "RESULT precondition-failed: run from a core terminal or set PADDOCK_CORE_SOCKET_DIR (org-delegate needs the socket folder)"; exit 1; }
 printf '%s\n' "{\"sandbox\":{\"filesystem\":{\"denyRead\":[\"$SD\"],\"denyWrite\":[\"$SD\"]}}}" > "$BK/local.before"
 KEEP=
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   if ! cmp -s "$SETF" "$BK/settings.before"; then
     cat "$BK/settings.before" > "$SETF" && echo "NOTE: $SETF had changed; restored from the copy taken before the run"
   fi

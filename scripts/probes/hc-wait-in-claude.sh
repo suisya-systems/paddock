@@ -63,7 +63,10 @@ CWD="$WORK/cwd"; XDG="$WORK/xdg"; OUT="$WORK/out"; mkdir -p "$CWD" "$XDG" "$OUT"
 HC_SESSION=p117-$$; export HC_SESSION
 XDG_CONFIG_HOME=$XDG; export XDG_CONFIG_HOME
 
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   hc kill $SEC >/dev/null 2>&1; hc rm $SEC >/dev/null 2>&1
   for n in p117-w1 p117-w2; do hc kill $n >/dev/null 2>&1; hc rm $n >/dev/null 2>&1; done
   hc server stop >/dev/null 2>&1 # HC_SESSION is the temp core's: yours is untouched

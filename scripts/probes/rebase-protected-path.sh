@@ -116,7 +116,10 @@ done
 if [ -e "$WT" ] || hc get "$W" >/dev/null 2>&1; then echo "RESULT precondition-failed: $WT or $W already exists; remove it yourself and rerun"; exit 1; fi
 
 KEEP=; TMPD=$(mktemp -d) || { echo "RESULT precondition-failed: mktemp failed"; exit 1; }
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   rm -rf -- "$TMPD"
   [ -n "$KEEP" ] && { echo "terminal $W, worktree $WT and the probe/$ID-* branches kept (NEEDS-PERSON)"; return; }
   hc kill "$W" >/dev/null 2>&1; hc rm "$W" >/dev/null 2>&1

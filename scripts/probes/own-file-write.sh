@@ -91,7 +91,10 @@ if [ -e "$DIR" ] || [ -L "$DIR" ] || [ -e "$WT" ] || hc get "$W" >/dev/null 2>&1
 fi
 SIBCOPY=$(mktemp) || exit 1
 KEEP=
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   rm -f -- "$OWN" "$SIB" "$NEW" "$SIBCOPY"; rmdir -- "$DIR" 2>/dev/null
   [ -n "$KEEP" ] && { echo "terminal $W and worktree $WT kept (decoys removed)"; return; }
   hc kill "$W" >/dev/null 2>&1; hc rm "$W" >/dev/null 2>&1

@@ -73,7 +73,10 @@ ID=p44-$$-$(date +%s); W=w-$ID; WAIT=${PADDOCK_PROBE_WAIT:-240}
 WT=${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}/$ID
 STATE=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
 KEEP=
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   [ -n "$KEEP" ] && { echo "terminal $W and worktree $WT kept"; return; }
   hc kill "$W" >/dev/null 2>&1; hc rm "$W" >/dev/null 2>&1
   git -C "$PROJ" worktree remove --force "$WT" >/dev/null 2>&1

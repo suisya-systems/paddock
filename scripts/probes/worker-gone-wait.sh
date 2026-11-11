@@ -40,7 +40,10 @@ HC_SESSION=p175-$$; export HC_SESSION
 PADDOCK_STATE_DIR=$WORK/state; export PADDOCK_STATE_DIR
 unset PADDOCK_ORG_ID PADDOCK_SECRETARY_NAME
 FAILS=0
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   for n in w-p175a w-p175b; do hc kill $n >/dev/null 2>&1; hc rm $n >/dev/null 2>&1; done
   hc server stop >/dev/null 2>&1 # HC_SESSION is the temp core's: yours is untouched
   rm -rf "$WORK"

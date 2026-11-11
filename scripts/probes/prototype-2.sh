@@ -203,7 +203,9 @@ if [ "$phase" = watch ]; then
   once() { [ -f "$RUN/said.$1" ] || { : > "$RUN/said.$1"; echo "$2"; }; }
   log() { printf '%s\t%s\n' "$(now)" "$1" >> "$RUN/watch.log"; }
   hc events --json >> "$RUN/hc-events.jsonl" 2>/dev/null & EVPID=$!
-  trap 'kill $EVPID 2>/dev/null' EXIT
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
+  trap 'kill $EVPID 2>/dev/null; claude_link_restore' EXIT
   trap 'exit 130' INT TERM
   echo "== watching run $T (log: $RUN/watch.log; Ctrl-C stops, rerun resumes)"
   t=0; prev_s=; prev_w=; prev_os=; AID=$(cat "$RUN/approval.id" 2>/dev/null)

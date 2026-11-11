@@ -60,7 +60,10 @@ has() { hc ls 2>&1 | grep -Eq "(^|[^A-Za-z0-9_-])$1([^A-Za-z0-9_-]|\$)"; }
 if [ -e "$TPL" ] || [ -e "$TPLR" ]; then echo "RESULT precondition-failed: $TPL or $TPLR exists; remove it first"; exit 1; fi
 if has $NAME; then echo "RESULT precondition-failed: terminal $NAME already exists"; exit 1; fi
 
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
 cleanup() {
+  claude_link_restore
   hc kill $NAME >/dev/null 2>&1; hc rm $NAME >/dev/null 2>&1
   rm -f "$TPL" "$TPLR"
 }
