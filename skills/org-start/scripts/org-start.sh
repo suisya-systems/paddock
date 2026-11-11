@@ -150,18 +150,21 @@ fi
 # Q9, Issue #193: unless it is auto, the conversation language (org config) ends the launch task.
 lang=$(bash "$root/scripts/org" --as secretary config get conversation_language 2>/dev/null)
 task=; [ -z "$lang" ] || [ "$lang" = auto ] || task="Conversation language: $lang"
+started=
 if hc get "$name" >/dev/null 2>&1; then
   echo "org-start: $name already exists; not starting another"
 else
   # Issue #130: --cwd, so the secretary finds scripts/org and skills/*/scripts from any starting folder.
   hc run --bg --keep --name "$name" --cwd "$root" secretary ${task:+"$task"} || die 5 "hc run failed for the secretary"
+  started=1
 fi
 
 # 4. Readiness: hc get shows a status object. (The CLAUDE_CODE_CHILD_SESSION check is probe #52.)
 # Issue #244: a new root shows Claude Code's folder-trust dialog and no status. Q13 (a) allows
 # answering it once for the secretary's own root (never for a worktree): read, down, read again,
 # enter only with the cursor on "Yes" (the default is "No, exit"). The first message did not arrive:
-# hc sends the template body plus a blank line and the task, so both are sent again.
+# hc sends the template body plus a blank line and the task, so both are sent again. Only for a
+# secretary this run started in $root: an existing one may sit in another folder.
 trusted=; i=0
 while [ "$i" -lt "$tries" ]; do
   if hc get --json "$name" 2>/dev/null | grep -Eq '"status": *\{'; then
@@ -175,7 +178,7 @@ $task}" >/dev/null 2>&1 \
     echo "org-start: ready. $name reports a status; the mod is in $mods/org-agents"
     exit 0
   fi
-  if [ -z "$trusted" ] && hc read "$name" 2>/dev/null | grep -Eq 'Quick safety check|Yes, I trust this folder'; then
+  if [ -n "$started" ] && [ -z "$trusted" ] && hc read "$name" 2>/dev/null | grep -Eq 'Quick safety check|Yes, I trust this folder'; then
     hc keys "$name" down >/dev/null 2>&1; sleep 1
     hc read "$name" 2>/dev/null | grep -q '❯.*Yes, I trust this folder' \
       || die 7 "$name shows the folder-trust dialog and the cursor did not reach 'Yes, I trust this folder'; nothing confirmed. Look at 'hc read $name'"
