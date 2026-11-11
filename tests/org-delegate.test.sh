@@ -118,7 +118,12 @@ check "order: name check, settings file written, run" $?
 [ -f "$tmp/stub/record-before-run" ]; check "the start record exists before hc run is called" $?
 grep -q "^file write .*$workers/t1/.claude/settings.local.json" "$calls"; check "settings go to <worktree>/.claude/settings.local.json" $?
 # Issue #155: the socket folder deny is always there (tests/worker-core-api-holders.test.sh checks it).
-[ "$(tr -d ' \n' < "$workers/t1/.claude/settings.local.json")" = "{\"sandbox\":{\"filesystem\":{\"denyRead\":[\"$tmp/run/herdr-core\"],\"denyWrite\":[\"$tmp/run/herdr-core\"]}}}" ]; check "no --allow-write writes only the socket folder deny" $?
+# Issue #189: the npm, uv and pip caches go into the sandbox temporary folder of the worker (/tmp/claude-<uid>).
+# Claude Code does not expand $TMPDIR in a settings env value, so the path is written out here.
+ct=/tmp/claude-$(id -u)
+envj="\"env\":{\"npm_config_cache\":\"$ct/npm-cache\",\"UV_CACHE_DIR\":\"$ct/uv-cache\",\"PIP_CACHE_DIR\":\"$ct/pip-cache\"}"
+[ "$(tr -d ' \n' < "$workers/t1/.claude/settings.local.json")" = "{\"sandbox\":{\"filesystem\":{\"denyRead\":[\"$tmp/run/herdr-core\"],\"denyWrite\":[\"$tmp/run/herdr-core\"]}},$envj}" ]; check "no --allow-write writes the socket folder deny and the cache env" $?
+! grep -q '\$TMPDIR' "$workers/t1/.claude/settings.local.json"; check "the cache env holds no unexpanded TMPDIR variable" $?
 [ ! -e "$workers/t1/AGENTS.md" ] && [ ! -e "$workers/t1/CLAUDE.md" ] && [ ! -e "$workers/t1/CLAUDE.local.md" ]
 check "no rules or brief file is written into the worktree (Q12)" $?
 argv=$tmp/stub/run-argv
