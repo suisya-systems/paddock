@@ -62,7 +62,7 @@ WAIT=${PADDOCK_PROBE_WAIT:-150}
 . "$(dirname "$0")/claude-link.sh"
 claude_link_save
 T=$(mktemp -d "$HOME/paddock-probe-160.XXXXXX") || { echo "RESULT precondition-failed: mktemp"; exit 1; }
-trap 'claude_link_restore; rm -rf "$T"' EXIT INT TERM
+trap 'claude_link_restore; rm -rf "$T"' EXIT; trap 'exit 130' INT TERM
 echo "RESULT env: INFO claude=$(claude --version 2>/dev/null | head -n 1) os=$(uname -sr)"
 ID=p160b-$$; W=w-$ID; MK=$ID-$(date +%s)
 BASE_OWN=own-base-$MK BASE_SIB=sib-base-$MK MA=mark-a-$MK MC=mark-c-$MK MD=mark-d-$MK
