@@ -63,7 +63,6 @@ cleanup() {
   for n in untrusted plain worktree clone trusted-repo; do hc kill "p216-$n" >/dev/null 2>&1; hc rm "p216-$n" >/dev/null 2>&1; done
   hc server stop >/dev/null 2>&1 # HC_SESSION is the temp core's: yours is untouched
   git -C "$TRUSTED_REPO" worktree remove --force "$WT4" >/dev/null 2>&1
-  git -C "$TRUSTED_REPO" worktree prune >/dev/null 2>&1
   case "$BASE" in "$WORKERS"/p216-*) rm -rf "$BASE" ;; esac
   rm -rf "$WORK"
   echo "CLEANUP done"
@@ -73,7 +72,7 @@ trap cleanup EXIT; trap 'exit 130' INT TERM
 printf '%s\n' '---' 'description: p216 folder-trust probe' 'command: claude --permission-mode default' '---' \
   'This is a probe. Reply with the single word OK and nothing else.' > "$TPL_DIR/p216-trust.md"
 
-trust_entries() { # read-only: the trust flag of every ~/.claude.json project key that names the workers folder or this probe
+trust_entries() { # INFO only (sh + grep, no jq: a flag may be misread for long entries; the verdicts do not use it). Read-only: the trust flag of every ~/.claude.json project key that names the workers folder or this probe
   tr -d '\n' < "$HOME/.claude.json" 2>/dev/null | grep -Eo '"[^"]*(paddock-workers|p216-|probe216)[^"]*": *\{' | sed 's/": *{$//; s/^"//' | while IFS= read -r k; do
     f=$(tr -d '\n' < "$HOME/.claude.json" | grep -Eo "\"$k\": *\{.{0,600}" | grep -Eo 'hasTrustDialogAccepted": *(true|false)' | head -n 1)
     echo "   $k -> ${f:-no hasTrustDialogAccepted}"
