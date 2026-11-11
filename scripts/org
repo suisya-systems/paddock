@@ -42,6 +42,11 @@ Usage: org [--as <id>] <command> [args]
   rebuild [--print]                             (secretary) org-state again from all of the history
                                                 files (--print: show it, write nothing); updated_at,
                                                 hand-set keys and secretary-handover are not in the log
+  config get <key>                              print a setting (merge_approval_mode, conversation_language)
+  config set <key> <value>                      change it in org-config.md (secretary only)
+  config project add <name> <path> [--base B] [--secret-block S]
+  config project set <name> [--path P] [--base B] [--secret-block S]
+  config project drop <name>                    change projects.md (secretary only)
 
 Your id comes from --as or $PADDOCK_ORG_ID (lowercase letters, digits, _ and -).
 History is JSON lines, events/<YYYY-MM>/<id>.jsonl under $PADDOCK_STATE_DIR
@@ -71,7 +76,7 @@ cmd=${1:-}; [ $# -eq 0 ] || shift
 
 valid_id() { case "$1" in ''|-*|*[!a-z0-9_-]*) return 1 ;; esac; }
 case "$cmd" in
-  send_message|check_messages|set_summary|report|ci_completed|list_runs|doc|wait|brief|rebuild) ;;
+  send_message|check_messages|set_summary|report|ci_completed|list_runs|doc|wait|brief|rebuild|config) ;;
   *) echo "org: unknown command: $cmd" >&2; usage >&2; exit 2 ;;
 esac
 valid_id "$id" || die 2 "no valid id: give --as <id> or set PADDOCK_ORG_ID (lowercase letters, digits, _ and -)"
@@ -515,4 +520,88 @@ case "$cmd" in
       esac
     done
     die 9 "doc.set $name kept conflicting after 5 tries" ;;
+
+  config)
+    # Issue #193 (Q14, Q9): the settings file org-config.md (key: value lines) and the projects.md table
+    # in the paddock config folder. get is the one reader: argument aside, file, then the script default.
+    cdir=${XDG_CONFIG_HOME:-$HOME/.config}; [ -n "${APPDATA:-}" ] && cdir=$APPDATA # as org-start
+    cfgf=${PADDOCK_ORG_CONFIG_FILE:-$cdir/paddock/org-config.md}
+    prjf=${PADDOCK_PROJECTS_FILE:-$cdir/paddock/projects.md} # as project.sh
+    sub=${1:-}; [ $# -eq 0 ] || shift
+    case "$sub" in get) ;; set|project)
+      [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || die 7 "only secretary writes settings" ;;
+    esac
+    # ponytail: no lock; the secretary runs one change at a time. A lock like put's if that stops holding.
+    ckey() { # ckey <key>: sets cdef (the script default); exit 2 for a key the decisions do not name
+      case "$1" in
+        merge_approval_mode) cdef=human ;;
+        conversation_language) cdef=auto ;;
+        *) die 2 "unknown key: '$1' (known: merge_approval_mode, conversation_language)" ;;
+      esac
+    }
+    case "$sub" in
+      get)
+        [ $# -eq 1 ] || die 2 "usage: config get <key>"
+        ckey "$1"
+        v=$(sed -n "s/^$1:[ \t]*//p" "$cfgf" 2>/dev/null | head -n 1 | sed 's/[ \t\r]*$//')
+        printf '%s\n' "${v:-$cdef}" ;;
+      set)
+        [ $# -eq 2 ] || die 2 "usage: config set <key> <value>"
+        ckey "$1"; v=$2
+        case "$1" in
+          merge_approval_mode) case "$v" in human|acceptance) ;; *) die 2 "merge_approval_mode must be human or acceptance" ;; esac ;;
+          conversation_language) case "$v" in ''|*[!A-Za-z0-9_\ -]*) die 2 "conversation_language is letters, digits, space, _ and - (or auto)" ;; esac
+            [ "${#v}" -le 40 ] || die 2 "conversation_language is longer than 40 characters" ;;
+        esac
+        mkdir -p "$(dirname "$cfgf")" || die 6 "cannot create the folder of $cfgf"
+        { grep -v "^$1:" "$cfgf" 2>/dev/null; printf '%s: %s\n' "$1" "$v"; } > "$cfgf.new" \
+          && mv -f "$cfgf.new" "$cfgf" || die 6 "cannot write $cfgf" ;;
+      project)
+        op=${1:-}; [ $# -eq 0 ] || shift
+        case "$op" in add|set|drop) ;; *) die 2 "usage: config project <add <name> <path> | set <name> | drop <name>> [--path P] [--base B] [--secret-block S]" ;; esac
+        [ $# -ge 1 ] || die 2 "config project $op needs a name"
+        pname=$1; shift
+        case "$pname" in ''|*[!A-Za-z0-9._-]*) die 2 "project name: letters, digits, . _ and - only" ;; esac
+        ppath=; pbase=; psec=; hp=; hb=; hs=
+        if [ "$op" = add ]; then [ $# -ge 1 ] || die 2 "config project add <name> <path>"; ppath=$1; hp=1; shift; fi
+        while [ $# -gt 0 ]; do
+          [ "$op" != drop ] && [ $# -ge 2 ] || die 2 "unexpected argument: $1"
+          case "$1" in --path) ppath=$2; hp=1 ;; --base) pbase=$2; hb=1 ;; --secret-block) psec=$2; hs=1 ;; *) die 2 "unknown option: $1" ;; esac
+          shift 2
+        done
+        [ "$op" != add ] || [ -n "$ppath" ] || die 2 "the path is empty"
+        [ "$op" != set ] || [ -n "$hp$hb$hs" ] || die 2 "config project set needs --path, --base or --secret-block"
+        case "$ppath$pbase$psec" in *'|'*|*[[:cntrl:]]*) die 2 "a value has | or a control character" ;; esac
+        [ "$op" = add ] && [ ! -f "$prjf" ] && { mkdir -p "$(dirname "$prjf")" \
+          && printf '| name | path | base | secret-block |\n| --- | --- | --- | --- |\n' > "$prjf" || die 6 "cannot create $prjf"; }
+        [ -f "$prjf" ] || die 2 "no such project: $pname (no $prjf)"
+        # The values go in by ENVIRON: awk -v would turn a Windows path such as C:\repos\new into control characters.
+        PC_P=$ppath PC_B=$pbase PC_S=$psec awk -F'|' -v OFS='|' -v op="$op" -v want="$pname" -v hp="$hp" -v hb="$hb" -v hs="$hs" '
+          function trim(x) { gsub(/^[ \t\r]+|[ \t\r]+$/, "", x); return x }
+          BEGIN { p = ENVIRON["PC_P"]; b = ENVIRON["PC_B"]; s = ENVIRON["PC_S"] }
+          !hdr && /^[ \t]*\|/ { for (i = 2; i < NF; i++) { c[tolower(trim($i))] = i; col[i] = tolower(trim($i)) } hn = NF
+            hdr = (c["name"] && c["path"]); print; next }
+          hdr && /^[ \t]*\|/ && trim($(c["name"])) == want {
+            found = 1; if (op == "drop") next
+            if (op == "add") bad = 1
+            if (hp) $(c["path"]) = " " p " "
+            if (hb) { if (!c["base"]) bad = 1; else $(c["base"]) = " " b " " }
+            if (hs) { if (!c["secret-block"]) bad = 1; else $(c["secret-block"]) = " " s " " }
+            print; next }
+          { print }
+          END {
+            if (!hdr) exit 5
+            if (op == "add" && !found) { r = "|"; for (i = 2; i < hn; i++) r = r " " (col[i] == "name" ? want : col[i] == "path" ? p : col[i] == "base" ? b : col[i] == "secret-block" ? s : "") " |"; print r }
+            if (op == "add" && !found && ((hb && !c["base"]) || (hs && !c["secret-block"]))) exit 4
+            if (found && op == "add") exit 3
+            if (!found && op != "add") exit 3
+            exit bad ? 4 : 0 }' "$prjf" > "$prjf.new"; r=$?
+        case $r in
+          0) mv -f "$prjf.new" "$prjf" || die 6 "cannot write $prjf" ;;
+          3) command rm -f "$prjf.new"; die 2 "project '$pname' $([ "$op" = add ] && echo exists || echo not found) in $prjf" ;;
+          4) command rm -f "$prjf.new"; die 2 "$prjf has no column for a value given (add the base or secret-block column by hand)" ;;
+          *) command rm -f "$prjf.new"; die 2 "$prjf has no table with name and path columns" ;;
+        esac ;;
+      *) die 2 "usage: config <get <key> | set <key> <value> | project ...>" ;;
+    esac ;;
 esac

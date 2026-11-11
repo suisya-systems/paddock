@@ -75,7 +75,7 @@ reset() { # fresh stub state, empty events folder, empty origin refs
   git -C "$origin" for-each-ref --format='%(refname)' | while read -r r; do git -C "$origin" update-ref -d "$r"; done
 }
 run_script() { # run_script [args...]; extra env via ENVX (space separated)
-  env -u PADDOCK_NOW STUB="$tmp/stub" PADDOCK_STATE_DIR="$tmp/state" PADDOCK_RUN_SLEEP=0 PADDOCK_RUN_TRIES=3 \
+  env -u PADDOCK_NOW STUB="$tmp/stub" PADDOCK_STATE_DIR="$tmp/state" PADDOCK_ORG_CONFIG_FILE="$tmp/no-org-config.md" PADDOCK_RUN_SLEEP=0 PADDOCK_RUN_TRIES=3 \
       PATH="$stubdir:$PATH" ${ENVX:-} bash "$script" --worktree "$wt" --repo o/r "$@" 2>&1
 }
 has() { grep -Eq -- "$1" "$calls"; }
@@ -141,15 +141,15 @@ reset; ENVX='STUB_WAIT_RAW={"children":[],"ended":true,"exit_code":0,"reason":"e
 [ "$rc" -eq 0 ]; check "the measured MON-12 output line parses" $?
 
 # Approval mode.
-reset; printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"value":{"work":[],"approvals":[],"merge_approval_mode":"acceptance"},"version":4}}' > "$tmp/stub/doc"
-run_script "${args[@]}" >/dev/null; rc=$?
-[ "$rc" -eq 0 ] && merged; check "mode acceptance is read from the org-state document" $?
-reset; printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"value":{"merge_approval_mode":"acceptance"},"version":4}}' > "$tmp/stub/doc"
-run_script --mode human "${args[@]}" >/dev/null; rc=$?
-[ "$rc" -eq 0 ] && ! merged; check "--mode human overrides the org-state document" $?
-reset; printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"value":{"merge_approval_mode":"nonsense"},"version":4}}' > "$tmp/stub/doc"
-run_script "${args[@]}" >/dev/null; rc=$?
-[ "$rc" -eq 0 ] && ! merged; check "an unknown value in org-state falls back to human" $?
+cfgf=$tmp/org-config.md
+reset; printf '%s\n' 'merge_approval_mode: acceptance' > "$cfgf"
+ENVX=PADDOCK_ORG_CONFIG_FILE=$cfgf run_script "${args[@]}" >/dev/null; rc=$?
+[ "$rc" -eq 0 ] && merged; check "mode acceptance is read from org-config.md" $?
+reset; ENVX=PADDOCK_ORG_CONFIG_FILE=$cfgf run_script --mode human "${args[@]}" >/dev/null; rc=$?
+[ "$rc" -eq 0 ] && ! merged; check "--mode human overrides org-config.md" $?
+reset; printf '%s\n' 'merge_approval_mode: nonsense' > "$cfgf"
+ENVX=PADDOCK_ORG_CONFIG_FILE=$cfgf run_script "${args[@]}" >/dev/null; rc=$?
+[ "$rc" -eq 0 ] && ! merged; check "an unknown value in org-config.md falls back to human" $?
 
 # Acceptance mode.
 reset; out=$(run_script --mode acceptance "${args[@]}"); rc=$?

@@ -68,6 +68,8 @@ fi
 
 # 3. The task travels in the launch (decision 0002). The new secretary reads the document itself.
 task="Resume as the secretary from the handover. Read the core document secretary-handover (doc.get through hc connect), the org-state document, and hc ls for the running workers (task_id labels). Take up what they say, then clear secretary-handover (doc.set with a null value) and tell the person you are back."
+lang=$(bash "$root/scripts/org" --as secretary config get conversation_language 2>/dev/null) # Q9, Issue #193
+[ -z "$lang" ] || [ "$lang" = auto ] || task="$task Conversation language: $lang"
 out=$(hc run --bg --keep --name "$name" --cwd "$root" secretary "$task") || die 5 "hc run failed for $name; rerun this script (the handover document is untouched)"
 printf '%s' "$out" | grep -Eq '"sent": *true' \
   || die 10 "$name started but first_message.sent is not true. Read it with 'hc read $name' before doing anything else."
