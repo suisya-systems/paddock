@@ -23,6 +23,11 @@ Usage: org [--as <id>] <command> [args]
                                                 or S seconds pass ({"reason":"timeout"}; default
                                                 $PADDOCK_WAIT_TIMEOUT, else 60); --children also
                                                 ends on hc wait --children any's children line
+                                                Every return also checks each org-state.work task
+                                                against the core and adds "gone" (no terminal or it
+                                                ended, no done record), "waiting" (blocked),
+                                                "unreported" (done in the core, no done record),
+                                                "unreadable" or "watch_error"; nothing when quiet
   doc get <name>                                print a core document's value
   doc set <name>                                set it from stdin (secretary only)
   doc update <name> -- <command...>             re-read, run command (old value on stdin, new
@@ -240,18 +245,65 @@ case "$cmd" in
     fi
     finish() { [ -z "$hpid" ] || kill "$hpid" 2>/dev/null; [ -z "$hout" ] || rm -f "$hout"; }
     trap finish EXIT
+    # Issue #175: on every return, each task in org-state.work is checked against the core.
+    # watch prints extra JSON members: "gone" (no terminal or it ended, and no done record),
+    # "waiting" (status blocked), "unreported" (status done, no done record), "unreadable"
+    # (hc get failed some other way), or "watch_error" (org-state not readable). Nothing when quiet.
+    # ponytail: done records are looked for in this and the last month.
+    watch() {
+      local doc ids t j st fin g= w= u= x= runs
+      doc=$(bash "$0" --as "$id" doc get org-state 2>&1) || {
+        printf ',"watch_error":"%s"' "$(printf '%s' "${doc:0:120}" | json_esc)"; return; }
+      # The work array is cut out with a scan that skips string contents, so a "]" in a title
+      # does not end it.
+      ids=$(printf '%s' "$doc" | tr -d '\n' | awk '{
+          if (!match($0, /"work": *\[/)) exit
+          s = substr($0, RSTART + RLENGTH); d = 1; q = 0; o = ""
+          for (i = 1; i <= length(s); i++) { c = substr(s, i, 1)
+            if (q) { if (c == "\\") { o = o c substr(s, ++i, 1); continue } if (c == "\"") q = 0 }
+            else if (c == "\"") q = 1; else if (c == "[") d++; else if (c == "]" && --d == 0) break
+            o = o c }
+          print o }' | grep -o '"task_id": *"[^"]*"' | sed 's/.*: *"//; s/"$//')
+      # Done as org-close counts it: from w-<task> to secretary, at or after the task's latest start.
+      runs=$(window | awk -F"$tab" '$4=="run_started" && $3=="secretary" { if ($2 > st[$6]) st[$6] = $2 }
+        $4=="run_completed" && $3=="w-" $6 && $5=="secretary" { if ($2 > dn[$6]) dn[$6] = $2 }
+        END { for (k in dn) if (dn[k] >= st[k]) print k }')
+      for t in $ids; do
+        # A done record silences "gone" and "unreported" only; a worker blocked again is still listed.
+        fin=; ! printf '%s\n' "$runs" | grep -qxF "$t" || fin=1
+        if ! j=$(hc get --json "w-$t" 2>&1); then
+          case "$j" in *not_found*) [ -n "$fin" ] || g="$g${g:+,}\"$t\"" ;; *) x="$x${x:+,}\"$t\"" ;; esac
+          continue
+        fi
+        j=$(printf '%s' "$j" | tr -d '\n')
+        # the status state is one of these words; a message holding braces or a quoted state cannot hide it
+        st=$(printf '%s' "$j" | grep -Eo '"state": *"(working|blocked|done|error|idle)"' | head -1 | sed 's/.*: *"//; s/"$//')
+        [ -z "$fin" ] || [ "$st" = blocked ] || continue
+        case "$st" in
+          blocked) w="$w${w:+,}\"$t\"" ;;
+          done) u="$u${u:+,}\"$t\"" ;;
+          *) printf '%s' "$j" | grep -Eq '"state": *"finished"' && g="$g${g:+,}\"$t\"" ;;
+        esac
+      done
+      [ -z "$g" ] || printf ',"gone":[%s]' "$g"
+      [ -z "$w" ] || printf ',"waiting":[%s]' "$w"
+      [ -z "$u" ] || printf ',"unreported":[%s]' "$u"
+      [ -z "$x" ] || printf ',"unreadable":[%s]' "$x"
+    }
     end=$((SECONDS + timeout))
     while :; do
       clock
       n=$(unread_lines | wc -l | tr -d ' ')
-      if [ "$n" -gt 0 ]; then printf '{"reason":"mail","unread":%s}\n' "$n"; exit 0; fi
+      if [ "$n" -gt 0 ]; then printf '{"reason":"mail","unread":%s%s}\n' "$n" "$(watch)"; exit 0; fi
       # hc wait's own line counts only when a child ended; any other ending (no children,
       # needs_target, its own check-in) is dropped and the mail wait goes on.
       if [ -n "$hpid" ] && ! kill -0 "$hpid" 2>/dev/null; then
-        if grep -Eq '"reason": *"(children|exit)"' "$hout"; then tr -d '\n' < "$hout"; echo; exit 0; fi
+        if grep -Eq '"reason": *"(children|exit)"' "$hout"; then
+          line=$(tr -d '\n' < "$hout"); printf '%s%s}\n' "${line%\}}" "$(watch)"; exit 0
+        fi
         hpid=
       fi
-      [ "$SECONDS" -lt "$end" ] || { echo '{"reason":"timeout"}'; exit 0; }
+      [ "$SECONDS" -lt "$end" ] || { printf '{"reason":"timeout"%s}\n' "$(watch)"; exit 0; }
       sleep "$poll"
     done ;;
 
