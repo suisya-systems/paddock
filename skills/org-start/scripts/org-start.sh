@@ -15,7 +15,8 @@ A secretary terminal that has finished is removed (hc rm) before a new one start
 Environment overrides:
   PADDOCK_CORE_TEMPLATES_DIR  herdr-core templates folder
   PADDOCK_APP_MODS_DIR        herdr-app mods folder
-  PADDOCK_BIN_DIR             folder of the org script and the worker rules and settings (absolute;
+  PADDOCK_APP_LAYOUTS_DIR     herdr-app layouts folder
+  PADDOCK_BIN_DIR          folder of the org script and the worker rules and settings (absolute;
                               default ${XDG_DATA_HOME:-~/.local/share}/paddock/bin)
   PADDOCK_READY_TRIES         seconds to wait for a status (default 15)
   PADDOCK_WORKER_GH_TOKEN_FILE  read-only GitHub token file for workers (default $cfg/paddock/worker-gh-token)
@@ -52,6 +53,7 @@ cfg=${XDG_CONFIG_HOME:-$HOME/.config}
 [ -n "${APPDATA:-}" ] && cfg=$APPDATA # Windows (Git Bash)
 templates=${PADDOCK_CORE_TEMPLATES_DIR:-$cfg/herdr-core/templates}
 mods=${PADDOCK_APP_MODS_DIR:-$cfg/herdr-app/mods}
+layouts=${PADDOCK_APP_LAYOUTS_DIR:-$(dirname "$mods")/layouts} # beside mods: an overridden mods folder never touches the real layouts
 # Issue #128: the org script goes where a worker may read it and may not write (see worker-settings.json).
 orgbin=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}
 case "$orgbin" in /*) ;; *) die 2 "PADDOCK_BIN_DIR must be an absolute path: $orgbin" ;; esac
@@ -91,6 +93,25 @@ fi
 mkdir -p "$mods/org-agents" || die 6 "cannot create $mods/org-agents"
 cp -f "$root/mods/org-agents/main.js" "$root/mods/org-agents/mod.json" "$mods/org-agents/" \
   || die 6 "cannot copy the org-agents mod"
+
+# Issue #195: the screen. The cockpit mod and the layout go to the app's host too.
+mkdir -p "$mods/org-cockpit" "$layouts" || die 6 "cannot create $mods/org-cockpit or $layouts"
+cp -f "$root/mods/org-cockpit/main.js" "$root/mods/org-cockpit/mod.json" "$mods/org-cockpit/" \
+  || die 6 "cannot copy the org-cockpit mod"
+# Keep the "secretary" prop (a secretary on another machine) the person put in the installed layout.
+# ponytail: the first prop found goes into every org-cockpit block; per-block props if they differ.
+keep=$(grep -Eo '"secretary"[[:space:]]*:[[:space:]]*"[^"]*"' "$layouts/paddock.json" 2>/dev/null | head -n 1)
+if [ -n "$keep" ]; then
+  sed "s|\"props\": { \"role\"|\"props\": { $keep, \"role\"|" "$root/layouts/paddock.json" > "$layouts/paddock.json.new" \
+    && mv -f "$layouts/paddock.json.new" "$layouts/paddock.json" || die 6 "cannot place the layout"
+else
+  cp -f "$root/layouts/paddock.json" "$layouts/paddock.json" || die 6 "cannot place the layout"
+fi
+# The app's check needs a display; a failure warns and does not stop the start.
+if command -v herdr-app >/dev/null 2>&1; then
+  herdr-app check "$mods/org-cockpit" >/dev/null 2>&1 \
+    || echo "org-start: warning: herdr-app check failed for $mods/org-cockpit (run it by hand to see why)" >&2
+fi
 
 # 3. Start the secretary unless one exists. Never stops or restarts the core.
 # Issue #192: a kept terminal that has finished still holds the name; remove it first.
