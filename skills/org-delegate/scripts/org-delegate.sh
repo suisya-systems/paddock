@@ -231,7 +231,7 @@ if [ -n "${havetitle:-}" ]; then
     | awk 'NR>1{printf "%s","\\n"} {printf "%s",$0}'; }
   since=${PADDOCK_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
   entry="{\"task_id\":\"$id\",\"title\":\"$(esc "$title")\",\"since\":\"$since\",\"worktree\":\"$(esc "$wt")\",\"task\":\"$(esc "$task")\"}"
-  ENTRY=$entry bash "$org" --as secretary doc update org-state -- awk '
+  ENTRY=$entry bash "$org" --as secretary doc update org-state --record work_added --task "$id" --text "$entry" -- awk '
     { s = s $0 "\n" }
     END {
       e = ENVIRON["ENTRY"]

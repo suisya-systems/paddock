@@ -149,7 +149,12 @@ edit() { # edit <mode> <id> : run _edit on the current value; status 3 and 4 pas
   docval | bash "$self" _edit "$1" "$2"
 }
 update() { # update <mode> <id>: re-read, apply, set (scripts/org retries on a version conflict)
-  secretary doc update org-state -- bash "$self" _edit "$1" "$2" >/dev/null \
+  # Issue #77: the history line that lets `org rebuild` replay this change is written by the same
+  # call, inside the document's lock. The task is the id without its UTC suffix
+  # (the id is <task_id>-<UTC yyyymmddThhmmssZ>).
+  local t k x; t=$(printf '%s' "$2" | sed 's/-[0-9]\{8\}T[0-9]\{6\}Z$//')
+  if [ "$1" = add ]; then k=approval_asked; x=$ESC_ENTRY; else k=approval_removed; x=$2; fi
+  secretary doc update org-state --record "$k" --task "$t" --text "$x" -- bash "$self" _edit "$1" "$2" >/dev/null \
     || die 5 "org-state was not written ($1 $2)"
 }
 

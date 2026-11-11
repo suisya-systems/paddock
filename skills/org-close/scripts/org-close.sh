@@ -90,7 +90,7 @@ if [ -n "$drop" ] && [ -e "$wt" ]; then
 fi
 
 # 4. Remove the work entry (approvals with the same task_id are not touched). Entries are flat objects.
-TASK=$task bash "$org" --as secretary doc update org-state -- awk '
+TASK=$task bash "$org" --as secretary doc update org-state --record work_removed --task "$task" --text "" -- awk '
   { s = s $0 "\n" }
   END {
     t = ENVIRON["TASK"]
