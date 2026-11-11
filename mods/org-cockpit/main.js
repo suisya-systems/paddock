@@ -345,6 +345,12 @@ export default class Cockpit extends View {
     const label = inWorker ? `${String(a.task_id || "a worker").toUpperCase()} NEEDS YOU` : "THE SECRETARY IS ASKING YOU";
     const rec = a.recommend === "yes" || a.recommend === "no" ? a.recommend : null;
     const missing = [!a.background && "background", !a.if_yes && "what Yes does", !a.if_no && "what No does", !rec && "recommendation"].filter(Boolean);
+    // A field the secretary left out is named where it would be; with nothing written, one line.
+    const none = missing.length === 4;
+    const gone = (names) => names.length > 0 && !none;
+    const unwritten = (names) => div().text_size(12).line_height(1.4).text_color(t.foreground).whitespace_normal()
+      .child(`Not written: ${names.join(", ")}.` + (none && a.question ? " Ask the secretary before answering." : ""));
+    const outs = missing.filter((m) => m.startsWith("what"));
     const text = (s, color) => div().text_size(13).line_height(1.45).text_color(color).whitespace_normal().child(s);
     const outcome = (word, s) => h_flex().gap(8).items_start()
       .child(div().w(28).flex_none().text_size(13).font_semibold().line_height(1.45).text_color(t.foreground).child(word))
@@ -375,18 +381,21 @@ export default class Cockpit extends View {
           .when(Boolean(a.background), (el) => el.child(v_flex().gap(4)
             .child(this.label(t, "BACKGROUND", t.muted))
             .child(text(a.background, t.foreground))))
+          .when(gone(a.background ? [] : ["background"]), (el) => el.child(unwritten(["background"])))
           .when(Boolean(a.if_yes || a.if_no), (el) => el.child(v_flex().gap(6)
             .child(this.label(t, "IF YOU ANSWER", t.muted))
             .when(Boolean(a.if_yes), (e) => e.child(outcome("Yes", a.if_yes)))
-            .when(Boolean(a.if_no), (e) => e.child(outcome("No", a.if_no)))))
+            .when(Boolean(a.if_no), (e) => e.child(outcome("No", a.if_no)))
+            .when(gone(outs), (e) => e.child(unwritten(outs)))))
+          .when(!a.if_yes && !a.if_no && gone(outs), (el) => el.child(unwritten(outs)))
           .when(Boolean(rec || a.why), (el) => el.child(v_flex().rounded(8).bg(t.background).px(12).py(10).gap(6)
             .child(h_flex().gap(8).items_center()
               .child(this.label(t, rec ? "SECRETARY RECOMMENDS" : "FROM THE SECRETARY", t.muted))
               .when(Boolean(rec), (e) => e.child(div().flex_none().px(6).h(18).rounded(5).bg(c + "2e").flex().items_center()
                 .text_size(11).font_semibold().text_color(c).child(rec === "yes" ? "Yes" : "No"))))
             .when(Boolean(a.why), (e) => e.child(text(a.why, t.foreground)))))
-          .when(missing.length > 0, (el) => el.child(div().text_size(12).line_height(1.4).text_color(t.foreground).whitespace_normal()
-            .child(`Not written: ${missing.join(", ")}.` + (missing.length === 4 && a.question ? " Ask the secretary before answering." : "")))));
+          .when(gone(rec ? [] : ["recommendation"]), (el) => el.child(unwritten(["recommendation"])))
+          .when(none, (el) => el.child(unwritten(missing))));
     const foot = v_flex().flex_none().gap(8)
       .child(v_flex().rounded_b(12).bg(t.raised).border_b(1).border_x(1).border_color(edge)
         .child(div().mx(16).h(1).bg(t.foreground + "14"))
