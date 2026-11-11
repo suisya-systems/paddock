@@ -6,7 +6,7 @@ set -u
 usage() {
   cat <<'USAGE'
 Usage: org-delegate.sh --project <git repo> --task-id <id> (--task <text> | --task-file <file|->)
-                       [--title <text>] [--base <ref>] [--no-fetch] [--branch <name>] [--allow-write <path>]...
+                       [--title <text>] [--base <ref>] [--no-fetch] [--branch <name>] [--allow-write <path>]... [--secret-block <on|off|patterns>]
 
 Creates a git worktree for the task under the workers folder, writes
 .claude/settings.local.json into it (hc file write), starts the worker with
@@ -27,6 +27,10 @@ brief file into the worktree (rules: --append-system-prompt-file in the template
   --branch       new branch name (default work/<id>)
   --allow-write  an absolute path (or ~/...) the worker may also write; repeatable.
                  Goes to sandbox.filesystem.allowWrite in the worktree's settings file.
+  --secret-block the strong read block for secret-looking files in the worktree (Issue #165; off by default, L-K1):
+                 on (.env, .env.*, credentials*, *.pem), off, or comma-separated patterns that replace those.
+                 Default: the secret-block column of the project's row in projects.md. Programs in the worker
+                 lose these files too; see SKILL.md.
 
 Environment overrides:
   PADDOCK_WORKERS_DIR  the one workers folder, trusted once; an absolute path (default $HOME/paddock-workers)
@@ -59,6 +63,7 @@ while [ $# -gt 0 ]; do
     --branch) needs "$@"; branch=$2; shift 2 ;;
     --no-fetch) fetch=; shift ;;
     --allow-write) needs "$@"; allow+=("$2"); shift 2 ;;
+    --secret-block) needs "$@"; secret=$2; havesecret=1; shift 2 ;;
     *) echo "org-delegate: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
@@ -82,9 +87,22 @@ case "$project" in
      [ "$rc" -ne 2 ] || die 2 "--project $project is a name but projects.md does not exist (set PADDOCK_PROJECTS_FILE, or pass a path)"
      [ "$rc" -eq 0 ] || die 2 "no project named $project with a path in projects.md (a path has a /)"
      project=$project_path
-     [ -n "$base" ] || base=$project_base ;;
+     [ -n "$base" ] || base=$project_base
+     [ -n "${havesecret:-}" ] || secret=$project_secret ;;
 esac
 [ -n "$base" ] || base=main
+# Issue #165: the strong read block. secret is empty/off (none), on (defaults) or comma-separated patterns.
+sp=()
+case "${secret:-}" in
+  ''|off|no) ;;
+  on) sp=('.env' '.env.*' 'credentials*' '*.pem') ;;
+  *[\"\\]*) die 2 "--secret-block / secret-block has a quote or backslash: $secret" ;;
+  *[[:cntrl:]]*) die 2 "--secret-block / secret-block has a control character" ;;
+  *) IFS=, read -ra sp <<< "$secret"
+     for i in "${!sp[@]}"; do sp[$i]=${sp[$i]#"${sp[$i]%%[![:space:]]*}"}; sp[$i]=${sp[$i]%"${sp[$i]##*[![:space:]]}"}
+       case "${sp[$i]}" in ''|/*|*..*) die 2 "bad secret-block pattern (empty, absolute or with ..): ${sp[$i]}" ;; esac
+     done ;;
+esac
 for p in ${allow[@]+"${allow[@]}"}; do
   case "$p" in /*|"~/"*) ;; *) die 2 "--allow-write needs an absolute path or ~/...: $p" ;; esac
   case "$p" in *[\"\\]*) die 2 "--allow-write path has a quote or backslash: $p" ;; esac
@@ -100,6 +118,7 @@ name=w-$id
 workers=${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}
 wt=$workers/$id
 case "$workers" in /*) ;; *) die 2 "PADDOCK_WORKERS_DIR must be an absolute path: $workers" ;; esac
+[ "${#sp[@]}" -eq 0 ] || case "$workers" in *[\"\\]*|*[[:cntrl:]]*) die 2 "secret-block writes the worktree path into JSON: PADDOCK_WORKERS_DIR has a quote, backslash or control character" ;; esac
 # L-N2 (Issue #155): the worker's sandbox denies the core's socket folder. The folder is per user
 # ($XDG_RUNTIME_DIR/herdr-core on Linux), so the shared settings file cannot name it: it goes in the
 # per-task file below. Source: PADDOCK_CORE_SOCKET_DIR, else the folder of the socket the core gives
@@ -149,6 +168,16 @@ sf=$wt/.claude/settings.local.json
 [ ! -L "$wt/.claude" ] || fail_undone 6 "$wt/.claude is a symlink (the base $base tracks it); nothing was written"
 [ ! -e "$sf" ] && [ ! -L "$sf" ] || fail_undone 6 "$sf already exists (the base $base tracks it); it is never overwritten"
 fs="\"denyRead\":[\"$sockdir\"],\"denyWrite\":[\"$sockdir\"]"
+perm=
+if [ "${#sp[@]}" -gt 0 ]; then
+  # Read deny for the Read tool, absolute denyRead for programs (sandbox). No allowRead for examples: measured, the sandbox does not honour it over denyRead (Issue #165).
+  rd= dr=
+  for p in "${sp[@]}"; do
+    rd="$rd${rd:+,}\"Read(**/$p)\""; dr="$dr,\"$wt/$p\",\"$wt/**/$p\""
+  done
+  perm="\"permissions\":{\"deny\":[$rd,\"Read(!**/*.example)\"]},"
+  fs="\"denyRead\":[\"$sockdir\"$dr],\"denyWrite\":[\"$sockdir\"]"
+fi
 if [ "${#allow[@]}" -gt 0 ]; then
   list=
   for p in "${allow[@]}"; do list="$list${list:+,}\"$p\""; done
@@ -157,7 +186,7 @@ fi
 # Issue #189: caches go to the sandbox temporary folder of the worker. Claude Code does not expand $TMPDIR in a
 # settings env value (measured on 2.1.322), so write the path out; the sandbox's TMPDIR is /tmp/claude-<uid>.
 ct=/tmp/claude-$(id -u)
-json="{\"sandbox\":{\"filesystem\":{$fs}},\"env\":{\"npm_config_cache\":\"$ct/npm-cache\",\"UV_CACHE_DIR\":\"$ct/uv-cache\",\"PIP_CACHE_DIR\":\"$ct/pip-cache\"}}"
+json="{${perm}\"sandbox\":{\"filesystem\":{$fs}},\"env\":{\"npm_config_cache\":\"$ct/npm-cache\",\"UV_CACHE_DIR\":\"$ct/uv-cache\",\"PIP_CACHE_DIR\":\"$ct/pip-cache\"}}"
 printf '%s\n' "$json" | hc file write "$sf" >/dev/null 2>&1 \
   || fail_undone 5 "hc file write failed for $sf; the worktree and branch were removed"
 { [ -f "$sf" ] && [ ! -L "$sf" ] && [ "$(cd "$wt/.claude" && pwd -P)" = "$(cd "$wt" && pwd -P)/.claude" ]; } \
