@@ -24,7 +24,7 @@ EOF2
 chmod +x "$stubdir/hc"
 export STUB=$tmp/stub; mkdir -p "$STUB"
 o() { local who=$1; shift
-  env -u PADDOCK_ORG_ID PADDOCK_HC_HOLD=0 PADDOCK_NOW=2026-11-11T01:02:03Z PADDOCK_STATE_DIR="$tmp/state" \
+  env -u PADDOCK_ORG_ID PADDOCK_HC_HOLD=0 PADDOCK_NOW=${AT:-2026-11-11T01:02:03Z} PADDOCK_STATE_DIR="$tmp/state" \
       PADDOCK_WAIT_POLL=0.2 PATH="$stubdir:$PATH" bash "$org" --as "$who" "$@"; }
 
 printf '%s\n' '{"work":[{"task_id":"t-a","title":"[bug] fix \"x]\" [y]","since":"s"},{"task_id":"t-b","title":"two","since":"s"}],"approvals":[]}' > "$STUB/doc"
@@ -42,4 +42,16 @@ printf '%s' "$out" | grep -q '"waiting":\["t-a"\]' && ! printf '%s' "$out" | gre
 echo '{"name":"w-t-a","state":"running","status":{"text":"run {\"k\": 1}; ok?","state":"blocked"}}' > "$STUB/term-w-t-a"
 out=$(o secretary wait --timeout 1 2>&1)
 printf '%s' "$out" | grep -q '"waiting":\["t-a"\]'; check "braces in the status text do not hide a blocked worker ($out)" $?
+
+# The same task id delegated again: the earlier done does not count after the newer start.
+# (org-delegate's start record is written by secretary; PADDOCK_NOW orders the two.)
+rm -rf "$tmp/state"
+printf '%s\n' '{"work":[{"task_id":"t-r","title":"again","since":"s"}],"approvals":[]}' > "$STUB/doc"
+oat() { local at=$1; shift; AT=$at o "$@"; }
+oat 2026-11-11T01:00:00Z secretary report start --task t-r "first" >/dev/null
+oat 2026-11-11T01:10:00Z w-t-r report done --task t-r "first done" >/dev/null
+oat 2026-11-11T01:20:00Z secretary report start --task t-r "second" >/dev/null
+o secretary check_messages >/dev/null
+out=$(o secretary wait --timeout 1 2>&1)
+printf '%s' "$out" | grep -q '"gone":\["t-r"\]'; check "an earlier delegation's done does not hide a gone worker ($out)" $?
 exit $fail

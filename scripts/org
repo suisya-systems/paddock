@@ -264,7 +264,10 @@ case "$cmd" in
             else if (c == "\"") q = 1; else if (c == "[") d++; else if (c == "]" && --d == 0) break
             o = o c }
           print o }' | grep -o '"task_id": *"[^"]*"' | sed 's/.*: *"//; s/"$//')
-      runs=$(window | awk -F"$tab" '$4=="run_completed" { print $6 }')
+      # Done as org-close counts it: from w-<task> to secretary, at or after the task's latest start.
+      runs=$(window | awk -F"$tab" '$4=="run_started" && $3=="secretary" { if ($2 > st[$6]) st[$6] = $2 }
+        $4=="run_completed" && $3=="w-" $6 && $5=="secretary" { if ($2 > dn[$6]) dn[$6] = $2 }
+        END { for (k in dn) if (dn[k] >= st[k]) print k }')
       for t in $ids; do
         # A done record silences "gone" and "unreported" only; a worker blocked again is still listed.
         fin=; ! printf '%s\n' "$runs" | grep -qxF "$t" || fin=1
