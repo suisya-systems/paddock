@@ -75,7 +75,7 @@ cp -f "$root/templates/worker.md" "$templates/worker.md" || die 6 "cannot copy t
 # The org commands (Issue #60), and the worker's rules and settings files its template command names
 # (Q10, Q12): a worker may read this folder and may not write it (worker-settings.json, Issue #128).
 # Not in the templates folder: hc lists every *.md there as a template (Issue #129).
-for f in scripts/org templates/worker-rules.md templates/worker-settings.json; do
+for f in scripts/org scripts/hooks/premise-reminder.sh templates/secretary-settings.json templates/worker-rules.md templates/worker-settings.json; do
   cp -f "$root/$f" "$orgbin/${f##*/}" || die 6 "cannot copy $f to $orgbin"
 done
 # Copies an older org-start placed beside the templates (Issue #129).

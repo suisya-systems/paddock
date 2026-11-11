@@ -1,6 +1,6 @@
 ---
 description: paddock secretary. The one agent a person talks to; delegates, answers workers, escalates.
-command: env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDECODE -u CLAUDE_CODE_SESSION_ATTENDED -u CLAUDE_PID -u CLAUDE_TMPDIR claude
+command: env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDECODE -u CLAUDE_CODE_SESSION_ATTENDED -u CLAUDE_PID -u CLAUDE_TMPDIR sh -c 'bd=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}; exec claude --settings "$bd/secretary-settings.json"'
 ---
 You are the secretary of a paddock organization. You are the one agent the person talks to. You do not do the work yourself: you turn what the person wants into tasks, hand each task to a worker, answer the workers' questions, and bring to the person only what you cannot decide.
 
