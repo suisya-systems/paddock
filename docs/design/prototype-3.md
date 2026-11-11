@@ -40,13 +40,13 @@ The secretary of the organization that runs the runbook does every host step. On
 
 ### Seed the throwaway repository
 
-Once, before the first run, from the clone (`<clone>`) with the paddock checkout at `<paddock>`; the host's own `gh` login pushes (a workflow file needs the `workflow` scope):
+Once, before the first run, from the clone (`<clone>`) with the clean paddock checkout at `<paddock>` and the checkout that holds the runbook at `<runbook>` (the same folder once this is merged); the host's own `gh` login pushes (a workflow file needs the `workflow` scope):
 
 ```sh
 git -C <clone> switch main && git -C <clone> pull --ff-only
 mkdir -p <clone>/scripts <clone>/.github/workflows
 cp <paddock>/scripts/acceptance-check.sh <clone>/scripts/acceptance-check.sh
-cp <paddock>/scripts/probes/prototype-3-acceptance.yml <clone>/.github/workflows/acceptance.yml
+cp <runbook>/scripts/probes/prototype-3-acceptance.yml <clone>/.github/workflows/acceptance.yml
 git -C <clone> add scripts/acceptance-check.sh .github/workflows/acceptance.yml
 git -C <clone> commit -m "Add the acceptance job (paddock prototype 3 fixture)"
 git -C <clone> push origin main
@@ -89,7 +89,7 @@ Known before the run. The runbook prints a `NOW:` line when the person must act.
 
 ## Run it
 
-From the paddock repository root (clean `main`) on the host where `hc`, `herdr-app`, `claude`, `codex` and `gh` run:
+From the paddock repository root (clean `main`; the runbook may be called by absolute path from another checkout, and reads its fixture from its own folder) on the host where `hc`, `herdr-app`, `claude`, `codex` and `gh` run:
 
 1. Seed the throwaway repository once ([above](#seed-the-throwaway-repository)).
 2. In a login shell (no agent above it; its first `hc` call may start the core): `sh scripts/probes/prototype-3.sh prepare --project <clone> --repo OWNER/NAME [--base main]`. Expect `RESULT preconditions: PASS`, `notes-off`, `worker-token` and `codex-cli` PASS, then the steps and the request. The run is saved under `${XDG_STATE_HOME:-~/.local/state}/paddock-proto3/<task_id>/`. It starts nothing.

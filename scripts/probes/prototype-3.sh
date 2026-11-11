@@ -2,7 +2,8 @@
 # Host runbook for Prototype 3 (Issue #243): one task from a typed request to a pull request that
 # passes the acceptance job, on a clean checkout of main, with the worker's question answered on
 # the card, an acceptance test first and a review by a second model through the gate. What the run
-# is, its steps and pass criteria: docs/design/prototype-3.md. Run from the paddock repository root,
+# is, its steps and pass criteria: docs/design/prototype-3.md. Run from the paddock repository root (the
+# script itself may sit in another checkout; it reads its fixture from its own folder),
 # on the host where hc, herdr-app, claude, codex and gh run. Phases, in order:
 #
 #   sh scripts/probes/prototype-3.sh prepare --project <git repo> --repo OWNER/NAME [--base main] [--task-id T]
@@ -31,7 +32,7 @@
 set -u
 
 die() { c=$1; shift; echo "prototype-3: $*" >&2; exit "$c"; }
-usage() { sed -n '2,30p' "$0"; }
+usage() { sed -n '2,31p' "$0"; }
 
 phase=${1:-}; [ $# -gt 0 ] && shift
 case "$phase" in
@@ -62,7 +63,8 @@ case "$timeout" in ""|*[!0-9]*) die 2 "--timeout must be a number of seconds" ;;
 ROOT=$(pwd)
 [ -f "$ROOT/scripts/org" ] && [ -f "$ROOT/templates/worker.md" ] || die 2 "run from the paddock repository root"
 ORG="$ROOT/scripts/org"
-FIXTURE="$ROOT/scripts/probes/prototype-3-acceptance.yml"
+HERE=$(cd "$(dirname "$0")" && pwd)
+FIXTURE="$HERE/prototype-3-acceptance.yml" # beside this script: the run may call it from another checkout
 STATE=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
 RUNS=${XDG_STATE_HOME:-$HOME/.local/state}/paddock-proto3
 TESTF=tests/paddock-proto3.test.sh
@@ -189,9 +191,9 @@ EOF
      bash skills/org-start/scripts/org-start.sh            # expect: "org-start: ready", exit 0
      herdr-app do layout.switch '{"name":"paddock"}'
    Then look at the window: the secretary is in the centre. Record it:
-     sh scripts/probes/prototype-3.sh note --task-id $T "layout open, secretary in the centre"
+     sh $HERE/prototype-3.sh note --task-id $T "layout open, secretary in the centre"
 2. Start the watcher and keep it running (another shell is fine; an agent may run it):
-     sh scripts/probes/prototype-3.sh watch --task-id $T
+     sh $HERE/prototype-3.sh watch --task-id $T
 3. Type this request into the secretary's pane in herdr-app (one paragraph, as it is):
 
 Delegate one task to a worker with the org-delegate skill: project $project, task id $T, title "paddock prototype 3", base $base. The task text: "Add an acceptance test, then the file it checks. (1) Add $TESTF, a bash script that exits 0 only when the file $FILE at the repository root holds exactly the one line 'paddock prototype 3, task $T', and exits 1 otherwise. Commit it alone, as the first commit of your branch, with the line 'Acceptance-Test: $TESTF' in the last paragraph of the commit message (no blank line inside that paragraph). Check that git log -1 --format='%(trailers)' shows the line and that bash $TESTF fails. (2) Before you create $FILE, report blocked with the question 'May I add $FILE at the repository root?' and wait for the answer as your instructions say. On no, report done without the file. (3) On yes, add $FILE with that one line, commit it as a second commit, and check that bash $TESTF passes. Commit only these two files. Never change the test after its commit; if a review finding is about the test, leave it and say so in your report. (4) Ask for the review by the second model as your rules say, and fix Blocker and Major findings in new commits. (5) Report done with both commit SHAs, the test result and the last line of the review gate." When the worker asks its question, do not answer it yourself: put it on the card with org-escalation ask --answer-in secretary, and when the ANSWER from the card is in your mailbox, forward it with org-escalation answer. When the worker reports done, open the pull request with the org-pull-request skill, --mode human --base $base --task-id $T, title "paddock prototype 3 run $T", and tell me its URL and the skill's exit code. Do not merge. This is a test run; the pull request goes to the throwaway repository $repo.
