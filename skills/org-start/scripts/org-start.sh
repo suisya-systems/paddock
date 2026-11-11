@@ -63,9 +63,10 @@ if [ -n "${WSL_DISTRO_NAME:-}" ] && [ -n "$winapp" ] && [ -z "${PADDOCK_APP_MODS
   winhome=$(wslpath "$(cmd.exe /d /c echo %USERPROFILE% 2>/dev/null | tr -d '\r')" 2>/dev/null)
   if [ -n "$winhome" ] && [ -d "$winhome" ]; then
     appcfg=$winhome/.config/herdr-app; appmachine=wsl
-    # ponytail: the installer's default folder; LOCALAPPDATA moved elsewhere needs herdr-app on PATH.
+    # ponytail: the installer's default folder; LOCALAPPDATA moved elsewhere needs herdr-app(.exe) on PATH.
     exe=$winhome/AppData/Local/Programs/herdr-app/herdr-app.exe
-    [ -n "$app" ] || [ ! -x "$exe" ] || app=$exe
+    # Bash adds no .exe, so herdr-app.exe on PATH is looked up by that name.
+    [ -n "$app" ] || app=$(command -v herdr-app.exe 2>/dev/null) || { [ ! -x "$exe" ] || app=$exe; }
   else
     echo "org-start: warning: WSL, but the Windows user folder was not found (cmd.exe, wslpath); placing the mods under $cfg/herdr-app" >&2
   fi
