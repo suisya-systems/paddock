@@ -17,7 +17,8 @@ Options:
   --worktree DIR     the worker's worktree (default: current directory)
   --repo OWNER/NAME  the repository to open the PR in (default: parsed from the origin URL;
                      never guessed from anything else)
-  --base BRANCH      base branch (default: main)
+  --project NAME     a project name in projects.md; its base is the default base
+  --base BRANCH      base branch (default: the project row's base, else main)
   --task-id ID       recorded in the ci_completed line
   --mode MODE        human | acceptance (default: merge_approval_mode in org-state, else human)
   --pr N             use an open PR instead of creating one (still pushes)
@@ -38,14 +39,14 @@ USAGE
 
 die() { code=$1; shift; echo "org-pull-request: $*" >&2; exit "$code"; }
 
-wt=.; repo=; base=main; task=; mode=; pr=; title=; body=; bodyfile=
+wt=.; repo=; base=; project=; task=; mode=; pr=; title=; body=; bodyfile=
 while [ $# -gt 0 ]; do
   case $1 in
     -h|--help) usage; exit 0 ;;
-    --worktree|--repo|--base|--task-id|--mode|--pr|--title|--body|--body-file)
+    --worktree|--repo|--project|--base|--task-id|--mode|--pr|--title|--body|--body-file)
       [ $# -ge 2 ] || die 2 "$1 needs a value"
       case $1 in
-        --worktree) wt=$2 ;; --repo) repo=$2 ;; --base) base=$2 ;; --task-id) task=$2 ;;
+        --worktree) wt=$2 ;; --repo) repo=$2 ;; --project) project=$2 ;; --base) base=$2 ;; --task-id) task=$2 ;;
         --mode) mode=$2 ;; --pr) pr=$2 ;; --title) title=$2 ;; --body) body=$2 ;; --body-file) bodyfile=$2 ;;
       esac
       shift 2 ;;
@@ -53,6 +54,14 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+if [ -n "$project" ]; then # Issue #186: only the row's base is used here (the worktree is the worker's)
+  . "$(dirname "${BASH_SOURCE[0]}")/../../org-delegate/scripts/project.sh"
+  project_lookup "$project"; rc=$?
+  [ "$rc" -ne 2 ] || die 2 "--project $project: projects.md does not exist (set PADDOCK_PROJECTS_FILE)"
+  [ "$rc" -eq 0 ] || die 2 "no project named $project with a path in projects.md"
+  [ -n "$base" ] || base=$project_base
+fi
+[ -n "$base" ] || base=main
 case $mode in ""|human|acceptance) ;; *) die 2 "--mode must be human or acceptance" ;; esac
 case $pr in ""|*[!0-9]*) [ -z "$pr" ] || die 2 "--pr must be a number" ;; esac
 [ -n "$pr" ] || [ -n "$title" ] || die 2 "--title is required unless --pr is given"

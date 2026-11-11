@@ -48,7 +48,7 @@ One per gap, for the owner to pick. Titles are drafts; the tool and the test are
 5. Drop the duplicate "Your org id" sentence from the secretary template (#6, text only).
 6. `org-close`: end a finished or failed worker in one call (#7).
 7. `org-delegate` fetches the base before branching (#8).
-8. `--project <name>` reads path and base from `projects.md` (#9; reopens a reason of Q14).
+8. `--project <name>` reads path and base from `projects.md` (#9; reopens a reason of Q14). Built in #186.
 9. `org-update-branch`: take main into a pushed branch, with the protected-path preflight (#10).
 10. `org-pull-request` pushes the acceptance-test commit first (#11; after the Q11 CI job).
 11. Worker caches go to the sandbox's temporary folder through the settings (#12).

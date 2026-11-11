@@ -9,7 +9,7 @@ Implements inventory row [SK-6](../../docs/design/predecessor-inventory.md). The
 
 ```sh
 bash skills/org-pull-request/scripts/org-pull-request.sh \
-  --worktree <worker worktree> --title "<English title>" --body-file <file> [--task-id <id>] [--mode human|acceptance]
+  --worktree <worker worktree> --title "<English title>" --body-file <file> [--task-id <id>] [--mode human|acceptance] [--project <name>]
 ```
 
 Bash only, plus `git`, `gh` and `hc`. `--repo OWNER/NAME` is taken from a GitHub `origin` URL when it is not given, and is never guessed otherwise (exit 2).
@@ -48,7 +48,7 @@ The mode is `--mode`, else `merge_approval_mode` in the `org-state` document (re
 
 - Approval mode lives in `org-state` as a top-level `merge_approval_mode` string. The prototype-1 shape has no such field yet; this is the smallest reading of "read from org-state or an argument".
 - The events folder is `scripts/org`'s: `$PADDOCK_STATE_DIR/events`, default `${XDG_STATE_HOME:-~/.local/state}/paddock/events`. The writer id is `secretary`, and `seq` is `scripts/org`'s for that id: one more than the highest so far, taken under the per-id lock, so it never repeats a number a reader has acknowledged. Lines carry `kind`, `writer`, `task_id` (when given), `pr`, `sha`, `run_id`, `exit_code` and `conclusion` beyond `seq` and `ts` (`ts` follows `$PADDOCK_NOW` when set).
-- The base branch is `main` unless `--base` says otherwise. The title and body are written by the secretary in English.
+- The base branch is `--base`, else the base in the `--project <name>` row of `projects.md` (same file and columns as [org-delegate](../org-delegate/SKILL.md); only the base is read, since `--worktree` is the worker's), else `main`. An unknown name or a missing file exits 2 before the branch is sent anywhere. The title and body are written by the secretary in English.
 - `--task-id` may hold only letters, digits, `.`, `_` and `-` (it goes into a JSON line); anything else exits 2 before the push.
 - Known limit: when a head has several runs (for example both `push` and `pull_request` workflows), only the newest one found is watched and recorded. In `human` mode "CI green" means that run; in `acceptance` mode the required checks cover the rest.
 - Known limit: the final line "Merged" means `gh pr merge` succeeded. On a branch with a merge queue that only enqueues the PR; the script does not query the merge state afterwards. This repository has no merge queue.
