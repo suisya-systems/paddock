@@ -172,4 +172,11 @@ for row in 'L-N1' 'L-N2' 'L-N9' 'L-K2' 'L-K4' 'INS-12'; do
 done
 grep -Eq 'tests/(worker-template|\*)\.test\.sh|tests/\*\.test\.sh' "$here/.github/workflows/ci.yml"; check "CI runs this test (by name or by the tests/*.test.sh glob)" $?
 
+# 11. Issue #180: a blocked worker ends its turn in `org wait` for its own id, then reads its mail;
+# it does not loop on check_messages (an idle worker is not woken by mail).
+blocked=$(sed -n '/^## When you are blocked/,$p' "$tpl" 2>/dev/null | sed '1d;/^## /,$d')
+[ -n "$blocked" ]; check "worker.md has a blocked section" $?
+grep -Eq -- '--as <your id> wait([[:space:]]|`|$)' <<<"$blocked"; check "blocked section ends the turn with the org wait command for the worker's own id" $?
+grep -qi 'check_messages' <<<"$blocked"; check "blocked section reads mail with check_messages after the wait returns" $?
+
 exit $fail
