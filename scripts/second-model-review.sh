@@ -60,7 +60,7 @@ else
 fi
 status=${PIPESTATUS[0]}
 
-ok=$(grep -cE '^ *succeeded in [0-9]+(ms|s|m)' "$log"); bad=$(grep -cE '^ *failed in [0-9]+(ms|s|m)' "$log")
+ok=$(grep -cE '^ *succeeded in [0-9]+(ms|s|m)' "$log"); bad=$(grep -cE '^ *(failed|exited [0-9]+) in [0-9]+(ms|s|m)' "$log")
 summary="succeeded=$ok failed=$bad status=$status log=$log"
 if [ "$ok" -ge 1 ] && [ "$bad" -eq 0 ] && [ "$status" -eq 0 ]; then echo "CODEX_GATE: passed ($summary)"; exit 0; fi
 echo "CODEX_GATE: not-established ($summary; HEAD=$(git rev-parse --short HEAD 2>/dev/null))"; exit 1

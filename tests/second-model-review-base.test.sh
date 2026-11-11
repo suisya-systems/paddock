@@ -28,4 +28,9 @@ run
 (cd "$repo" && git revert --no-edit HEAD >/dev/null 2>&1)
 run
 [ "$rc" -eq 1 ] && ! grep -q . "$STUB_LOG"; check "a change and its revert: commits ahead but no diff, reviewer not called" $?
+# a command that exits non-zero is reported as "exited <n> in <time>" by the reviewer's text output
+git -C "$repo" reset -q --hard HEAD~1 2>/dev/null
+printf '#!/bin/sh\necho " succeeded in 1ms:"; echo " exited 1 in 4ms:"\n' > "$tmp/bin/codex"
+run
+[ "$rc" -eq 1 ] && grep -q 'not-established' <<<"$out"; check "a command that exited non-zero is not established" $?
 exit $fail
