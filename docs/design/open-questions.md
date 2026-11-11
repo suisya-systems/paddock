@@ -486,6 +486,8 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 **Consequences:** the inventory rows INS-12, ST-9, PRM-2, PRM-3, HK-10, HK-2 and REC-10 carry these decisions. The premise reminder hook is not built by this record.
 
+**Decided (2026-11-11, Issue #20, built by #225): the Codex round counter (GT-2, HK-14) is (a) shell, as `scripts/org` records, counted where the worker cannot write.** `org --as codex-gate codex_round start` writes `codex_round_started` or `codex_round_denied` (the kinds and writer of [decision 0005](../decisions/0005-history-log-settings.md)) to `~/.local/share/paddock/codex-rounds` (the worker settings deny writing it: sandbox `denyWrite` and an `Edit` deny; the hook runs outside the worker sandbox) and the same line to the history; the history copy is not counted, because a worker can still write the state folder until #160. Allowance 3 diff rounds and 1 design review per task; the secretary raises it with `codex_round allow`. The gate hook (`codex_round hook`) counts only the exact call `bash "$PADDOCK_CODEX_GATE"` (or with `--design`) and refuses every other Bash command that names codex. **Known limits:** the hook reads command text, so codex reached through a variable, a glob, a script file or another program is not seen; the deny paths are the default folders (as for the bin folder, `XDG_DATA_HOME` is not followed); the gate script must sit where the worker cannot write.
+
 ## Q12. Where do a worker's role rules and task brief live?
 
 **Question.** A worker's rules (role instructions, prohibitions, report format) and its task brief must reach it in a target repository that is not paddock's. Where are they put?
