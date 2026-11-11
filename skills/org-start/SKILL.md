@@ -45,6 +45,6 @@ The script places the mod but does not open it: `mod.json` has `"place": "none"`
 
 The deny and sandbox paths in `templates/worker-settings.json` are the default folders (`~/.config/herdr-core`, `~/.config/herdr-app`, `~/.local/state/herdr-core`, `~/.config/gh/hosts.yml`, and `~/.local/share/paddock`, the org script and role files, denied for writing only). A JSON settings file cannot expand `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `PADDOCK_BIN_DIR` or `APPDATA`, so with those set to another place the paths do not follow. Not solved here.
 
-`scripts/org` writes under `$PADDOCK_STATE_DIR` (default `~/.local/state/paddock`). A worker may write only its own files there (Issue #160): org-delegate names them in the worker's own settings file, so they follow `PADDOCK_STATE_DIR`; the `Edit` deny on the state folder in `worker-settings.json` names only the default path. Not solved here.
+`scripts/org` writes under `$PADDOCK_STATE_DIR` (default `~/.local/state/paddock`). A worker may write only its own files there (Issue #160): org-delegate names them in the worker's own settings file, so they follow `PADDOCK_STATE_DIR`; the file-tool hook in `worker-settings.json` (Issue #245) reads `PADDOCK_STATE_DIR` from the worker's environment, as `scripts/org` does.
 
 The `PADDOCK_*` overrides reach a worker only through the environment of the core. Set them in the login shell that starts the core; setting them for an org-start run against a core that is already running changes only org-start's own check and placement.

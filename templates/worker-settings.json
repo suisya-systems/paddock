@@ -17,13 +17,21 @@
       "Edit(~/.config/herdr-app/**)",
       "Edit(~/.local/state/herdr-core/**)",
       "Edit(~/.local/share/paddock/**)",
-      "Edit(~/.local/state/paddock/**)",
       "Edit(~/.claude/settings.json)",
       "Edit(.claude/settings*.json)"
     ]
   },
   "hooks": {
     "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "s=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}; p=$(grep -o '\"\\(file\\|notebook\\)_path\" *: *\"[^\"]*\"' | head -n 1 | sed 's/^[^:]*: *\"//; s/\"$//'); [ -n \"$p\" ] || exit 0; case \"$p\" in \"~/\"*) p=$HOME/${p#\"~/\"} ;; esac; case \"$(realpath -m -- \"$p\")/\" in \"$(realpath -m -- \"$s\")\"/*) echo \"org: refused: the file tools do not write the org state folder $s (Issue #245); use the org commands\" >&2; exit 2 ;; esac"
+          }
+        ]
+      },
       {
         "matcher": "Bash|Skill|.*[Cc]odex.*",
         "hooks": [
