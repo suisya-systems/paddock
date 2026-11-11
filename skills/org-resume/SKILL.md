@@ -37,6 +37,15 @@ Workers that are alive are left alone. Unlabelled terminals are never touched. I
 
 0 plan printed or workers resumed, 2 bad argument, 3 `hc` not found, 4 run inside an agent, 5 core unreachable or `hc rm` failed, 9 no suspend record and no work in the work list, 13 a worker could not be relaunched.
 
+## Measured
+
+The no-record path was measured once on a real core (hc 0.1.18, Claude Code 2.1.322) with `scripts/probes/org-resume-no-record.sh`: a worker in progress, `hc server stop` with no `org-suspend`, then `org-resume` and `org-resume --apply`. All checks passed:
+
+- `org-state` survived the core stop, so the work list was there to read.
+- The worker's terminal record remained after the stop, without a status (`exit_code` null). `org-resume` treats that as gone, as designed.
+- The plan said "no suspend record; resuming from the work list" and what it could not restore, and launched nothing.
+- `--apply`: `worker-continue` did not come up; the fresh-worker fallback did, and the terminal reported a status. So the fallback ran end to end. Why `--continue` did not come up was not read from the output (the probe stops the first turn after 5 s; no conversation may have been saved).
+
 ## Not measured
 
-The no-record path is measured by `scripts/probes/org-resume-no-record.sh` (a worker in progress, the core stopped without a suspend, then resume); see the Issue for the output once it has been run. Real `hc` behaviour, and the fallback end to end (a failed `--continue` followed by a fresh worker), are not measured; tested only against a stubbed `hc` (`tests/org-resume.test.sh`).
+Real `hc` behaviour, and the fallback end to end (a failed `--continue` followed by a fresh worker), are not measured; tested only against a stubbed `hc` (`tests/org-resume.test.sh`).
