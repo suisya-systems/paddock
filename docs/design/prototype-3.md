@@ -152,6 +152,7 @@ Touches and stops:
 | 5 | The secretary went `done` at its prompt 17 s after asking the approval, with work and an approval in `org-state`; the template says to end such a turn in `org wait --children` (Prototype 2 saw it stay `working`). Seen in the status log only; what the secretary's pane showed was not recorded. | Not established. | Proposed: "Secretary ended its turn idle with an approval open (Prototype 3)" |
 | 0 | `notes-off` FAIL at `prepare`. | Host configuration, not the loop. | None |
 | Runbook | `5-approval` passes on the history line alone; the card is checked only by eye, so a PASS there does not mean the card was on the screen. | By design (the runbook cannot see the window). Kept; the screen is a note. | None |
+| Runbook | `evidence/summary.txt` held no step results: `watch` was stopped with Ctrl-C, which writes no summary, and `collect` read only the summary. The results above are from the run folder's per-step files. | Runbook gap. Fixed: `collect` prints each step's result file, then the summary if there is one. | None |
 
 Not exercised by this run: the answer through the card, the review gate and its `excludedCommands` (#242), the round counter, the pull request and the acceptance job (#240).
 
