@@ -643,6 +643,20 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 
 **Options.** Per feature: carry it as a skill; leave it out for now; or carry it later once its records exist.
 
+**Draft for the owner (not a decision).** One line per feature. "Kept?" is against [decision 0005](../decisions/0005-history-log-settings.md) (kept kinds) and Q8 point 7; the defense row is already decided in [Q11](#q11-what-happens-to-the-predecessors-python-gates-and-generators).
+
+| Feature | Records it needs | Kept? | Recommendation | Source |
+|---|---|---|---|---|
+| Conveyor (an approved scope worked through without asking) | The scope contract file (ST-8); the work list in `org-state`; `run_started` / `run_completed`; `ci_completed` | Kinds kept (0005). The contract is a document, not a history kind, and has no paddock home yet. | **Carry as a skill.** It is in use today (see below), and it only reads records paddock already keeps. | inventory SK-13, ST-8, MON-12; 0005 |
+| Work discovery with goal ledgers and a judge | Goal ledger per repository (REG-3, a Markdown file the secretary reads); judge cache, spend log, put-aside list (ST-8); `work_discovery_scanned` (241 rows / 30 d) | Ledger and put-aside list need no history kind. `work_discovery_scanned` is **dropped** (0005); the judge cache and spend log have no kind either. | **Carry as a skill, ledger first.** The conveyor takes its candidates from it. Leave the judge cache and spend log out until a cost is seen (a `claude -p` call per scan is the cost). | inventory SK-13, ST-8, REG-3; 0005 |
+| Next-work proposals after a merge | The same scan run when a task closes, so the same records as work discovery, plus a merge fact (`run_completed`, `ci_completed`) | Merge facts kept; scan record dropped. | **Carry as part of the work-discovery skill**, not a separate one: the inventory lists it only as the triage scan in the close flow. | inventory MON-9, SK-13; 0005 |
+| Metrics report | Runs, messages, summaries, CI results | Kept. Time blocked, crashes and exit codes are **not** in the history (only a core-side bridge would fill that). | **Carry later.** Not used today and no reader asks; the kept kinds allow a count by `awk` when one does. | inventory REC-10; Q8 point 7 (retrospectives); 0005 |
+| Defense report | `hook_denied` lines (1,212 rows / 30 d) | **Dropped** (0005). | **Leave out for now.** Already decided in Q11; revisit only if `hook_denied` is kept again. | inventory REC-10, HK-16; Q11; 0005 |
+
+**How the owner uses these today** (from the secretary, 2026-11-11, not from a record in this repository). The owner runs paddock's own work through the predecessor's conveyor: one approval of a scope contract (the Issues under goal clauses G1 to G5, four in parallel, a time budget), then triage by goal-ledger order, dispatch, the acceptance-test CI gate and an automatic merge, repeated. 26 pull requests of paddock were merged this way from 16:30 on that day. A person steps in for decision drafts, for a pull request that changed an existing test, and for a pull request the automatic check stopped (merged by hand). Triage offers candidates whenever a slot frees up, and the contract turns away candidates from repositories outside the scope. The metrics and defense reports were not used that day.
+
+**Open for the owner.** Whether the judge cache and spend log are wanted at all, and where the scope contract lives in paddock (a core document or a file); neither is settled here.
+
 **Decides.** The owner.
 
 ## Q16. How is the secretary's context renewed?
