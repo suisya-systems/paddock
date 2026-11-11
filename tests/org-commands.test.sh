@@ -166,6 +166,20 @@ big=$(head -c 70000 /dev/zero | tr '\0' a)
 [ "$(printf '"%s"' "$(head -c 40000 /dev/zero | tr '\0' a)" | rc org --as secretary doc set secretary-handover)" -eq 8 ]; check "a value over secretary-handover's 32 KiB cap exits 8" $?
 echo 'null' | org --as secretary doc set secretary-handover >/dev/null; [ "$(cat "$STUB/docval-secretary-handover")" = null ]; check "secretary-handover can be set to null" $?
 [ "$(ORGENV=PADDOCK_SECRETARY_NAME=boss rc org --as boss doc set org-state <<<'{}')" -eq 0 ]; check "PADDOCK_SECRETARY_NAME names the one writer" $?
+
+# secretary-handover has a shape: null, or an object with exactly the four keys and a UTC written_at.
+good='{"last_exchange":"asked X","unrecorded_decisions":[],"open_threads":[],"written_at":"2026-11-11T01:02:03Z"}'
+reset_doc
+[ "$(rc org --as secretary doc set secretary-handover <<<'{"last_exchange":"x","other":1}')" -eq 2 ]; check "secretary-handover with other keys exits 2" $?
+[ ! -e "$STUB/docval-secretary-handover" ]; check "...and nothing is written" $?
+[ "$(rc org --as secretary doc set secretary-handover <<<'{"last_exchange":"x","unrecorded_decisions":[],"open_threads":[]}')" -eq 2 ]; check "secretary-handover missing a key exits 2" $?
+[ "$(rc org --as secretary doc set secretary-handover <<<"${good/2026-11-11T01:02:03Z/yesterday}")" -eq 2 ]; check "secretary-handover with a written_at that is not UTC ISO 8601 exits 2" $?
+[ "$(rc org --as secretary doc set secretary-handover <<<'"a string"')" -eq 2 ]; check "secretary-handover that is a string exits 2" $?
+[ "$(rc org --as secretary doc set secretary-handover <<<'{not json')" -eq 2 ]; check "secretary-handover that is not JSON exits 2" $?
+[ "$(rc org --as secretary doc update secretary-handover -- echo '{"x":1}')" -eq 2 ] && [ ! -e "$STUB/docval-secretary-handover" ]; check "doc update of secretary-handover is checked too, nothing written" $?
+echo "$good" | org --as secretary doc set secretary-handover >/dev/null; r=$?
+[ "$r" -eq 0 ] && [ "$(cat "$STUB/docval-secretary-handover")" = "$good" ]; check "secretary-handover with the four keys and a UTC written_at is set" $?
+echo null | org --as secretary doc set secretary-handover >/dev/null; [ "$(cat "$STUB/docval-secretary-handover")" = null ]; check "secretary-handover can still be cleared with null" $?
 r=$(env -u PADDOCK_ORG_ID PADDOCK_STATE_DIR="$state" PATH="/usr/bin:/bin" bash "$script" --as secretary doc get org-state >/dev/null 2>&1; echo $?)
 [ "$r" -eq 3 ]; check "doc with no hc on PATH exits 3" $?
 
