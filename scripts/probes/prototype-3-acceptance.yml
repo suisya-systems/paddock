@@ -1,0 +1,20 @@
+# Prototype 3 fixture (Issue #243): the acceptance job, for the throwaway repository only.
+# Copied to its .github/workflows/acceptance.yml with scripts/acceptance-check.sh beside it
+# (docs/design/prototype-3.md, "Seed the throwaway repository"). The same job as paddock's
+# own CI, alone: on pull_request only, so org-pull-request watches this one run.
+name: CI
+on: [pull_request]
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Declared tests fail at the test commit, pass at head, stay unchanged
+        run: |
+          base=${{ github.event.pull_request.base.sha }}
+          git show "$base:scripts/acceptance-check.sh" > "$RUNNER_TEMP/acceptance-check.sh" 2>/dev/null \
+            || cp scripts/acceptance-check.sh "$RUNNER_TEMP/acceptance-check.sh"
+          bash "$RUNNER_TEMP/acceptance-check.sh" "$base" "${{ github.event.pull_request.head.sha }}"
