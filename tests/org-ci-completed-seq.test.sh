@@ -72,7 +72,7 @@ grep -q '"kind":"ci_completed"' "$st/events/$cur/secretary.jsonl" 2>/dev/null &&
 
 # 4. The lock: while a live holder has the secretary's lock, ci_completed is not written.
 x=$tmp/xdg4; ev=$x/paddock/events
-mkdir -p "$ev/secretary.lock"; echo $$ > "$ev/secretary.lock/pid"
+mkdir -p "$x/paddock/locks/secretary/lock"; echo $$ > "$x/paddock/locks/secretary/lock/pid"
 pr "$x" PADDOCK_LOCK_WAIT=1 >/dev/null; rc=$?
 [ "$rc" -eq 12 ] && ! grep -qs ci_completed "$ev/$cur/secretary.jsonl"; check "a held lock stops the write: exit 12, no line (rc $rc)" $?
 

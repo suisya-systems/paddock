@@ -32,7 +32,7 @@ for round in $(seq 1 20); do
   wait
   g=$(sed -n 's/^{"seq":\([0-9]*\),.*/\1/p' "$tmp"/state/events/*/"r$round".jsonl 2>/dev/null | sort -n | tr '\n' ' ')
   [ "$g" = "1 2 3 4 5 6 7 8 " ] || bad="$bad r$round($g)"
-  [ ! -e "$tmp/state/events/r$round.lock" ] || bad="$bad r$round(lock left)"
+  [ ! -e "$tmp/state/locks/r$round/lock" ] || bad="$bad r$round(lock left)"
 done
 [ -z "$bad" ]; check "20 rounds of 8 parallel sends with a racy mkdir each get seq 1..8 (bad:${bad:- none})" $?
 

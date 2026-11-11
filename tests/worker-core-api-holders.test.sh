@@ -83,8 +83,10 @@ check "settings.local.json: sandbox denyRead is the folder of HC_TERMINAL_SOCKET
 js 'process.exit(JSON.stringify(f.denyWrite)===JSON.stringify([process.argv[2]])?0:1)' "$D"
 check "settings.local.json: sandbox denyWrite is the folder of HC_TERMINAL_SOCKET" $?
 deleg HC_TERMINAL_SOCKET="$D/default.sock" -- --allow-write "$tmp/extra"
-js 'process.exit(JSON.stringify(f.allowWrite)===JSON.stringify([process.argv[2]])&&JSON.stringify(f.denyRead)===JSON.stringify([process.argv[3]])?0:1)' "$tmp/extra" "$D"
-check "with --allow-write: allowWrite kept, socket folder still denied" $?
+# Issue #160: --allow-write goes to the worker's own --settings file; the socket deny stays here.
+js 'process.exit(JSON.stringify(f.denyRead)===JSON.stringify([process.argv[2]])?0:1)' "$D" \
+  && node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(s.sandbox.filesystem.allowWrite.includes(process.argv[2])?0:1)' "$tmp/state/settings/t$k.json" "$tmp/extra"
+check "with --allow-write: allowWrite kept (in the per-task --settings file), socket folder still denied" $?
 deleg HC_TERMINAL_SOCKET="$D/default.sock" PADDOCK_CORE_SOCKET_DIR="$tmp/other" --
 [ "$rc" -eq 0 ] && js 'process.exit(JSON.stringify(f.denyRead)===JSON.stringify([process.argv[2]])&&JSON.stringify(f.denyWrite)===JSON.stringify([process.argv[2]])?0:1)' "$tmp/other"
 check "PADDOCK_CORE_SOCKET_DIR overrides the folder" $?
