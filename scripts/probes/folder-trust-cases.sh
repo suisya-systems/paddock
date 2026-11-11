@@ -72,7 +72,7 @@ trap cleanup EXIT; trap 'exit 130' INT TERM
 printf '%s\n' '---' 'description: p216 folder-trust probe' 'command: claude --permission-mode default' '---' \
   'This is a probe. Reply with the single word OK and nothing else.' > "$TPL_DIR/p216-trust.md"
 
-trust_entries() { # INFO only (sh + grep, no jq: a flag may be misread for long entries; the verdicts do not use it). Read-only: the trust flag of every ~/.claude.json project key that names the workers folder or this probe
+trust_entries() { # INFO only (grep only: a flag may be misread for long entries; the verdicts do not use it). Read-only: the trust flag of every ~/.claude.json project key that names the workers folder or this probe
   tr -d '\n' < "$HOME/.claude.json" 2>/dev/null | grep -Eo '"[^"]*(paddock-workers|p216-|probe216)[^"]*": *\{' | sed 's/": *{$//; s/^"//' | while IFS= read -r k; do
     f=$(tr -d '\n' < "$HOME/.claude.json" | grep -Eo "\"$k\": *\{.{0,600}" | grep -Eo 'hasTrustDialogAccepted": *(true|false)' | head -n 1)
     echo "   $k -> ${f:-no hasTrustDialogAccepted}"
