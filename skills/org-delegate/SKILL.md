@@ -38,7 +38,7 @@ It prints `org-delegate: worker=w-<id> worktree=<path> branch=<branch>` on succe
 
 0 worker running (first message sent) and recorded, 2 bad argument, 3 `hc` or `git` not found, 5 core unreachable or `hc` failed (the new worktree and branch are removed when no worker can exist, so the same `task_id` can be tried again; if the terminal may exist they are kept and named; a removal that fails is named too), 6 project, base, worktree path or settings path problem (the worktree is removed), 7 a terminal `w-<id>` exists, 10 started but the first message was not sent (left as it is), 12 the start record could not be written (nothing was started).
 
-After exit 10, or exit 5 with things kept, the same `task_id` is refused (the terminal, worktree or branch exists). Inspect the worker, then end it (`hc kill`, `hc rm`) and remove the worktree with `git worktree remove` before trying again.
+After exit 10, or exit 5 with things kept, the same `task_id` is refused (the terminal, worktree or branch exists). Inspect the worker, then end it with `org-close --task <id> --drop` ([org-close](../org-close/SKILL.md)) before trying again.
 
 ## Check it against a real worker
 
