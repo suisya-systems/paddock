@@ -34,8 +34,9 @@ Bash and `git` only. Then `org-pull-request --pr <n> --worktree <worker worktree
 
 ## The acceptance gate's rules
 
-- The gate wants the declared test commit to be the first commit of the branch, with no join commit before it. This tool only appends a merge after the existing commits and rewrites nothing, so the test commit keeps its place and its parent. Use it only on a branch that already has its test commit (in practice a pushed one).
-- Before the test commit exists and nothing has been pushed, do not merge: the worker rebases onto `origin/main` (no force is needed because nothing is on origin yet). That is the case the gate's rule is about.
+- Known limit: the predecessor's acceptance gate (`acceptance_gate.py`, `check_first`) refuses a branch that took main in after its test commit, because it requires the test commit's parent to equal `merge-base(base, head)` and a merge moves that to main's tip. So a merge made by this tool does not ride the automatic merge in `acceptance` mode today; a person decides that PR.
+- Until paddock's own gate ([#115](https://github.com/suisya-systems/paddock/issues/115)) accepts base changes that arrive after the test commit, the rule is: while nothing is pushed, the worker rebases onto `origin/main` (no force is needed, and the test commit stays first); once pushed, run this tool only when a person will decide the merge.
+- What #115 needs to accept for this tool to be useful: the test commit's parent is an ancestor of base (not equal to the merge-base); no join commit before the test commit on the first-parent line; declared-path and protected-path checks look only at the branch's own commits, not at changes that came in from base.
 
 ## Assumptions (open points left open)
 
