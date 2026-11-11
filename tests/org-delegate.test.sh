@@ -148,10 +148,13 @@ grep -Eq '^t1[[:space:]]+w-t1[[:space:]]+done' <<<"$list"; check "a worker's lat
 # Options.
 reset; out=$(run -- "${good[@]}" --branch feat/x --base main --allow-write "$tmp/out dir" --allow-write '~/notes'); rc=$?
 [ "$rc" -eq 0 ] && [ "$(git -C "$workers/t1" rev-parse --abbrev-ref HEAD)" = feat/x ]; check "--branch names the branch" $?
-sj=$(tr -d '\n' < "$workers/t1/.claude/settings.local.json")
+# Issue #160: in the worker's own --settings file (Claude Code ignores allowWrite in settings.local.json once
+# allowUnsandboxedCommands is false there), not in settings.local.json.
+sj=$(tr -d '\n' < "$tmp/state/settings/t1.json")
 grep -q '"allowWrite"' <<<"$sj" && grep -qF "\"$tmp/out dir\"" <<<"$sj" && grep -qF '"~/notes"' <<<"$sj" \
-  && grep -q '"sandbox"' <<<"$sj" && grep -q '"filesystem"' <<<"$sj"
-check "--allow-write lands in sandbox.filesystem.allowWrite" $?
+  && grep -q '"sandbox"' <<<"$sj" && grep -q '"filesystem"' <<<"$sj" \
+  && ! grep -q '"allowWrite"' "$workers/t1/.claude/settings.local.json"
+check "--allow-write lands in sandbox.filesystem.allowWrite of the per-task settings file" $?
 if command -v node >/dev/null 2>&1; then
   node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$workers/t1/.claude/settings.local.json"
   check "the settings file is valid JSON" $?

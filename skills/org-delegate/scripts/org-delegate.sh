@@ -26,7 +26,8 @@ brief file into the worktree (rules: --append-system-prompt-file in the template
   --no-fetch     do not fetch origin; branch from the local base
   --branch       new branch name (default work/<id>)
   --allow-write  an absolute path (or ~/...) the worker may also write; repeatable.
-                 Goes to sandbox.filesystem.allowWrite in the worktree's settings file.
+                 Goes to sandbox.filesystem.allowWrite in the worker's own --settings file,
+                 <state folder>/settings/<id>.json, beside the worker's own files.
   --secret-block the strong read block for secret-looking files in the worktree (Issue #165; off by default, L-K1):
                  on (.env, .env.*, credentials*, *.pem), off, or comma-separated patterns that replace those.
                  Default: the secret-block column of the project's row in projects.md. Programs in the worker
@@ -42,7 +43,7 @@ Exit codes: 0 worker running and recorded, 2 bad argument, 3 hc or git not found
 exist; if the terminal may exist they are kept and named), 6 project, base, worktree or
 settings path problem (the worktree is removed), 7 a terminal w-<id> exists,
 10 the worker started but its first message was not sent (left as it is),
-12 the start record could not be written (nothing was started),
+12 the start record or the worker's own files in the state folder could not be written (nothing was started),
 13 the worker runs but the org-state entry could not be written (--title; add it by hand).
 USAGE
 }
@@ -178,11 +179,27 @@ if [ "${#sp[@]}" -gt 0 ]; then
   perm="\"permissions\":{\"deny\":[$rd,\"Read(!**/*.example)\"]},"
   fs="\"denyRead\":[\"$sockdir\"$dr],\"denyWrite\":[\"$sockdir\"]"
 fi
-if [ "${#allow[@]}" -gt 0 ]; then
-  list=
-  for p in "${allow[@]}"; do list="$list${list:+,}\"$p\""; done
-  fs="\"allowWrite\":[$list],$fs"
-fi
+# Issue #160, #164: the worker's allowWrite goes in its own --settings file, not here. The worker
+# settings set sandbox.allowUnsandboxedCommands false, which makes the sandbox admin-required, and
+# Claude Code then ignores the allowWrite of .claude/settings.local.json (vendor docs; the deny
+# entries here still apply). That file is the shared worker settings plus the worker's own files in
+# the state folder (from scripts/org own_files) and the --allow-write paths, written to
+# <state>/settings/<id>.json, where the worker can write nothing; the template passes it.
+org=$root/scripts/org
+state=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
+own=$(bash "$org" --as secretary own_files "$name" 2>&1) || fail_undone 12 "cannot create $name's files in the state folder (nothing was started): ${own:0:200}"
+list=
+while IFS= read -r p; do
+  case "$p" in *[\"\\]*|*[[:cntrl:]]*) fail_undone 6 "the state folder path has a quote, backslash or control character: $p" ;; esac
+  list="$list${list:+,}\"$p\""
+done <<<"$own"
+for p in ${allow[@]+"${allow[@]}"}; do list="$list,\"$p\""; done
+tpl=$(cat "$root/templates/worker-settings.json") || fail_undone 6 "cannot read templates/worker-settings.json"
+[ "$(grep -c '"allowWrite": \[\]' <<<"$tpl")" = 1 ] \
+  || fail_undone 6 "templates/worker-settings.json must hold exactly one empty \"allowWrite\": [] to fill in"
+ws=$state/settings/$id.json
+{ mkdir -p "$state/settings" && printf '%s\n' "${tpl/'"allowWrite": []'/\"allowWrite\": [$list]}" > "$ws.tmp" && mv -f "$ws.tmp" "$ws"; } 2>/dev/null \
+  || fail_undone 6 "cannot write the worker's settings file $ws"
 # Issue #189: caches go to the sandbox temporary folder of the worker. Claude Code does not expand $TMPDIR in a
 # settings env value (measured on 2.1.322), so write the path out; the sandbox's TMPDIR is /tmp/claude-<uid>.
 ct=/tmp/claude-$(id -u)
@@ -194,7 +211,6 @@ printf '%s\n' "$json" | hc file write "$sf" >/dev/null 2>&1 \
 
 # 4. Record before the launch, so a later report from the worker (done, blocked) is the latest
 # record in list_runs and is not overwritten by this one. A failure that leaves no worker is recorded as blocked.
-org=$root/scripts/org
 bash "$org" --as secretary report start --task "$id" --to secretary \
   "Delegating to $name in $wt on branch $branch (base $base)." >/dev/null 2>&1 \
   || fail_undone 12 "the start record could not be written (bash scripts/org --as secretary report start); nothing was started"

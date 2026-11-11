@@ -39,7 +39,7 @@ EOF
 chmod +x "$tmp/hold/cat"
 org --as wh send_message secretary first >/dev/null 2>&1
 PATH="$tmp/hold:$PATH" org --as wh send_message secretary held >/dev/null 2>&1 & holder=$!
-end=$((SECONDS + 10)); until [ -d "$tmp/state/events/wh.lock" ] || [ "$SECONDS" -ge "$end" ]; do sleep 0.05; done
+end=$((SECONDS + 10)); until [ -d "$tmp/state/locks/wh/lock" ] || [ "$SECONDS" -ge "$end" ]; do sleep 0.05; done
 org --as wh send_message secretary waiter >/dev/null 2>&1 & waiter=$!
 sleep 12
 g=$(seqs wh); [ "$g" = "1 " ]; check "a waiter writes nothing while a live writer holds the lock (got: $g)" $?
@@ -56,20 +56,20 @@ pids=
 for i in 1 2 3 4 5 6 7; do PATH="$tmp/slow:$PATH" org --as w8 send_message secretary "p$i" >/dev/null 2>&1 & pids="$pids $!"; done
 rc=0; for p in $pids; do bounded 60 "$p" || rc=1; done
 g=$(seqs w8); [ "$rc" -eq 0 ] && [ "$g" = "1 2 3 4 5 6 7 8 " ]; check "8 sends with a slow critical section get seq 1..8 (got: $g)" $?
-[ ! -e "$tmp/state/events/w8.lock" ]; check "the per-id lock is released" $?
+[ ! -e "$tmp/state/locks/w8/lock" ]; check "the per-id lock is released" $?
 
 # 4. A lock left by a writer that died is taken over.
 sh -c 'exit 0' & dead=$!; wait "$dead"
-mkdir -p "$tmp/state/events/wd.lock"; echo "$dead" > "$tmp/state/events/wd.lock/pid"
+mkdir -p "$tmp/state/locks/wd/lock"; echo "$dead" > "$tmp/state/locks/wd/lock/pid"
 org --as wd send_message secretary after-crash >/dev/null 2>&1 & p=$!
 bounded 20 "$p"; r=$?
-g=$(seqs wd); [ "$r" -eq 0 ] && [ "$g" = "1 " ] && [ ! -e "$tmp/state/events/wd.lock" ]; check "a lock of a dead writer is broken (exit $r, got: $g)" $?
+g=$(seqs wd); [ "$r" -eq 0 ] && [ "$g" = "1 " ] && [ ! -e "$tmp/state/locks/wd/lock" ]; check "a lock of a dead writer is broken (exit $r, got: $g)" $?
 
 # 5. A lock with no owner recorded is not broken: the send gives up after PADDOCK_LOCK_WAIT s.
-mkdir -p "$tmp/state/events/wu.lock"
+mkdir -p "$tmp/state/locks/wu/lock"
 PADDOCK_LOCK_WAIT=3 org --as wu send_message secretary nope >/dev/null 2>"$tmp/wu.err" & p=$!
 bounded 20 "$p"; r=$?
-[ "$r" -eq 5 ] && [ -z "$(seqs wu)" ] && [ -d "$tmp/state/events/wu.lock" ] && grep -q 'wu.lock' "$tmp/wu.err"
+[ "$r" -eq 5 ] && [ -z "$(seqs wu)" ] && [ -d "$tmp/state/locks/wu/lock" ] && grep -q 'locks/wu/lock' "$tmp/wu.err"
 check "a lock with no owner is left alone and the send exits 5 naming it (exit $r)" $?
 
 # 6. Many rounds of 8 parallel sends at full speed.

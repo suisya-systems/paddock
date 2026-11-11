@@ -52,7 +52,7 @@ core=$(printf -- '-u %s\n' HC_SESSION HC_SOCKET HC_SCOPE HC_TERMINAL_ID HC_TERMI
 grep -q 'GH_CONFIG_DIR=' <<<"$cmd"; check "command sets GH_CONFIG_DIR" $?
 grep -q 'GH_TOKEN=' <<<"$cmd"; check "command sets GH_TOKEN" $?
 grep -q -- '--append-system-prompt-file .*worker-rules\.md' <<<"$cmd"; check "command passes worker-rules.md with --append-system-prompt-file" $?
-grep -q -- '--settings .*worker-settings\.json' <<<"$cmd"; check "command passes worker-settings.json with --settings" $?
+grep -q 'worker-settings\.json' <<<"$cmd" && grep -q -- '--settings' <<<"$cmd"; check "command passes worker-settings.json with --settings" $?
 grep -q 'worker-gh-token' <<<"$cmd" && grep -q 'PADDOCK_WORKER_GH_TOKEN_FILE' <<<"$cmd"; check "command names the token file and its override" $?
 [ -f "$tpl" ] && ! grep -Eq 'ghp_|github_pat_' "$tpl"; check "no token value in the template" $?
 

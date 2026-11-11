@@ -16,6 +16,7 @@
       "Edit(~/.config/herdr-app/**)",
       "Edit(~/.local/state/herdr-core/**)",
       "Edit(~/.local/share/paddock/**)",
+      "Edit(~/.local/state/paddock/**)",
       "Edit(~/.claude/settings.json)",
       "Edit(.claude/settings*.json)"
     ]
@@ -36,10 +37,9 @@
   "sandbox": {
     "enabled": true,
     "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
     "filesystem": {
-      "allowWrite": [
-        "~/.local/state/paddock"
-      ],
+      "allowWrite": [],
       "denyRead": [
         "~/.config/gh/hosts.yml",
         "~/.local/state/herdr-core",
