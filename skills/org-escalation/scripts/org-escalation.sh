@@ -12,6 +12,7 @@ Usage: org-escalation.sh ask --task TASK_ID --question TEXT [--answer-in worker|
        org-escalation.sh answer --id APPROVAL_ID --text TEXT
        org-escalation.sh remove --id APPROVAL_ID
        org-escalation.sh list
+       org-escalation.sh sweep
 
   ask     add an entry to org-state.approvals; prints APPROVAL_ID=<task_id>-<UTC time>
           --answer-in: who the person answers. worker = the worker's own permission prompt
@@ -20,6 +21,8 @@ Usage: org-escalation.sh ask --task TASK_ID --question TEXT [--answer-in worker|
           then remove the entry
   remove  remove the entry only (answered in the worker's terminal, withdrawn, task dropped)
   list    print "<id><TAB><task_id><TAB><question>" per entry
+  sweep   remove every answer_in worker entry whose terminal w-<task_id> shows working, idle or
+          done in hc get; no status (a dialog), a missing terminal or a failed lookup keeps it
 
 Ids hold lowercase letters, digits, _ and -. $PADDOCK_NOW (UTC ISO 8601) fixes the clock.
 The mailbox and the state folder are those of scripts/org (PADDOCK_STATE_DIR).
@@ -30,7 +33,7 @@ sent (entry kept), 9 sent but the entry could not be removed (run remove).
 USAGE
 }
 
-# Internal: _edit <add|remove|find|list> [id] reads a document value on stdin. The new
+# Internal: _edit <add|remove|find|list|workers> [id] reads a document value on stdin. The new
 # value (add, remove) or the answer (find, list) goes to stdout; the entry for add comes
 # in $ESC_ENTRY. Exit 3 = the value is not a JSON object, 4 = id not found (add: id exists).
 if [ "${1:-}" = _edit ]; then
@@ -57,6 +60,7 @@ if [ "${1:-}" = _edit ]; then
               if (lastkey == "id") oid[nobj] = str
               if (lastkey == "task_id") otask[nobj] = str
               if (lastkey == "question") oq[nobj] = str
+              if (lastkey == "answer_in") oa[nobj] = str
             }
             lastkey = ""
           }
@@ -85,6 +89,10 @@ if [ "${1:-}" = _edit ]; then
           q = oq[k]; gsub(/\\"/, "\"", q); gsub(/\\\\/, "\\", q)
           printf "%s\t%s\t%s\n", oid[k], otask[k], q
         }
+        exit 0
+      }
+      if (mode == "workers") {
+        for (k = 1; k <= nobj; k++) if (oa[k] == "worker") printf "%s\t%s\n", oid[k], otask[k]
         exit 0
       }
       if (mode == "find") { if (!found) exit 4; print otask[found]; exit 0 }
@@ -185,6 +193,19 @@ case $cmd in
   list)
     edit list "" ; st=$?
     case $st in 0|4) ;; *) die 5 "org-state is not a JSON object (or cannot be read)" ;; esac ;;
+
+  sweep)
+    list=$(edit workers ""); st=$?
+    case $st in 0|4) ;; *) die 5 "org-state is not a JSON object (or cannot be read)" ;; esac
+    while IFS=$'\t' read -r aid wtask; do
+      [ -n "$aid" ] || continue
+      valid_aid "$aid" && valid_id "$wtask" || continue
+      # only a status whose state is working, idle or done counts; anything else (no status, not found, hc failed) keeps it
+      j=$(hc get --json "w-$wtask" 2>/dev/null | tr -d '\n') || continue
+      printf '%s' "$j" | grep -Eq '"status": *\{[^{}]*"state": *"(working|idle|done)"' || continue
+      update remove "$aid" || continue
+      echo "SWEPT $aid"
+    done <<< "$list" ;;
 
   *) echo "org-escalation: unknown command: ${cmd:-}" >&2; usage >&2; exit 2 ;;
 esac

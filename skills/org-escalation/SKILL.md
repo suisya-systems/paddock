@@ -12,6 +12,7 @@ bash skills/org-escalation/scripts/org-escalation.sh ask    --task <task_id> --q
 bash skills/org-escalation/scripts/org-escalation.sh answer --id <approval_id> --text "<answer>"
 bash skills/org-escalation/scripts/org-escalation.sh remove --id <approval_id>
 bash skills/org-escalation/scripts/org-escalation.sh list
+bash skills/org-escalation/scripts/org-escalation.sh sweep
 ```
 
 ## The flow
@@ -21,7 +22,7 @@ bash skills/org-escalation/scripts/org-escalation.sh list
 3. The person answers, in conversation with the secretary or from the card.
 4. `answer` sends `Answer to your question (<approval_id>): <text>` to `w-<task_id>` with `scripts/org send_message`, then removes the entry. Nothing is typed into the worker ([decision 0002](../../docs/decisions/0002-org-mailbox-not-hc-send.md)).
 
-A worker whose terminal is `blocked` on a permission prompt or dialog is different: nobody types the answer for the person (L-N3). Record it with `ask --answer-in worker` (the card then opens the worker's terminal and offers no Yes / No), let the person answer in the worker's own terminal, and when the terminal is no longer blocked use `remove`.
+A worker whose terminal is `blocked` on a permission prompt or dialog is different: nobody types the answer for the person (L-N3). Record it with `ask --answer-in worker` (the card then opens the worker's terminal and offers no Yes / No), let the person answer in the worker's own terminal, and when the terminal is no longer blocked use `remove`, or run `sweep` (on each return from the wait): it removes every `answer_in: worker` entry whose terminal `w-<task_id>` shows `working`, `idle` or `done` in `hc get --json`, and prints `SWEPT <id>` for each. No status (a dialog), a missing terminal or a failed lookup keeps the entry. Entries for the secretary are never touched.
 
 ## The answer message (shared with the card)
 
