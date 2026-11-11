@@ -88,13 +88,20 @@ json_esc() {
     | awk 'NR>1{printf "%s","\\n"} {printf "%s",$0}'
 }
 
-# next_seq: one more than the highest seq on any line of this id's files (continues across
-# months; a writer that took its month before the lock may write to an older file). Every line,
-# not only the last: a ci_completed line from before Issue #168 can end a file with a lower seq.
-# ponytail: reads all of the id's history per write; keep a high-water file if it grows large.
+# next_seq: one more than the highest seq this id has written. It is kept in <id>.seq (the
+# high-water file), written under the same lock as the append, so a write reads that one small
+# file and not every month of history. Without it (first write by this version, or a file that
+# is not a number) the highest seq on any line of the id's files is the start: every line, not
+# only the last, since a ci_completed line from before Issue #168 can end a file with a lower seq.
 next_seq() {
-  cat "$state"/events/*/"$id".jsonl 2>/dev/null \
-    | awk 'match($0, /^\{"seq":[0-9]+,/) { s = substr($0, 8, RLENGTH - 8) + 0; if (s > m) m = s } END { print m + 1 }'
+  local h
+  h=$(cat "$state/events/$id.seq" 2>/dev/null)
+  case "$h" in ''|*[!0-9]*)
+    cat "$state"/events/*/"$id".jsonl 2>/dev/null \
+      | awk 'match($0, /^\{"seq":[0-9]+,/) { s = substr($0, 8, RLENGTH - 8) + 0; if (s > m) m = s } END { print m + 1 }'
+    return ;;
+  esac
+  echo $((h + 1))
 }
 
 # excl <file> <text>: create <file> holding <text> only if it does not exist yet. The shell's own
@@ -120,7 +127,7 @@ append() {
 # pid recorded (holder killed right after mkdir) or a .break left behind is never broken: the
 # send gives up after $PADDOCK_LOCK_WAIT s (default 60) with exit 5 and names what to remove.
 put() {
-  local d=$state/events/$cur lk=$state/events/$id.lock me=${BASHPID:-$$} n=0 o ok=0 end
+  local d=$state/events/$cur lk=$state/events/$id.lock me=${BASHPID:-$$} n=0 o ok=0 end s
   mkdir -p "$d" || die 5 "cannot create $d"
   end=$((SECONDS + ${PADDOCK_LOCK_WAIT:-60}))
   until mkdir "$lk" 2>/dev/null && excl "$lk/pid" "$me"; do
@@ -138,7 +145,9 @@ put() {
     fi
     sleep 0.05 2>/dev/null || sleep 1
   done
-  printf '{"seq":%s,%s}\n' "$(next_seq)" "$1" >> "$d/$id.jsonl" && ok=1
+  s=$(next_seq)
+  # high-water first: a crash between the two leaves a gap in seq, never a reused number
+  printf '%s\n' "$s" > "$state/events/$id.seq" && printf '{"seq":%s,%s}\n' "$s" "$1" >> "$d/$id.jsonl" && ok=1
   rm -f "$lk/pid"; rmdir "$lk" 2>/dev/null
   [ "$ok" -eq 1 ] || die 5 "cannot write $d/$id.jsonl"
 }
@@ -212,7 +221,7 @@ case "$cmd" in
     case "$task" in *[!A-Za-z0-9._-]*) die 2 "--task may hold only letters, digits, . _ -" ;; esac
     [ "$code" = 0 ] && concl=success || concl=failure
     tj=; [ -z "$task" ] || tj=",\"task_id\":\"$task\""
-    put "\"ts\":\"$now\",\"kind\":\"ci_completed\",\"writer\":\"$id\"$tj,\"pr\":$pr,\"sha\":\"$sha\",\"run_id\":$run,\"exit_code\":$code,\"conclusion\":\"$concl\"" ;;
+    put "\"ts\":\"$now\",\"kind\":\"ci_completed\",\"from\":\"$id\"$tj,\"pr\":$pr,\"sha\":\"$sha\",\"run_id\":$run,\"exit_code\":$code,\"conclusion\":\"$concl\"" ;;
 
   check_messages)
     peek=

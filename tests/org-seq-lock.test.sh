@@ -8,7 +8,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 fail=0
 check() { if [ "$2" -eq 0 ]; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }
-real_cat=$(command -v cat) # next_seq reads the id's .jsonl files with cat (Issue #168)
+real_cat=$(command -v cat) # next_seq reads the id's high-water and .jsonl files with cat (Issue #168)
 
 org() { env -u PADDOCK_ORG_ID -u PADDOCK_NOW PADDOCK_STATE_DIR="$tmp/state" bash "$script" "$@"; }
 seqs() { sed -n 's/^{"seq":\([0-9]*\),.*/\1/p' "$tmp"/state/events/*/"$1".jsonl 2>/dev/null | sort -n | tr '\n' ' '; }
@@ -33,7 +33,7 @@ mkdir -p "$tmp/hold"
 "$real_cat" > "$tmp/hold/cat" <<EOF
 #!/bin/sh
 out=\$("$real_cat" "\$@")
-case "\$*" in *.jsonl*) while [ ! -e "$tmp/go" ]; do sleep 0.1; done ;; esac
+case "\$*" in *.jsonl*|*.seq*) while [ ! -e "$tmp/go" ]; do sleep 0.1; done ;; esac
 printf '%s\n' "\$out"
 EOF
 chmod +x "$tmp/hold/cat"
@@ -49,7 +49,7 @@ g=$(seqs wh); [ "$r1" -eq 0 ] && [ "$r2" -eq 0 ] && [ "$g" = "1 2 3 " ]; check "
 
 # 3. Eight parallel sends with a slow critical section (each read of the seq history takes 1 s).
 mkdir -p "$tmp/slow"
-printf '#!/bin/sh\nout=$("%s" "$@"); case "$*" in *.jsonl*) sleep 1 ;; esac; printf "%%s\\n" "$out"\n' "$real_cat" > "$tmp/slow/cat"
+printf '#!/bin/sh\nout=$("%s" "$@"); case "$*" in *.jsonl*|*.seq*) sleep 1 ;; esac; printf "%%s\\n" "$out"\n' "$real_cat" > "$tmp/slow/cat"
 chmod +x "$tmp/slow/cat"
 org --as w8 send_message secretary p0 >/dev/null 2>&1
 pids=

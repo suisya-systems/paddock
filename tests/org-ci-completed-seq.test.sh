@@ -80,7 +80,7 @@ pr "$x" PADDOCK_LOCK_WAIT=1 >/dev/null; rc=$?
 x=$tmp/xdg5; ev=$x/paddock/events
 o "$x" "$now_cur" --as secretary ci_completed --pr 42 --sha 0123abcd --run-id 777 --exit-code 1 --task t1 >/dev/null; rc=$?
 l=$(cat "$ev/$cur/secretary.jsonl" 2>/dev/null)
-[ "$rc" -eq 0 ] && [ "$l" = "{\"seq\":1,\"ts\":\"$now_cur\",\"kind\":\"ci_completed\",\"writer\":\"secretary\",\"task_id\":\"t1\",\"pr\":42,\"sha\":\"0123abcd\",\"run_id\":777,\"exit_code\":1,\"conclusion\":\"failure\"}" ]
+[ "$rc" -eq 0 ] && [ "$l" = "{\"seq\":1,\"ts\":\"$now_cur\",\"kind\":\"ci_completed\",\"from\":\"secretary\",\"task_id\":\"t1\",\"pr\":42,\"sha\":\"0123abcd\",\"run_id\":777,\"exit_code\":1,\"conclusion\":\"failure\"}" ]
 check "org ci_completed writes the documented line ($l)" $?
 for bad in "--pr 08" "--pr 42 --run-id 010" "--sha x\"y" "--task a\"b" "--exit-code -1"; do
   # shellcheck disable=SC2086
