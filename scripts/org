@@ -490,7 +490,8 @@ case "$cmd" in
         g=${PADDOCK_CODEX_GATE:-}; gw=$(printf '%s' "${g##*/}" | low)
         names() { local t; t=$(low); case "$t" in *codex*) return 0 ;; esac; [ -n "$gw" ] && case "$t" in *"$gw"*) return 0 ;; esac; return 1; }
         pl=$(tr -d '\n\r')
-        printf '%s' "$pl" | names || exit 0
+        # JSON's \n \r \t escapes are dropped first, so a backslash-newline inside the word still shows it.
+        printf '%s' "$pl" | sed 's/\\[nrt]//g' | names || exit 0
         tool=$(printf '%s' "$pl" | sed -n 's/.*"tool_name": *"\([^"]*\)".*/\1/p')
         case "$tool" in
           *[Cc][Oo][Dd][Ee][Xx]*) refuse "$tool: a worker runs Codex only through the gate" ;;
@@ -531,8 +532,8 @@ case "$cmd" in
         esac
         [ -n "$g" ] || refuse "no Codex gate is set up for workers (PADDOCK_CODEX_GATE is empty), so no Bash command may name codex"
         case "$cmd" in
-          "bash \"$g\"") mode=diff ;;
-          "bash \"$g\" --design") mode=design ;;
+          "bash \"$g\""|'bash "$PADDOCK_CODEX_GATE"') mode=diff ;;
+          "bash \"$g\" --design"|'bash "$PADDOCK_CODEX_GATE" --design') mode=design ;;
           *) refuse "a Bash command that names codex. Codex runs only through the gate, alone: bash \"$g\" (add --design for the one design review). Read files that mention codex with the Read or Grep tool." ;;
         esac
         pd=${CLAUDE_PROJECT_DIR:-}; pd=${pd%/}; task=${pd##*/}

@@ -24,4 +24,14 @@ for c in "$call; $call" "bash /opt/review/Review-Gate.sh" "sh \"$gate\"" "cd /op
   [ "$(hook "$c")" -eq 2 ]; check "refused: $c" $?
 done
 [ "$(hook 'ls /opt/review')" -eq 0 ]; check "a command without the gate name is let through" $?
+
+# Codex review round 3: the literal variable form is the gate call; a backslash-newline cannot hide codex.
+gate=/opt/codex-gate.sh; rm_rounds=$tmp/rounds2
+hook2() { node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",tool_input:{command:process.argv[1]}}))' "$1" 2>/dev/null \
+    | env -u PADDOCK_ORG_ID PADDOCK_STATE_DIR="$tmp/state" PADDOCK_CODEX_DIR="$rm_rounds" PADDOCK_CODEX_GATE="$gate" \
+        CLAUDE_PROJECT_DIR=/w/workers/t2 bash "$script" --as codex-gate codex_round hook >/dev/null 2>&1; echo $?; }
+[ "$(hook2 'bash "$PADDOCK_CODEX_GATE"')" -eq 0 ] && [ "$(hook2 'bash "$PADDOCK_CODEX_GATE" --design')" -eq 0 ]; check "bash \"\$PADDOCK_CODEX_GATE\" [--design] is the gate call" $?
+[ "$(cat "$rm_rounds"/events/*/codex-gate.jsonl | grep -c '"kind":"codex_round_started"')" -eq 2 ]; check "both are counted" $?
+[ "$(hook2 "co\\
+dex review")" -eq 2 ]; check "a backslash-newline inside codex is refused" $?
 exit $fail
