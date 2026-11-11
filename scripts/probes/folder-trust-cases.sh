@@ -30,6 +30,9 @@
 #   case-clone         a git repository (git clone) created under the workers folder.
 #   case-trusted-repo  a git worktree of a repository that is itself trusted, created OUTSIDE the
 #                      workers folder (so only the repository's trust can cover it).
+#   case-trusted-in-workers  what org-delegate does: a git worktree of the trusted repository placed
+#                      INSIDE the workers folder. NO-DIALOG = org-delegate needs no change for a
+#                      project a person trusted once; DIALOG = it does (propose, do not build).
 # Reading the verdicts: "RESULT <case>: DIALOG" = the dialog (Quick safety check / Accessing
 # workspace) is on the screen; "NO-DIALOG" = a screen without dialog text; "UNKNOWN" = an empty
 # screen. Read the screen too. Paste the whole output back.
@@ -37,7 +40,7 @@ set -u
 
 case "${1:-}" in
   "") ;;
-  -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
+  -h|--help) sed -n "2,38p" "$0"; exit 0 ;;
   *) echo "folder-trust-cases: unknown argument: $1" >&2; exit 2 ;;
 esac
 
@@ -51,7 +54,7 @@ git -C "$TRUSTED_REPO" rev-parse --git-dir >/dev/null 2>&1 || { echo "RESULT pre
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/probe216.XXXXXX") || exit 1 # private (0700)
 XDG="$WORK/xdg"; TPL_DIR="$XDG/herdr-core/templates"; MAIN="$WORK/main-repo"
-BASE="$WORKERS/p216-$$-$(date +%s)"; WT4="$WORK/wt-of-trusted"
+BASE="$WORKERS/p216-$$-$(date +%s)"; WT4="$WORK/wt-of-trusted"; WT5="$BASE/wt-of-trusted"
 mkdir -p "$TPL_DIR" "$BASE" || exit 1
 HC_SESSION=p216-$$; export HC_SESSION
 XDG_CONFIG_HOME=$XDG; export XDG_CONFIG_HOME
@@ -60,9 +63,10 @@ XDG_CONFIG_HOME=$XDG; export XDG_CONFIG_HOME
 claude_link_save
 cleanup() {
   claude_link_restore
-  for n in untrusted plain worktree clone trusted-repo; do hc kill "p216-$n" >/dev/null 2>&1; hc rm "p216-$n" >/dev/null 2>&1; done
+  for n in untrusted plain worktree clone trusted-repo trusted-in-workers; do hc kill "p216-$n" >/dev/null 2>&1; hc rm "p216-$n" >/dev/null 2>&1; done
   hc server stop >/dev/null 2>&1 # HC_SESSION is the temp core's: yours is untouched
   git -C "$TRUSTED_REPO" worktree remove --force "$WT4" >/dev/null 2>&1
+  git -C "$TRUSTED_REPO" worktree remove --force "$WT5" >/dev/null 2>&1
   case "$BASE" in "$WORKERS"/p216-*) rm -rf "$BASE" ;; esac
   rm -rf "$WORK"
   echo "CLEANUP done"
@@ -105,6 +109,7 @@ mkdir -p "$WORK/untrusted" "$BASE/plain-sub" || exit 1
 (cd "$MAIN" && git worktree add -q --detach "$BASE/wt") \
   && git clone -q "$MAIN" "$BASE/clone" \
   && git -C "$TRUSTED_REPO" worktree add -q --detach "$WT4" \
+  && git -C "$TRUSTED_REPO" worktree add -q --detach "$BASE/wt-of-trusted" \
   || { echo "RESULT precondition-failed: could not make the case folders"; exit 1; }
 
 run_case untrusted "$WORK/untrusted"
@@ -112,5 +117,6 @@ run_case plain "$BASE/plain-sub"
 run_case worktree "$BASE/wt"
 run_case clone "$BASE/clone"
 run_case trusted-repo "$WT4"
+run_case trusted-in-workers "$WT5"
 
 echo "== ~/.claude.json trust entries after (read only; new entries show what Claude Code recorded for each folder)"; trust_entries

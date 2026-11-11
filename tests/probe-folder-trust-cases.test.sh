@@ -32,4 +32,8 @@ code | grep -q 'git worktree add'; check "case: git worktree" $?
 code | grep -qE 'git (clone|init)'; check "case: git repository under the workers folder" $?
 grep -q 'case-plain' "$p" 2>/dev/null && grep -q 'case-worktree' "$p" && grep -q 'case-clone' "$p" && grep -q 'case-trusted-repo' "$p"; check "names the four cases" $?
 code | grep -q 'hc read'; check "prints the observed screen" $?
+grep -q 'case-trusted-in-workers' "$p" 2>/dev/null; check "names the case org-delegate uses (worktree of a trusted repository inside the workers folder)" $?
+code | grep -E 'git -C "?\$TRUSTED_REPO"? worktree add' | grep -q '\$BASE'; check "that case adds the trusted repository's worktree under the workers folder" $?
+code | grep -E 'hc (kill|rm) ' | grep -q 'trusted-in-workers'; check "cleanup kills and removes that case's terminal" $?
+code | grep -q 'v=NO-DIALOG'; check "a screen without dialog text reads NO-DIALOG" $?
 exit $fail
