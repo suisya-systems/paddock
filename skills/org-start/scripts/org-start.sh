@@ -10,6 +10,7 @@ Usage: org-start.sh [-h|--help]
 Starts the paddock secretary on the running herdr core (the first hc command
 starts a core if none runs; run this from a login shell, never from an agent).
 Idempotent: a second run starts no second secretary and copies the same files.
+A secretary terminal that has finished is removed (hc rm) before a new one starts.
 
 Environment overrides:
   PADDOCK_CORE_TEMPLATES_DIR  herdr-core templates folder
@@ -92,6 +93,11 @@ cp -f "$root/mods/org-agents/main.js" "$root/mods/org-agents/mod.json" "$mods/or
   || die 6 "cannot copy the org-agents mod"
 
 # 3. Start the secretary unless one exists. Never stops or restarts the core.
+# Issue #192: a kept terminal that has finished still holds the name; remove it first.
+if hc get --json "$name" 2>/dev/null | grep -Eq '"state": *"finished"'; then
+  hc rm "$name" >/dev/null 2>&1 || die 5 "hc rm $name failed (the finished secretary terminal)"
+  echo "org-start: removed the finished $name terminal"
+fi
 if hc get "$name" >/dev/null 2>&1; then
   echo "org-start: $name already exists; not starting another"
 else
