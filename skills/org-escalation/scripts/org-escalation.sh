@@ -1,3 +1,8 @@
+  # Issue #77: the history line that lets `org rebuild` replay this change.
+  case $1 in
+    add) secretary record approval_asked --task "$task" "$ESC_ENTRY" >/dev/null ;;
+    remove) secretary record approval_removed --task "${task:-$(printf %s "$2" | sed "s/-[0-9TZ]*\$//")}" "$2" >/dev/null ;;
+  esac || die 5 "org-state was written, but its history line was not (record $1 $2)"
 #!/usr/bin/env bash
 # org-escalation: the secretary's side of a worker's question. `ask` records an entry in
 # org-state.approvals; `answer` forwards the person's answer to the worker through the
@@ -151,6 +156,12 @@ edit() { # edit <mode> <id> : run _edit on the current value; status 3 and 4 pas
 update() { # update <mode> <id>: re-read, apply, set (scripts/org retries on a version conflict)
   secretary doc update org-state -- bash "$self" _edit "$1" "$2" >/dev/null \
     || die 5 "org-state was not written ($1 $2)"
+  # Issue #77: the history line that lets `org rebuild` replay this change. The task is the id
+  # without its UTC suffix (the id is <task_id>-<UTC yyyymmddThhmmssZ>).
+  local t; t=$(printf '%s' "$2" | sed 's/-[0-9]\{8\}T[0-9]\{6\}Z$//')
+  if [ "$1" = add ]; then secretary record approval_asked --task "$t" "$ESC_ENTRY" >/dev/null
+  else secretary record approval_removed --task "$t" "$2" >/dev/null; fi \
+    || die 5 "org-state was written, but its history line was not (org record $1 $2)"
 }
 
 case $cmd in

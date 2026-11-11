@@ -35,6 +35,12 @@ Usage: org [--as <id>] <command> [args]
   doc update <name> -- <command...>             re-read, run command (old value on stdin, new
                                                 value on stdout), set; on a version conflict
                                                 re-read and reapply (secretary only)
+  record <kind> --task <task_id> [text]            (secretary) a history line for a change to org-state:
+                                                work_added, work_removed, approval_asked,
+                                                approval_removed (the skills call it)
+  rebuild [--print]                             (secretary) org-state again from all of the history
+                                                files (--print: show it, write nothing); updated_at,
+                                                hand-set keys and secretary-handover are not in the log
 
 Your id comes from --as or $PADDOCK_ORG_ID (lowercase letters, digits, _ and -).
 History is JSON lines, events/<YYYY-MM>/<id>.jsonl under $PADDOCK_STATE_DIR
@@ -64,7 +70,7 @@ cmd=${1:-}; [ $# -eq 0 ] || shift
 
 valid_id() { case "$1" in ''|-*|*[!a-z0-9_-]*) return 1 ;; esac; }
 case "$cmd" in
-  send_message|check_messages|set_summary|report|ci_completed|list_runs|doc|wait|brief) ;;
+  send_message|check_messages|set_summary|report|ci_completed|list_runs|doc|wait|brief|record|rebuild) ;;
   *) echo "org: unknown command: $cmd" >&2; usage >&2; exit 2 ;;
 esac
 valid_id "$id" || die 2 "no valid id: give --as <id> or set PADDOCK_ORG_ID (lowercase letters, digits, _ and -)"
@@ -158,7 +164,11 @@ window() {
   local f
   for f in "$state/events/$prev"/*.jsonl "$state/events/$cur"/*.jsonl; do
     [ -f "$f" ] && cat "$f"
-  done | sed -n "s/^{\"seq\":\([0-9]*\),\"ts\":\"\([^\"]*\)\",\"from\":\"\([^\"]*\)\",\"kind\":\"\([^\"]*\)\",\"to\":\"\([^\"]*\)\",\"task_id\":\"\([^\"]*\)\",\"text\":\"\(.*\)\"}\$/\1$tab\2$tab\3$tab\4$tab\5$tab\6$tab\7/p"
+  done | tsv
+}
+# tsv: message-shaped JSON lines on stdin -> the TSV above.
+tsv() {
+  sed -n "s/^{\"seq\":\([0-9]*\),\"ts\":\"\([^\"]*\)\",\"from\":\"\([^\"]*\)\",\"kind\":\"\([^\"]*\)\",\"to\":\"\([^\"]*\)\",\"task_id\":\"\([^\"]*\)\",\"text\":\"\(.*\)\"}\$/\1$tab\2$tab\3$tab\4$tab\5$tab\6$tab\7/p"
 }
 
 # unread_lines: the window's lines addressed to $id above its last ack per sender (unsorted).
@@ -201,6 +211,44 @@ case "$cmd" in
     valid_id "$to" || die 2 "invalid recipient: $to"
     [ -n "$*" ] || die 2 "report needs text"
     append "$kind" "$to" "$task" "$*" ;;
+
+  record)
+    # Issue #77: the skills that change org-state say so here, so `rebuild` can replay it.
+    # work_added / approval_asked: text is the entry as written to the document;
+    # work_removed: no text; approval_removed: text is the approval id.
+    kind=${1:-}; [ $# -eq 0 ] || shift
+    case "$kind" in work_added|work_removed|approval_asked|approval_removed) ;;
+      *) die 2 "usage: record <work_added|work_removed|approval_asked|approval_removed> --task <task_id> [text]" ;; esac
+    [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || die 7 "only secretary records $kind"
+    [ "${1:-}" = --task ] && [ $# -ge 2 ] && valid_id "$2" || die 2 "record needs --task <task_id> (lowercase letters, digits, _ and -)"
+    task=$2; shift 2
+    append "$kind" "" "$task" "$*" ;;
+
+  rebuild)
+    # Issue #77: org-state again from the history alone (all months, not only the window). The
+    # secretary's record lines are replayed in seq order. Not in the log, so not rebuilt:
+    # updated_at and other keys the secretary set by hand, and secretary-handover (a note for the
+    # next secretary, replaced whole each time).
+    print=
+    case "${1:-}" in --print) print=1; shift ;; esac
+    [ $# -eq 0 ] || die 2 "usage: rebuild [--print]"
+    [ -n "$print" ] || [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || die 7 "only secretary writes org-state"
+    val=$(cat "$state"/events/*/"$id".jsonl 2>/dev/null | tsv | sort -s -t "$tab" -k1,1n \
+      | awk -F"$tab" "$AWK_UNESC"'
+        $4=="work_added" { if ($6 in w) del_w($6); w[$6]=unesc($7); wn[$6]=++n; wo[n]=$6 }
+        $4=="work_removed" { del_w($6) }
+        $4=="approval_asked" { e=unesc($7); if (!match(e, /"id":"[^"]*"/)) next
+                               k=substr(e, RSTART+6, RLENGTH-7); if (k in a) del_a(k); a[k]=e; an[k]=++m; ao[m]=k }
+        $4=="approval_removed" { del_a(unesc($7)) }
+        function del_w(k) { delete w[k]; delete wn[k] }
+        function del_a(k) { delete a[k]; delete an[k] }
+        END { printf "{\"work\":["; c=0
+              for (i=1;i<=n;i++) { k=wo[i]; if ((k in w) && wn[k]==i) { printf "%s%s", (c++?",":""), w[k] } }
+              printf "],\"approvals\":["; c=0
+              for (i=1;i<=m;i++) { k=ao[i]; if ((k in a) && an[k]==i) { printf "%s%s", (c++?",":""), a[k] } }
+              printf "]}\n" }') || die 5 "cannot read the history under $state/events"
+    if [ -n "$print" ]; then printf '%s\n' "$val"; exit 0; fi
+    printf '%s\n' "$val" | bash "$0" --as "$id" doc set org-state; exit $? ;;
 
   ci_completed)
     # Issue #168: org-pull-request records the watched CI run here, so it shares this id's
