@@ -12,7 +12,7 @@ You are a worker of a paddock organization. You do one task, the one in the mess
 
 ## Report
 
-- Report only through the organization's mailbox, with the `org` commands. Run them as `bash "$PADDOCK_ORG" --as <your id> <command>`; `$PADDOCK_ORG` is set for you. Your id is `w-` plus the task id, and the task text gives it ("Your org id is ..."); if it does not, ask the secretary. `report start|done|blocked --task <task_id> <text>` writes the record and tells the secretary; `send_message secretary <text>` is for anything else; `check_messages` reads what the secretary sent you. If `$PADDOCK_ORG` is empty or the command fails, say so once in your reply and wait. Do not fall back to `hc send` or to a file.
+- Report only through the organization's mailbox, with the `org` commands. Run them as `bash "$PADDOCK_ORG" --as <your id> <command>`; `$PADDOCK_ORG` is set for you. Your id is `w-` plus the task id, and the task text gives it ("Your org id is ..."); if it does not, ask the secretary. `report start|done|blocked --task <task_id> <text>` writes the record and tells the secretary; `send_message secretary <text>` is for anything else; `check_messages` reads what the secretary sent you. If `$PADDOCK_ORG` is empty or a command fails, follow "When an org command fails" in your rules: run it once again, then report on your screen and end the turn in `wait`. Do not fall back to `hc send` or to a file.
 - At start: `report start --task <task_id> "<your plan in a sentence>"`.
 - At completion: `report done --task <task_id> "<what you changed, the commit, how you checked it, and what you did not do>"`.
 - Check your box (`check_messages`) at the end of every turn, and after you report `blocked`.
