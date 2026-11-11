@@ -15,6 +15,10 @@
 # An "empty pass": when the reviewer cannot place its helpers it runs no command and prints a
 # no-findings text with exit 0. So success is judged by a recorded command run ("succeeded in <time>"
 # at a line start), not by the absence of an error.
+# Every outcome after the hook counted the round is recorded (Issue #253): the last line goes to
+# `org --as codex-gate codex_round result` as codex_round_passed or codex_round_failed, with the
+# round, so the result does not rest on the worker quoting it. The task is the worktree's folder
+# name, as the hook reads it ($CLAUDE_PROJECT_DIR, else the repository's top folder).
 set -uo pipefail
 
 [ "$#" -eq 0 ] || { [ "$#" -eq 1 ] && [ "$1" = --design ]; } || {
@@ -24,21 +28,32 @@ mode=diff; [ "${1:-}" = --design ] && mode=design
 base=$(git config --get "branch.$(git rev-parse --abbrev-ref HEAD 2>/dev/null).paddockBase" 2>/dev/null) || base=
 base=${base:-origin/main}
 design=.worker-scratch/design.md
+# end <status> <last line>: record the result, then print the last line and exit
+end() {
+  local pd task d= err
+  pd=${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}; pd=${pd%/}; task=${pd##*/}
+  [ "$mode" = design ] && d=--design
+  if [ -z "${PADDOCK_ORG:-}" ]; then echo "result not recorded: PADDOCK_ORG is not set"
+  elif ! err=$(bash "$PADDOCK_ORG" --as codex-gate codex_round result --task "$task" $d "$2" 2>&1 >/dev/null); then
+    echo "result not recorded: $err"
+  fi
+  echo "$2"; exit "$1"
+}
 
 if [ "$mode" = design ]; then
-  [ -s "$design" ] || { echo "no design to review: write it to $design first" >&2; exit 2; }
+  [ -s "$design" ] || end 2 "CODEX_GATE: not-established (no design to review: write it to $design first)"
 else
   dirty=$(git status --porcelain --untracked-files=no) \
-    || { echo "CODEX_GATE: not-established (git status failed)"; exit 1; }
+    || { end 1 "CODEX_GATE: not-established (git status failed)"; }
   if [ -n "$dirty" ]; then
     printf '%s\n' "$dirty"
-    echo "CODEX_GATE: dirty-worktree (commit first; HEAD=$(git rev-parse --short HEAD 2>/dev/null))"; exit 4
+    end 4 "CODEX_GATE: dirty-worktree (commit first; HEAD=$(git rev-parse --short HEAD 2>/dev/null))"
   fi
   git rev-parse --verify -q "$base^{commit}" >/dev/null && ! git diff --quiet "$base...HEAD" 2>/dev/null \
-    || { echo "CODEX_GATE: not-established (no change against $base, or no $base: nothing to review)"; exit 1; }
+    || { end 1 "CODEX_GATE: not-established (no change against $base, or no $base: nothing to review)"; }
 fi
 
-command -v codex >/dev/null 2>&1 || { echo "CODEX_GATE: unavailable (the reviewing CLI is not installed)"; exit 3; }
+command -v codex >/dev/null 2>&1 || { end 3 "CODEX_GATE: unavailable (the reviewing CLI is not installed)"; }
 
 # The reviewer keeps its login and settings in CODEX_HOME. A worker's sandbox may not let it write
 # there, and it refuses a home under a temp folder, so it gets a folder in the worktree that links
@@ -47,14 +62,14 @@ src=${CODEX_HOME:-$HOME/.codex}
 export CODEX_HOME=$PWD/.codex-home
 # This script runs outside the worker sandbox (Issue #177), in a folder the worker writes: write nothing
 # through a path the worker could have turned into a link.
-[ ! -L "$CODEX_HOME" ] || { echo "CODEX_GATE: not-established ($CODEX_HOME is a symlink)"; exit 1; }
+[ ! -L "$CODEX_HOME" ] || { end 1 "CODEX_GATE: not-established ($CODEX_HOME is a symlink)"; }
 mkdir -p "$CODEX_HOME"
 src=$(cd "$src" 2>/dev/null && pwd -P)
 if [ -n "$src" ] && [ "$src" != "$(cd "$CODEX_HOME" && pwd -P)" ]; then
   ln -sfn "$src/auth.json" "$CODEX_HOME/auth.json"; ln -sfn "$src/config.toml" "$CODEX_HOME/config.toml"
 fi
 
-log=$(mktemp "${TMPDIR:-/tmp}/second-review-$mode.XXXXXX") || { echo "CODEX_GATE: not-established (cannot create the log)"; exit 1; }
+log=$(mktemp "${TMPDIR:-/tmp}/second-review-$mode.XXXXXX") || { end 1 "CODEX_GATE: not-established (cannot create the log)"; }
 if [ "$mode" = design ]; then
   prompt="Read the design at $design and verify it against this repository: every file, function, flag, hook and path it relies on exists and works as assumed, and the design reaches its stated goal without gaps. List findings as Blocker / Major / Minor, each with evidence (file:line) and a concrete fix."
   codex exec -c model_reasoning_effort=high -c sandbox_mode='"read-only"' "$prompt" </dev/null 2>&1 | tee "$log"
@@ -65,5 +80,5 @@ status=${PIPESTATUS[0]}
 
 ok=$(grep -cE '^ *succeeded in [0-9]+(ms|s|m)' "$log"); bad=$(grep -cE '^ *(failed|exited [0-9]+) in [0-9]+(ms|s|m)' "$log")
 summary="succeeded=$ok failed=$bad status=$status log=$log"
-if [ "$ok" -ge 1 ] && [ "$bad" -eq 0 ] && [ "$status" -eq 0 ]; then echo "CODEX_GATE: passed ($summary)"; exit 0; fi
-echo "CODEX_GATE: not-established ($summary; HEAD=$(git rev-parse --short HEAD 2>/dev/null))"; exit 1
+if [ "$ok" -ge 1 ] && [ "$bad" -eq 0 ] && [ "$status" -eq 0 ]; then end 0 "CODEX_GATE: passed ($summary)"; fi
+end 1 "CODEX_GATE: not-established ($summary; HEAD=$(git rev-parse --short HEAD 2>/dev/null))"

@@ -59,6 +59,11 @@ Usage: org [--as <id>] <command> [args]
                                                 codex_round_started; past the task's allowance
                                                 (3 diff rounds, 1 design review) record
                                                 codex_round_denied, tell the secretary, exit 11
+  codex_round result --task T [--design] <last line>
+                                                (codex-gate only, the gate) record how the task's
+                                                latest round ended: codex_round_passed when the
+                                                line starts CODEX_GATE: passed, else
+                                                codex_round_failed; not counted as a round
   codex_round allow --task T --rounds N [--design]
                                                 (secretary only) set task T's allowance to N
   codex_round hook                              (codex-gate only) the workers' PreToolUse hook:
@@ -480,16 +485,29 @@ case "$cmd" in
     # round: under codex-gate's lock in $cdir, count the task's $mode rounds against its allowance
     # (the secretary's latest codex_round_cap_changed, else 3 diff / 1 design) and record
     # codex_round_started, or codex_round_denied to the secretary. Sets msg; false when refused.
+    # used: the task's $mode rounds started so far (the count; result lines are not counted)
+    used() { cat "$cdir"/events/*/codex-gate.jsonl 2>/dev/null | tsv | awk -F"$tab" -v t="$task" -v m="$mode" \
+        '$4=="codex_round_started" && $6==t && index($7, m " ")==1 { n++ } END { print n+0 }'; }
+    # gate_line <kind> <to>: append msg as <kind> to $cdir (lock already held) and the history; drops the lock
+    gate_line() {
+      local f s
+      f="\"ts\":\"$now\",\"from\":\"$id\",\"kind\":\"$1\",\"to\":\"$2\",\"task_id\":\"$task\",\"text\":\"$(printf '%s\n' "$msg" | json_esc)\""
+      # as in put: high-water first, then the line, both inside the lock that covered the count
+      s=$(next_seq)
+      printf '%s\n' "$s" > "$cdir/events/$id.seq" && printf '{"seq":%s,%s}\n' "$s" "$f" >> "$cdir/events/$cur/$id.jsonl" \
+        || { lock_drop "$lk"; die 5 "cannot write the Codex round count in $cdir"; }
+      lock_drop "$lk"
+      state=$hist; put "$f"
+    }
+    gate_lock() { hist=$state; lk=$cdir/events/$id.lock; state=$cdir
+      mkdir -p "$cdir/events/$cur" || die 5 "cannot create $cdir/events/$cur"; lock_take "$lk"; }
     round() {
-      local hist=$state used allowed k to f s lk=$cdir/events/$id.lock
-      state=$cdir
-      mkdir -p "$cdir/events/$cur" || die 5 "cannot create $cdir/events/$cur"
-      lock_take "$lk"
+      local hist lk used allowed k to
+      gate_lock
       allowed=$(cat "$cdir"/events/*/secretary.jsonl 2>/dev/null | tsv | awk -F"$tab" -v t="$task" -v m="$mode" \
         '$4=="codex_round_cap_changed" && $6==t { split($7, a, " "); if (a[1]==m) v=a[2] } END { print v }')
       [ -n "$allowed" ] || { [ "$mode" = diff ] && allowed=3 || allowed=1; }
-      used=$(cat "$cdir"/events/*/codex-gate.jsonl 2>/dev/null | tsv | awk -F"$tab" -v t="$task" -v m="$mode" \
-        '$4=="codex_round_started" && $6==t && index($7, m " ")==1 { n++ } END { print n+0 }')
+      used=$(used)
       if [ "$used" -lt "$allowed" ]; then
         k=codex_round_started; to=; msg="$mode round $((used + 1)) of $allowed"
       else
@@ -497,13 +515,7 @@ case "$cmd" in
         msg="$mode round refused for task $task: $used of $allowed used; to allow more: org --as secretary codex_round allow --task $task --rounds <N>"
         [ "$mode" = diff ] || msg="$msg --design"
       fi
-      f="\"ts\":\"$now\",\"from\":\"$id\",\"kind\":\"$k\",\"to\":\"$to\",\"task_id\":\"$task\",\"text\":\"$(printf '%s\n' "$msg" | json_esc)\""
-      # as in put: high-water first, then the line, both inside the lock that covered the count
-      s=$(next_seq)
-      printf '%s\n' "$s" > "$cdir/events/$id.seq" && printf '{"seq":%s,%s}\n' "$s" "$f" >> "$cdir/events/$cur/$id.jsonl" \
-        || { lock_drop "$lk"; die 5 "cannot write the Codex round count in $cdir"; }
-      lock_drop "$lk"
-      state=$hist; put "$f"
+      gate_line "$k" "$to"
       [ "$k" = codex_round_started ]
     }
     args() { # --task, --design and (allow) --rounds
@@ -512,7 +524,7 @@ case "$cmd" in
           --task) [ $# -ge 2 ] || die 2 "--task needs a value"; task=$2; shift 2 ;;
           --rounds) [ "$sub" = allow ] && [ $# -ge 2 ] || die 2 "--rounds goes with allow and needs a value"; rounds=$2; shift 2 ;;
           --design) mode=design; shift ;;
-          *) die 2 "usage: codex_round start --task T [--design] | allow --task T --rounds N [--design] | hook" ;;
+          *) die 2 "usage: codex_round start|result --task T [--design] [<last line>] | allow --task T --rounds N [--design] | hook" ;;
         esac
       done
       valid_id "$task" || die 2 "codex_round needs --task <task_id> (lowercase letters, digits, _ and -)"
@@ -522,6 +534,15 @@ case "$cmd" in
         [ "$id" = codex-gate ] || die 7 "only codex-gate records a Codex round"
         args "$@"
         if round; then echo "$msg"; else echo "CODEX_ROUND_DENIED: $msg" >&2; exit 11; fi ;;
+      result)
+        # Issue #253: the gate's own record of how the round the hook counted ended, with that
+        # round and the gate's last line. Not counted against the allowance.
+        [ "$id" = codex-gate ] || die 7 "only codex-gate records a Codex round's result"
+        [ $# -ge 1 ] || die 2 "usage: codex_round result --task T [--design] <last line>"
+        line=${!#}; set -- "${@:1:$#-1}"; args "$@"
+        rk=codex_round_failed; case "$line" in "CODEX_GATE: passed"*) rk=codex_round_passed ;; esac
+        gate_lock; msg="$mode round $(used): $line"; gate_line "$rk" ""
+        echo "$msg" ;;
       allow)
         [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || die 7 "only secretary sets a Codex round allowance"
         args "$@"
@@ -590,7 +611,7 @@ case "$cmd" in
         valid_id "$task" || refuse "cannot tell this worker's task: CLAUDE_PROJECT_DIR ('${CLAUDE_PROJECT_DIR:-}') must end in the task id"
         round && exit 0
         refuse "CODEX_ROUND_DENIED: $msg. Do not run Codex again: report the open findings to the secretary and stop." ;;
-      *) die 2 "usage: codex_round start --task T [--design] | allow --task T --rounds N [--design] | hook" ;;
+      *) die 2 "usage: codex_round start|result --task T [--design] [<last line>] | allow --task T --rounds N [--design] | hook" ;;
     esac ;;
 
   doc)
