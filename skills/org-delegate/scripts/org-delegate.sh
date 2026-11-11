@@ -6,7 +6,7 @@ set -u
 usage() {
   cat <<'USAGE'
 Usage: org-delegate.sh --project <git repo> --task-id <id> (--task <text> | --task-file <file|->)
-                       [--base <ref>] [--branch <name>] [--allow-write <path>]...
+                       [--base <ref>] [--no-fetch] [--branch <name>] [--allow-write <path>]...
 
 Creates a git worktree for the task under the workers folder, writes
 .claude/settings.local.json into it (hc file write), starts the worker with
@@ -18,7 +18,9 @@ brief file into the worktree (rules: --append-system-prompt-file in the template
   --task-id      [a-z0-9_-], at most 30 characters; the worker is w-<id>, the label task_id=<id>
   --task         the task text (what to change, what not to touch, how to report)
   --task-file    the task text from a file, or - for stdin
-  --base         start point of the new branch (default main)
+  --base         start point of the new branch (default main); when the project has an
+                 origin, it is fetched first and origin/<base> is used if it exists
+  --no-fetch     do not fetch origin; branch from the local base
   --branch       new branch name (default work/<id>)
   --allow-write  an absolute path (or ~/...) the worker may also write; repeatable.
                  Goes to sandbox.filesystem.allowWrite in the worktree's settings file.
@@ -40,7 +42,7 @@ USAGE
 die() { code=$1; shift; echo "org-delegate: $*" >&2; exit "$code"; }
 needs() { [ $# -ge 2 ] || die 2 "$1 needs a value"; }
 
-project= id= task= taskfile= base=main branch= allow=()
+project= id= task= taskfile= base=main branch= allow=() fetch=1
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
@@ -50,6 +52,7 @@ while [ $# -gt 0 ]; do
     --task-file) needs "$@"; taskfile=$2; shift 2 ;;
     --base) needs "$@"; base=$2; shift 2 ;;
     --branch) needs "$@"; branch=$2; shift 2 ;;
+    --no-fetch) fetch=; shift ;;
     --allow-write) needs "$@"; allow+=("$2"); shift 2 ;;
     *) echo "org-delegate: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -96,6 +99,12 @@ if hc get "$name" >/dev/null 2>&1; then die 7 "a terminal named $name already ex
 
 # 2. The worktree, under the one trusted workers folder (Q13 b).
 git -C "$project" rev-parse --git-dir >/dev/null 2>&1 || die 6 "$project is not a git repository"
+# Fetch origin first and branch from origin/<base> when it exists, so the base is current.
+# No origin remote: nothing to fetch. A failed fetch stops here (nothing created); --no-fetch skips it.
+if [ -n "$fetch" ] && git -C "$project" remote get-url origin >/dev/null 2>&1; then
+  git -C "$project" fetch -q origin >/dev/null 2>&1 || die 6 "git fetch origin failed in $project; fix it or pass --no-fetch"
+  ! git -C "$project" rev-parse --verify -q "refs/remotes/origin/$base^{commit}" >/dev/null || base=origin/$base
+fi
 git -C "$project" rev-parse --verify -q "$base^{commit}" >/dev/null || die 6 "base $base is not a commit in $project"
 [ ! -e "$wt" ] && [ ! -L "$wt" ] || die 6 "$wt already exists; remove it (git worktree remove) or pick another task id"
 mkdir -p "$workers" || die 6 "cannot create $workers"
