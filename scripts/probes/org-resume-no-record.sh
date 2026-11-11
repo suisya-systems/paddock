@@ -78,7 +78,13 @@ wait_status() { # wait_status <seconds>: answer the trust dialog while waiting
   i=0
   while [ $i -lt "$1" ]; do
     screen=$(hc read "$NAME" 2>/dev/null)
-    case "$screen" in *"Quick safety check"*|*"trust this folder"*) echo "-- answering the folder-trust dialog"; hc keys "$NAME" enter >/dev/null 2>&1 ;; esac
+    case "$screen" in
+      *"Quick safety check"*|*"trust this folder"*)
+        # The cursor can rest on "No, exit": move it to "Yes" first (as continue-multi-conv.sh does), then confirm.
+        echo "-- answering the folder-trust dialog"
+        case "$screen" in *"❯ No"*) hc keys "$NAME" down enter >/dev/null 2>&1 ;; *) hc keys "$NAME" enter >/dev/null 2>&1 ;; esac
+        sleep 3 ;;
+    esac
     has_status && return 0
     i=$((i + 2)); sleep 2
   done
