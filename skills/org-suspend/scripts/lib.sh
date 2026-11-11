@@ -66,8 +66,7 @@ work_lines() {
         if (ob > 0 || c == "}") o = o c
         if (c == "}" && ob == 0) { print o; o = "" }
       }
-      if (!ok || ob != 0) print "UNCLOSED" }') || return 1
-  case "$objs" in *UNCLOSED*) echo "the work list in org-state cannot be read (not closed)" >&2; return 1 ;; esac
+      if (!ok || ob != 0) exit 1 }') || { echo "the work list in org-state cannot be read (not closed)" >&2; return 1; }
   printf '%s\n' "$objs" | grep '"worktree"' | while IFS= read -r e; do
     id=$(jf "$e" task_id); wt=$(jf "$e" worktree); tk=$(jf "$e" task); ti=$(jf "$e" title)
     if [ -n "$wt" ] && git -C "$wt" rev-parse HEAD >/dev/null 2>&1; then
