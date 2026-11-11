@@ -356,12 +356,16 @@ export default class Cockpit extends View {
       .hover((st) => st.bg(stillBlocked ? c + "d9" : t.hover))
       .on_click(() => run("terminal.peek", { terminal: term.address }))
       .child(stillBlocked ? `Open ${a.task_id} to answer` : `Open ${a.task_id}`);
-    return v_flex().min_h(0).gap(8)
-      .child(v_flex().id(`ap-${a.id}`).min_h(0).rounded(12).bg(t.raised).border(1).border_color(c + "59")
+    // Two parts of one card: the text (head), which renderApproval puts in the rail's scroll area,
+    // and the controls (foot), pinned below it. A scroll area nested in auto-height columns is
+    // measured at zero height by the layout (Issue #258's first render showed no text at all), so
+    // the scroll area is the rail itself, sized by the layout block.
+    const edge = c + "59";
+    const head = v_flex().id(`ap-${a.id}`).flex_none().rounded_t(12).bg(t.raised).border_t(1).border_x(1).border_color(edge)
         .child(h_flex().flex_none().h(36).px(16).gap(8).items_center().rounded_t(11).bg(c + "1f")
           .child(div().size(8).flex_none().rounded(4).bg(c).when(loud, (el) => el.loop("opacity", { from: 0.35, to: 1, period: 1400 })))
           .child(this.label(t, label, c)))
-        .child(v_flex().id(`ap-body-${a.id}`).min_h(0).overflow_y_scrollbar().px(16).pt(14).pb(16).gap(16)
+        .child(v_flex().px(16).pt(14).pb(16).gap(16)
           .child(v_flex().gap(4)
             .child(div().text_size(13).font_semibold().line_height(1.35).text_color(t.foreground).whitespace_normal().child(title || task))
             .when(Boolean(meta), (el) => el.child(div().text_size(11).text_color(t.dim).whitespace_normal().child(meta))))
@@ -382,8 +386,11 @@ export default class Cockpit extends View {
                 .text_size(11).font_semibold().text_color(c).child(rec === "yes" ? "Yes" : "No"))))
             .when(Boolean(a.why), (e) => e.child(text(a.why, t.muted)))))
           .when(missing.length > 0, (el) => el.child(div().text_size(12).line_height(1.4).text_color(t.muted).whitespace_normal()
-            .child(`Not written: ${missing.join(", ")}.` + (missing.length === 4 && a.question ? " Ask the secretary before answering." : "")))))
-        .child(v_flex().flex_none().px(16).py(12).gap(10).border_t(1).border_color(t.foreground + "14")
+            .child(`Not written: ${missing.join(", ")}.` + (missing.length === 4 && a.question ? " Ask the secretary before answering." : "")))));
+    const foot = v_flex().flex_none().gap(8)
+      .child(v_flex().rounded_b(12).bg(t.raised).border_b(1).border_x(1).border_color(edge)
+        .child(div().mx(16).h(1).bg(t.foreground + "14"))
+        .child(v_flex().px(16).py(12).gap(10)
           .when(failed, (el) => el.child(div().text_size(12).text_color(c).child("Not sent. Try again.")))
           .when(answerable, (el) => el.child(h_flex().gap(8)
             .child(this.choice(t, a, "yes", "Yes", rec === "yes"))
@@ -391,7 +398,8 @@ export default class Cockpit extends View {
           .when(Boolean(open), (el) => el.child(open))
           .when(inWorker && !term, (el) => el.child(div().text_size(12).line_height(1.4).text_color(c).whitespace_normal().child(`No terminal for ${task}. Tell the secretary.`)))
           .when(!inWorker || !term, (el) => el.child(this.secretaryLink(t)))))
-      .when(more > 0, (el) => el.child(div().flex_none().px(4).text_size(12).text_color(t.muted).child(`and ${more} more waiting`)));
+      .when(more > 0, (el) => el.child(div().px(4).text_size(12).text_color(t.muted).child(`and ${more} more waiting`)));
+    return { head, foot };
   }
 
   // A sent answer, quiet, until the secretary removes the approval; loud again after 2 minutes.
@@ -415,11 +423,16 @@ export default class Cockpit extends View {
       const sent = approvals.filter(isSent);
       const now = Date.now();
       const titles = new Map((this.value().work ?? []).map((w) => [w.task_id, w.title]));
-      body = v_flex().min_h(0).gap(8)
-        .children(sent.slice(0, 2).map((a) => this.sentRow(t, a, this.sent.get(a.id), now)))
-        .when(sent.length > 2, (el) => el.child(div().px(4).text_size(11).text_color(t.muted).child(`+${sent.length - 2} answered`)))
-        .child(waiting.length ? this.card(t, waiting[0], waiting.length - 1, now, titles.get(waiting[0].task_id))
-          : this.quiet(t, sent.length ? "Nothing else waiting for you." : "Nothing waiting for you."));
+      const card = waiting.length ? this.card(t, waiting[0], waiting.length - 1, now, titles.get(waiting[0].task_id)) : null;
+      // The rail scrolls; the spacer keeps a short card at the bottom, and flex_none keeps a long
+      // one from being squeezed. The card's controls stay pinned under the scroll area.
+      return v_flex().size_full().min_h(0).pb(4)
+        .child(v_flex().id("approval-scroll").flex_1().min_h(0).gap(8).overflow_y_scrollbar()
+          .child(div().flex_1())
+          .children(sent.slice(0, 2).map((a) => this.sentRow(t, a, this.sent.get(a.id), now).flex_none()))
+          .when(sent.length > 2, (el) => el.child(div().flex_none().px(4).text_size(11).text_color(t.muted).child(`+${sent.length - 2} answered`)))
+          .child(card ? card.head : this.quiet(t, sent.length ? "Nothing else waiting for you." : "Nothing waiting for you.").flex_none()))
+        .when(Boolean(card), (el) => el.child(card.foot));
     }
     return v_flex().size_full().min_h(0).justify_end().pb(4).child(body);
   }
