@@ -41,7 +41,7 @@ History is JSON lines, events/<YYYY-MM>/<id>.jsonl under $PADDOCK_STATE_DIR
 (default ${XDG_STATE_HOME:-~/.local/state}/paddock); each id appends only to its own file.
 Readers look at this month and the last. $PADDOCK_NOW (UTC ISO 8601) fixes the clock for tests.
 Documents are the names of decision 0004: org-state (64 KiB), secretary-handover (32 KiB; null, or
-an object with exactly last_exchange, unrecorded_decisions, open_threads and a UTC written_at; needs jq);
+an object with exactly last_exchange, unrecorded_decisions, open_threads and a UTC written_at);
 the writer is secretary (or the terminal name in $PADDOCK_SECRETARY_NAME, for a probe beside a real one). $PADDOCK_HC_HOLD seconds (default 1)
 is how long hc connect's input stays open after a request. $PADDOCK_WAIT_POLL seconds (default 2)
 is how often wait looks at the mailbox. $PADDOCK_LOCK_WAIT seconds (default 60) is how long a
@@ -396,10 +396,45 @@ case "$cmd" in
       [ -n "$new" ] || die 10 "update command printed no value; $name not written"
       [ "${#new}" -le "$cap" ] || die 8 "value is ${#new} bytes, over the $cap cap of $name"
       if [ "$name" = secretary-handover ]; then
-        command -v jq >/dev/null 2>&1 || die 3 "jq not found on PATH (needed to check secretary-handover)"
-        printf '%s' "$new" | jq -e '. == null or (type == "object"
-            and (keys | sort) == ["last_exchange","open_threads","unrecorded_decisions","written_at"]
-            and (.written_at | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$") and (sub("\\.[0-9]+";"") | try (fromdateiso8601 | true) catch false)))' >/dev/null 2>&1 \
+        # No jq (paddock installs nothing beyond herdr): a small top-level scanner. It checks the
+        # value is null, or an object with exactly the four keys and a real UTC written_at.
+        # ponytail: nested values are skipped by bracket depth and not validated; hc parses them.
+        HANDOVER_VALUE=$new awk 'function ws() { while (substr(s, i, 1) ~ /[ \t\r]/) i++ }
+          function str(   c, r) { i++; r = ""
+            while (i <= n) { c = substr(s, i, 1)
+              if (c == "\\") { r = r substr(s, i, 2); i += 2; continue }
+              if (c == "\"") { i++; return r }
+              r = r c; i++ }
+            bad = 1; return "" }
+          function leap(y) { return (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 }
+          BEGIN { s = ENVIRON["HANDOVER_VALUE"]; n = length(s); i = 1; ws()
+            if (substr(s, i, 4) == "null") { i += 4; ws(); exit (i <= n) }
+            if (substr(s, i, 1) != "{") exit 1
+            i++
+            for (;;) { ws(); if (substr(s, i, 1) != "\"") exit 1
+              k = str(); if (bad || (k in seen)) exit 1
+              seen[k] = 1; cnt++
+              ws(); if (substr(s, i, 1) != ":") exit 1
+              i++; ws(); vs = i; depth = 0
+              if (substr(s, i, 1) == "\"") { v = str(); if (bad) exit 1; if (k == "written_at") wa = v }
+              else while (i <= n) { c = substr(s, i, 1)
+                if (c == "\"") { str(); if (bad) exit 1; continue }
+                if (c == "{" || c == "[") depth++
+                else if (c == "}" || c == "]") { if (depth == 0) break; depth-- }
+                else if (c == "," && depth == 0) break
+                i++ }
+              if (depth != 0 || i == vs) exit 1
+              ws(); c = substr(s, i, 1); i++
+              if (c == ",") continue
+              if (c == "}") break
+              exit 1 }
+            ws(); if (i <= n) exit 1
+            if (cnt != 4 || !("last_exchange" in seen) || !("unrecorded_decisions" in seen) || !("open_threads" in seen) || !("written_at" in seen)) exit 1
+            if (wa !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9](\.[0-9]+)?Z$/) exit 1
+            y = substr(wa, 1, 4) + 0; mo = substr(wa, 6, 2) + 0; d = substr(wa, 9, 2) + 0
+            dm = (mo == 2) ? (leap(y) ? 29 : 28) : ((mo == 4 || mo == 6 || mo == 9 || mo == 11) ? 30 : 31)
+            if (mo < 1 || mo > 12 || d < 1 || d > dm || substr(wa, 12, 2) + 0 > 23 || substr(wa, 15, 2) + 0 > 59 || substr(wa, 18, 2) + 0 > 59) exit 1
+            exit 0 }' \
           || die 2 "secretary-handover must be null or an object with exactly last_exchange, unrecorded_decisions, open_threads and written_at (UTC ISO 8601, ending in Z); nothing written"
       fi
       ans=$(rpc "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"doc.set\",\"params\":{\"name\":\"$name\",\"value\":$new,\"version\":$ver}}")
