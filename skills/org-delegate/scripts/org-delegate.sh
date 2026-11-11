@@ -154,7 +154,10 @@ if [ "${#allow[@]}" -gt 0 ]; then
   for p in "${allow[@]}"; do list="$list${list:+,}\"$p\""; done
   fs="\"allowWrite\":[$list],$fs"
 fi
-json="{\"sandbox\":{\"filesystem\":{$fs}}}"
+# Issue #189: caches go to the sandbox temporary folder of the worker. Claude Code does not expand $TMPDIR in a
+# settings env value (measured on 2.1.322), so write the path out; the sandbox's TMPDIR is /tmp/claude-<uid>.
+ct=/tmp/claude-$(id -u)
+json="{\"sandbox\":{\"filesystem\":{$fs}},\"env\":{\"npm_config_cache\":\"$ct/npm-cache\",\"UV_CACHE_DIR\":\"$ct/uv-cache\",\"PIP_CACHE_DIR\":\"$ct/pip-cache\"}}"
 printf '%s\n' "$json" | hc file write "$sf" >/dev/null 2>&1 \
   || fail_undone 5 "hc file write failed for $sf; the worktree and branch were removed"
 { [ -f "$sf" ] && [ ! -L "$sf" ] && [ "$(cd "$wt/.claude" && pwd -P)" = "$(cd "$wt" && pwd -P)/.claude" ]; } \
