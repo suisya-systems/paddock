@@ -34,3 +34,30 @@ paddock_terminals() {
     [ -z "$l" ] || printf '%s\t%s\n' "$n" "$l"
   done
 }
+
+# org_state_doc: the org-state document as one line (doc.get through hc connect; prototype 1: hold
+# the input 1 s). "null" when it has no value. Fails (message on stderr) when it cannot be read.
+org_state_doc() {
+  local req doc
+  req='{"jsonrpc":"2.0","id":1,"method":"doc.get","params":{"name":"org-state"}}'
+  doc=$(set -o pipefail; { printf '%s\n' "$req"; sleep 1; } | hc connect 2>/dev/null | tr -d '\n') || { echo "hc connect failed" >&2; return 1; }
+  printf '%s' "$doc" | grep -q '"result"' || { echo "org-state could not be read (no result in the answer)" >&2; return 1; }
+  printf '%s' "$doc" | grep -Eq '"value": *\{' || doc=null
+  printf '%s' "$doc"
+}
+# work_lines <doc>: a "work<TAB>id<TAB>worktree<TAB>head<TAB>dirty<TAB>task<TAB>title" line per work
+# entry, head and dirty read from the worktree now. Fails when an entry cannot be read.
+# ponytail: grep/sed JSON reading; assumes flat entries, no braces inside strings.
+work_lines() {
+  local doc=$1 n_all n_ok e id wt tk ti h d
+  jf() { printf '%s' "$1" | sed -n 's/.*"'"$2"'": *"\(\([^"\\]\|\\.\)*\)".*/\1/p'; }
+  n_all=$(printf '%s' "$doc" | grep -o '"worktree"' | wc -l); n_ok=$(printf '%s' "$doc" | grep -o '{[^{}]*"worktree"[^{}]*}' | wc -l)
+  [ "$n_all" -eq "$n_ok" ] || { echo "a work entry in org-state cannot be read (braces inside a string?)" >&2; return 1; }
+  printf '%s' "$doc" | grep -o '{[^{}]*"worktree"[^{}]*}' | while IFS= read -r e; do
+    id=$(jf "$e" task_id); wt=$(jf "$e" worktree); tk=$(jf "$e" task); ti=$(jf "$e" title)
+    if [ -n "$wt" ] && git -C "$wt" rev-parse HEAD >/dev/null 2>&1; then
+      h=$(git -C "$wt" rev-parse HEAD); d=$(git -C "$wt" status --porcelain | wc -l | tr -d ' ')
+    else h=missing; d=0; fi
+    printf 'work\t%s\t%s\t%s\t%s\t%s\t%s\n' "${id:--}" "${wt:--}" "$h" "$d" "${tk:--}" "${ti:--}"
+  done
+}

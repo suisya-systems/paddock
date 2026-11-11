@@ -14,7 +14,7 @@ bash skills/org-resume/scripts/org-resume.sh --apply    # relaunches workers who
 
 ## What it does
 
-1. Reads the `suspend.record` that [org-suspend](../org-suspend/SKILL.md) wrote. No record: exit 9, nothing launched.
+1. Reads the `suspend.record` that [org-suspend](../org-suspend/SKILL.md) wrote. **No record** (an unplanned core stop: a crash or a restart): it reads the `work` entries of `org-state` instead, says so in its output and lists what it could not restore (the git comparison with a record, the recorded terminal names, the recorded terminal states), then goes on as below with `w-<task_id>` as the name and the core's answer as the state. No record and no `work` entry: exit 9, nothing launched.
 2. Per worker (`work` entry), finds its terminal by the `task_id` label and prints: the git comparison (`HEAD` unchanged or changed, uncommitted files, worktree missing) and whether the terminal is alive (it reports a status) or gone.
 3. Prints the plan and stops. Without `--apply` it runs no `hc run`, `hc kill` or `hc rm`.
 4. With `--apply`, for each worker whose terminal is gone:
@@ -35,8 +35,8 @@ Workers that are alive are left alone. Unlabelled terminals are never touched. I
 
 ## Exit codes
 
-0 plan printed or workers resumed, 2 bad argument, 3 `hc` not found, 4 run inside an agent, 5 core unreachable or `hc rm` failed, 9 no suspend record, 13 a worker could not be relaunched.
+0 plan printed or workers resumed, 2 bad argument, 3 `hc` not found, 4 run inside an agent, 5 core unreachable or `hc rm` failed, 9 no suspend record and no work in the work list, 13 a worker could not be relaunched.
 
 ## Not measured
 
-Real `hc` behaviour, and the fallback end to end (a failed `--continue` followed by a fresh worker), are not measured; tested only against a stubbed `hc` (`tests/org-resume.test.sh`).
+The no-record path is measured by `scripts/probes/org-resume-no-record.sh` (a worker in progress, the core stopped without a suspend, then resume); see the Issue for the output once it has been run. Real `hc` behaviour, and the fallback end to end (a failed `--continue` followed by a fresh worker), are not measured; tested only against a stubbed `hc` (`tests/org-resume.test.sh`).
