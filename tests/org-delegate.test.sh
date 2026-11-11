@@ -156,6 +156,19 @@ grep -q '"allowWrite"' <<<"$sj" && grep -qF "\"$tmp/out dir\"" <<<"$sj" && grep 
   && grep -q '"sandbox"' <<<"$sj" && grep -q '"filesystem"' <<<"$sj" \
   && ! grep -q '"allowWrite"' "$workers/t1/.claude/settings.local.json"
 check "--allow-write lands in sandbox.filesystem.allowWrite of the per-task settings file" $?
+# Issue #177: the two argument-free review-gate calls run outside the worker sandbox; exact strings, no
+# wildcard, quoted and unquoted path, the same strings in excludedCommands and permissions.allow.
+if command -v node >/dev/null 2>&1; then
+  node -e '
+    const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+    const g = (process.env.PADDOCK_BIN_DIR || (process.env.XDG_DATA_HOME || process.env.HOME + "/.local/share") + "/paddock/bin") + "/second-model-review.sh";
+    const want = [`bash "${g}"`, `bash ${g}`, `bash "${g}" --design`, `bash ${g} --design`];
+    const same = (a, b) => a.length === b.length && b.every(x => a.includes(x));
+    const ex = s.sandbox.excludedCommands, al = s.permissions.allow.map(x => x.replace(/^Bash\((.*)\)$/, "$1"));
+    process.exit(same(ex, want) && same(al, want) && !ex.concat(al).some(x => x.includes("*")) && s.sandbox.allowUnsandboxedCommands === false ? 0 : 1);' \
+    "$tmp/state/settings/t1.json"
+  check "the review gate's exact calls are in excludedCommands and permissions.allow of the per-task file" $?
+fi
 if command -v node >/dev/null 2>&1; then
   node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$workers/t1/.claude/settings.local.json"
   check "the settings file is valid JSON" $?

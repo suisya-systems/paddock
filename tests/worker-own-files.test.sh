@@ -69,7 +69,7 @@ js "$ps" 'const want = process.argv.slice(2);
   "$state/events/2026-11/w-t1.jsonl" "$state/events/2026-12/w-t1.jsonl" "$state/events/w-t1.seq" "$state/locks/w-t1" "$tmp/extra"
 check "allowWrite is exactly the worker's own files (this month, next month, seq, lock folder) and --allow-write" $?
 js "$ps" 'const t = JSON.parse(require("fs").readFileSync(process.argv[2], "utf8"));
-  s.sandbox.filesystem.allowWrite = []; t.sandbox.filesystem.allowWrite = [];
+  for (const x of [s, t]) { x.sandbox.filesystem.allowWrite = []; x.sandbox.excludedCommands = []; x.permissions.allow = []; } // the gate calls are per-task too (Issue #177)
   process.exit(JSON.stringify(s) === JSON.stringify(t) ? 0 : 1)' "$settings"
 check "everything else in the per-task file is the shared worker settings" $?
 for f in events/2026-11/w-t1.jsonl events/2026-12/w-t1.jsonl events/w-t1.seq; do

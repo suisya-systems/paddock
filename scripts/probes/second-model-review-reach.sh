@@ -10,7 +10,8 @@
 # (the exit trap removes it and restores the claude link, Issues #212, #213): a git repository with one commit ahead of a local origin/main ref. The
 # round count and the history go to folders under it (PADDOCK_CODEX_DIR, PADDOCK_STATE_DIR), so the
 # real counter is not touched. The reviewing CLI really runs once, on a one-line file.
-# The run starts like a worker: `claude -p --settings templates/worker-settings.json --tools Bash
+# The run starts like a worker: `claude -p --settings <the template with the gate calls filled in, as
+# org-delegate writes them: exact strings in sandbox.excludedCommands and permissions.allow> --tools Bash
 # --allowedTools Bash`, with PADDOCK_ORG and PADDOCK_CODEX_GATE set as the worker template sets them,
 # and is told to run exactly `bash "$PADDOCK_CODEX_GATE"`, keep the sandbox ON and not retry a refused
 # call another way. A refusal is a valid result.
@@ -28,7 +29,7 @@ set -u
 ROOT=$(pwd)
 [ -f "$ROOT/templates/worker-settings.json" ] || { echo "RESULT precondition-failed: run from the repo root"; exit 1; }
 [ $# -eq 0 ] || { echo "RESULT precondition-failed: no argument"; exit 1; }
-for c in claude codex git timeout mktemp grep sed; do command -v $c >/dev/null 2>&1 || { echo "RESULT precondition-failed: $c not on PATH"; exit 1; }; done
+for c in claude codex git node timeout mktemp grep sed; do command -v $c >/dev/null 2>&1 || { echo "RESULT precondition-failed: $c not on PATH"; exit 1; }; done
 case "$HOME$ROOT" in *[[:space:]\"\'\\]*) echo "RESULT precondition-failed: HOME and the checkout path must have no whitespace, quote or backslash"; exit 1 ;; esac
 WAIT=${PADDOCK_PROBE_WAIT:-400}
 . "$(dirname "$0")/claude-link.sh"
@@ -42,14 +43,24 @@ W=$T/work; mkdir -p "$W" "$T/rounds" "$T/state" || exit 1
   && echo one > a.txt && git add a.txt && git commit -q -m one && git update-ref refs/remotes/origin/main HEAD \
   && echo two >> a.txt && git commit -q -am two) || { echo "RESULT precondition-failed: cannot build the probe repository"; exit 1; }
 
-TASK='Probe for paddock Issue #177. This is a permitted measurement of whether the review gate runs in your sandbox. Make exactly one Bash call, in the foreground, with this command text and nothing else: bash "$PADDOCK_CODEX_GATE"   -- Keep the sandbox ON: never use the Bash option that skips the sandbox, and do not retry a refused call another way. A refusal or an error is a valid result. Then reply with the last line the command printed, verbatim, and the error text if it printed one.'
+GATE=$ROOT/scripts/second-model-review.sh
+SET=$T/settings.json
+# the same four exact strings org-delegate fills in (quoted and unquoted path, with and without --design)
+node -e '
+  const [t, g, out] = process.argv.slice(1);
+  const s = JSON.parse(require("fs").readFileSync(t, "utf8"));
+  const c = ["bash \"" + g + "\"", "bash " + g, "bash \"" + g + "\" --design", "bash " + g + " --design"];
+  s.sandbox.excludedCommands = c; s.permissions.allow = c.map(x => "Bash(" + x + ")");
+  require("fs").writeFileSync(out, JSON.stringify(s));' "$ROOT/templates/worker-settings.json" "$GATE" "$SET" \
+  || { echo "RESULT precondition-failed: cannot write the settings file (node needed)"; exit 1; }
+TASK='Probe for paddock Issue #177. This is a permitted measurement of whether the review gate runs in your sandbox. Make exactly one Bash call, in the foreground, with this command text and nothing else (the path written out, no variable): bash "'"$GATE"'"   -- Keep the sandbox ON: never use the Bash option that skips the sandbox, and do not retry a refused call another way. A refusal or an error is a valid result. Then reply with the last line the command printed, verbatim, and the error text if it printed one.'
 log=$T/log
 (cd "$W" && env -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID \
   -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_CODE_SESSION_ATTENDED \
   -u CLAUDE_PID -u CLAUDE_TMPDIR \
   PADDOCK_ORG="$ROOT/scripts/org" PADDOCK_CODEX_GATE="$ROOT/scripts/second-model-review.sh" \
   PADDOCK_CODEX_DIR="$T/rounds" PADDOCK_STATE_DIR="$T/state" \
-  timeout "$WAIT" claude -p --settings "$ROOT/templates/worker-settings.json" --tools Bash --allowedTools Bash \
+  timeout "$WAIT" claude -p --settings "$SET" --tools Bash --allowedTools Bash \
     --strict-mcp-config --no-session-persistence --output-format stream-json --verbose "$TASK" \
   > "$log" 2>&1 < /dev/null)
 echo "RESULT run: INFO claude -p exited $? (124 = timeout)"
