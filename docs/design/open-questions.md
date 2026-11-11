@@ -474,7 +474,17 @@ Growth is assumed by the owner to be at least 2 times, and pessimistically 4 tim
 - **Consequences:** the inventory rows GT-1, GT-14 and HK-15 point at CI. The CI job's design is a follow-up issue, not this record. A small local hook may be added later if a local block is wanted, as an addition and not a replacement.
 - **Not measured:** no such CI job exists yet. Whether GitHub's required checks can express "failed at the first commit" is not established and needs the follow-up.
 
-**Decides (the other tools).** The owner.
+**Draft for the owner (Issue #21, 2026-11-11; not decided).** One line per remaining tool. The options are the (a) to (d) above. The Codex round counter (GT-2, HK-14) is not covered here and stays open. Standing rules used: tools over sentences; paddock installs nothing beyond herdr ([README](../../README.md), inventory RET-5).
+
+| Tool | Recommendation | Why | Source |
+|---|---|---|---|
+| Delegation packet and brief generators (INS-12, ST-9) | **(a) shell, already landed.** Close the row; nothing more to build. | `org-delegate.sh` builds the brief and starts the worker with `hc run`; the role rules are a file passed with `--append-system-prompt-file` (Q12). The TOML brief files (ST-9) have no reader left. The acceptance declaration moves to CI with the gate. | [`org-delegate.sh`](../../skills/org-delegate/scripts/org-delegate.sh) line 172; Q12 decided above; inventory INS-12, ST-9 |
+| Settings renderer and drift checker (PRM-2, PRM-3) | **(c) retire** the renderer; **(d) CI** for any check. | Q10 recommends hand-written settings per role, so there is nothing to render and nothing to drift from. The shape of `templates/worker-settings.json` is already checked by `tests/worker-settings-*.test.sh` in CI, so no local checker is added. | Q10 option 1; [`worker-settings.json`](../../templates/worker-settings.json); inventory PRM-3 |
+| Premise reminder (HK-10) | **(a) shell.** A `UserPromptSubmit` hook with one `grep -E` over the prompt (number with a unit, setting name, claim word) that prints the "verify before agreeing" line. | The checker is a pattern match, not logic; fail open (it advises, it does not block). An instruction alone is the weaker form of a rule the owner wants as a tool. | inventory HK-10; probe P8 (the hook fires in a template launch) |
+| Quote-aware command splitter for the git hooks (HK-2) | **(a) shell (awk), only if the git hooks are kept; (d) otherwise.** | Splitting on `;`, `&&`, `\|` outside quotes is a small state machine, and tests for it run in CI like the existing bash tests. If the denials are written as settings `deny` rules (PRM-5), Claude Code does the matching and no splitter is needed. Python (b) is the weakest: it breaks G4. | inventory HK-2, HK-17, PRM-5; probe P2 (a bash hook blocks with exit 2) |
+| Defense report (REC-10) | **(c) drop for now; (a) shell later.** | It counts `hook_denied` lines, and whether that kind is kept is open (HK-16, [decision 0004](../decisions/0004-records-documents-and-jsonl.md)). If it is kept, a report is an `awk` count over the JSON lines. | inventory REC-10, HK-16, REC-3; Q15 |
+
+**Decides (the other tools).** The owner. The draft does not close the Q11 question; each row above needs the owner's pick before the inventory rows change.
 
 ## Q12. Where do a worker's role rules and task brief live?
 
