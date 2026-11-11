@@ -273,7 +273,8 @@ case "$cmd" in
           continue
         fi
         j=$(printf '%s' "$j" | tr -d '\n')
-        st=$(printf '%s' "$j" | grep -o '"status": *{[^{}]*"state": *"[^"]*"' | grep -o '"state": *"[^"]*"' | tail -1 | sed 's/.*: *"//; s/"$//')
+        # the status state is one of these words; a message holding braces or a quoted state cannot hide it
+        st=$(printf '%s' "$j" | grep -Eo '"state": *"(working|blocked|done|error|idle)"' | head -1 | sed 's/.*: *"//; s/"$//')
         [ -z "$fin" ] || [ "$st" = blocked ] || continue
         case "$st" in
           blocked) w="$w${w:+,}\"$t\"" ;;
