@@ -26,7 +26,7 @@ Bash only, plus `git`, `gh` and `hc`. `--repo OWNER/NAME` is taken from a GitHub
    - `human`: prints `PR_URL=...` and that the person decides; merges nothing. Exit 0.
    - `acceptance`: there is no local gate ([Q11](../../docs/design/open-questions.md#q11-what-happens-to-the-predecessors-python-gates-and-generators), decided (d); inventory [GT-1](../../docs/design/predecessor-inventory.md)). The check is the repository's CI as a required status check. The script only checks that the PR head (`gh pr view --json headRefOid`) still equals the watched sha and that `gh pr checks --required --watch` (it waits for other workflows of the head still running) is green, then runs `gh pr merge <n> --squash --match-head-commit <sha>`. No `--admin`, no `--auto`.
 
-The mode is `--mode`, else `merge_approval_mode` in the `org-state` document (read with `doc.get` through `hc connect`), else `human`. Any other value means `human`.
+The mode is `--mode`, else `merge_approval_mode` in `org-config.md` (read with `org config get merge_approval_mode`; change it with `org config set`), else `human`. Any other value means `human`.
 
 ## Exit codes
 
@@ -46,7 +46,7 @@ The mode is `--mode`, else `merge_approval_mode` in the `org-state` document (re
 
 ## Assumptions (open points left open)
 
-- Approval mode lives in `org-state` as a top-level `merge_approval_mode` string. The prototype-1 shape has no such field yet; this is the smallest reading of "read from org-state or an argument".
+- Approval mode lives in `org-config.md` (Q14), not in `org-state`.
 - The events folder is `scripts/org`'s: `$PADDOCK_STATE_DIR/events`, default `${XDG_STATE_HOME:-~/.local/state}/paddock/events`. The writer id is `secretary`, and `seq` is `scripts/org`'s for that id: one more than the highest so far, taken under the per-id lock, so it never repeats a number a reader has acknowledged. Lines carry `kind`, `writer`, `task_id` (when given), `pr`, `sha`, `run_id`, `exit_code` and `conclusion` beyond `seq` and `ts` (`ts` follows `$PADDOCK_NOW` when set).
 - The base branch is `--base`, else the base in the `--project <name>` row of `projects.md` (same file and columns as [org-delegate](../org-delegate/SKILL.md); only the base is read, since `--worktree` is the worker's), else `main`. An unknown name or a missing file exits 2 before the branch is sent anywhere. The title and body are written by the secretary in English.
 - `--task-id` may hold only letters, digits, `.`, `_` and `-` (it goes into a JSON line); anything else exits 2 before the push.

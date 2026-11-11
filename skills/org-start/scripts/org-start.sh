@@ -123,7 +123,10 @@ if hc get "$name" >/dev/null 2>&1; then
   echo "org-start: $name already exists; not starting another"
 else
   # Issue #130: --cwd, so the secretary finds scripts/org and skills/*/scripts from any starting folder.
-  hc run --bg --keep --name "$name" --cwd "$root" secretary || die 5 "hc run failed for the secretary"
+  # Q9, Issue #193: unless it is auto, the conversation language (org config) ends the launch task.
+  lang=$(bash "$root/scripts/org" --as secretary config get conversation_language 2>/dev/null)
+  task=; [ -z "$lang" ] || [ "$lang" = auto ] || task="Conversation language: $lang"
+  hc run --bg --keep --name "$name" --cwd "$root" secretary ${task:+"$task"} || die 5 "hc run failed for the secretary"
 fi
 
 # 4. Readiness: hc get shows a status object. (The CLAUDE_CODE_CHILD_SESSION check is probe #52.)

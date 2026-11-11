@@ -20,7 +20,7 @@ Options:
   --project NAME     a project name in projects.md; its base is the default base
   --base BRANCH      base branch (default: the project row's base, else main)
   --task-id ID       recorded in the ci_completed line
-  --mode MODE        human | acceptance (default: merge_approval_mode in org-state, else human)
+  --mode MODE        human | acceptance (default: merge_approval_mode in org-config.md, else human)
   --pr N             use an open PR instead of creating one (still pushes)
   -h, --help         this text
 
@@ -120,11 +120,9 @@ bash "$org" --as secretary ci_completed --pr "$pr" --sha "$sha" --run-id "$run" 
 
 [ "$code" -eq 0 ] || die 9 "CI failed on $sha (exit_code $code, run $run); PR $url"
 
-# 5. approval mode: argument, else org-state (hc has no document verb; hold the input 1 s), else human
+# 5. approval mode: argument, else merge_approval_mode in org-config.md (Q14; org config set), else human
 if [ -z "$mode" ]; then
-  req='{"jsonrpc":"2.0","id":1,"method":"doc.get","params":{"name":"org-state"}}'
-  doc=$({ printf '%s\n' "$req"; sleep 1; } | hc connect 2>/dev/null | tr -d '\n')
-  m=$(printf '%s' "$doc" | sed -n 's/.*"merge_approval_mode": *"\([a-z]*\)".*/\1/p')
+  m=$(bash "$org" --as secretary config get merge_approval_mode 2>/dev/null)
   case $m in acceptance) mode=acceptance ;; *) mode=human ;; esac
 fi
 
