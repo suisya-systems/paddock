@@ -1,6 +1,6 @@
 # Prototype 3
 
-Status: prototype, a host run (Issue #243). Run on 2026-11-11: the loop stopped at the worker's first report, before the card was answered; four stops are filed ([Result](#result)). [Prototype 2](prototype-2.md) ran the loop once on 2026-11-10. Since then most parts of that loop were replaced, each tested and measured alone. This prototype runs the same loop again on a clean checkout of today's `main`, with all of them together: the runbook sends one request to the secretary, a worker does one small task with an acceptance test first, asks one question that the person answers on the card, has its diff reviewed by a second model through the gate, and finishes; a pull request exists at the end and passes the acceptance job. Its goal clause is G1 (ledger, 2026-11-12): a request alone (here sent by the runbook) gets a worker going, approvals on screen, and a PR, with today's `main`.
+Status: prototype, a host run (Issue #243). Run 1 on 2026-11-11: the loop stopped at the worker's first report, before the card was answered; four stops are filed. Run 2, the same day after #244 to #247: 20 of 21 steps pass and the person's only action was Yes on the card; one step fails because the gate keeps no result record ([Result](#result)). [Prototype 2](prototype-2.md) ran the loop once on 2026-11-10. Since then most parts of that loop were replaced, each tested and measured alone. This prototype runs the same loop again on a clean checkout of today's `main`, with all of them together: the runbook sends one request to the secretary, a worker does one small task with an acceptance test first, asks one question that the person answers on the card, has its diff reviewed by a second model through the gate, and finishes; a pull request exists at the end and passes the acceptance job. Its goal clause is G1 (ledger, 2026-11-12): a request alone (here sent by the runbook) gets a worker going, approvals on screen, and a PR, with today's `main`.
 
 Nothing in the product changes for this prototype. It adds this document, the host runbook [`scripts/probes/prototype-3.sh`](../../scripts/probes/prototype-3.sh), the fixture workflow [`scripts/probes/prototype-3-acceptance.yml`](../../scripts/probes/prototype-3-acceptance.yml) and the runbook's guard test. Every stop found by the run becomes an Issue.
 
@@ -112,6 +112,8 @@ No local paths and no company matters go into this document.
 
 ## Result
 
+### Run 1
+
 Run 2026-11-11, task `p3-202611111622`, paddock `main` at `65f869a`, the runbook at this branch's head (called by its path from another checkout). Versions: hc 0.1.18, Claude Code 2.1.322, codex-cli 0.157.0, gh 2.96.0; herdr-app ran on Windows with the core in WSL, and its version was not recorded (`collect` runs in WSL, where `herdr-app` is not on `PATH`). The person was the secretary of the organization that ran the runbook.
 
 **The loop did not hold.** It stopped at step 5: the worker's `report start` and `report blocked` failed, so nothing the worker wrote reached the mailbox, and the card was not shown on the screen although the approval was in `org-state`. The owner chose to stop and fix. G1 does not hold yet. Before the stop, three touches were already needed to get the organization and the screen up.
@@ -157,3 +159,53 @@ Touches and stops:
 Not exercised by this run: the answer through the card, the review gate and its `excludedCommands` (#242), the round counter, the pull request and the acceptance job (#240).
 
 New Issues for the secretary to file: the one marked "Proposed" above. #244, #245, #246 and #247 are filed. The run is to be repeated once #245 and #246 are fixed.
+
+### Run 2
+
+Run 2026-11-11 (after #244 to #247 were fixed), task `p3-202611111819`, paddock `main` at `63c8e54`. Versions: hc 0.1.18, herdr-app 0.1.15, Claude Code 2.1.322, codex-cli 0.157.0, gh 2.96.0. The fixture was the same throwaway repository; the person was the owner, acting through the card. The run is recorded from the run folder's evidence (`evidence/summary.txt`, `notes.tsv`, `watch.log`).
+
+**The loop held, with one failed check.** The request reached a worker, the worker's question showed on the card and was answered there with Yes, the worker finished, and a pull request (PR #3 in the throwaway repository) passed the acceptance job. Of the 21 steps, 20 pass. The person's only action was Yes on the card: no `note --touch`, and neither terminal showed a prompt or dialog during the watch (`10-no-touch` PASS). G1 holds for this loop on `main` at `63c8e54`, except for the review record below.
+
+| Step | `RESULT` |
+| --- | --- |
+| 0 | `preconditions`, `notes-off`, `worker-token`, `codex-cli`: PASS. |
+| 1 | `1-secretary`, `1-placed-files` (the 8 files equal the checkout): PASS. No trust dialog (the folder was trusted in run 1). |
+| 2 | `2-request`: PASS (sent by the runbook with `hc send`; the person typed nothing). |
+| 3 | `3-worktree`, `3-own-settings`: PASS. |
+| 4 | `4-worker`, `4-worker-report` (`run_started` in the worker's own file), `4-work-entry`: PASS. This is the step that failed in run 1 (#245). |
+| 5 | `5-blocked`, `5-approval` (`p3-202611111819-20261111T182040Z`): PASS. |
+| 6 | `6-card-answer`: PASS (`ANSWER ... yes` in the person's file). |
+| 7 | `7-secretary-read`, `7-forwarded`, `7-approval-removed`: PASS. |
+| 8 | `8-test-commit` (first own commit `f0d4c1f`, declares and changes only `tests/paddock-proto3.test.sh`), `8-done`, `8-secretary-read`: PASS. **`8-review`: FAIL**, see below. |
+| 9 | `9-pull-request` (PR #3 on `work/p3-202611111819`), `9-ci-record` (run `43077301980`, exit 0), `9-acceptance` (`ACCEPTANCE: pass`): PASS. |
+| 10 | `10-no-touch`: PASS. |
+
+**`8-review` FAIL.** The runbook found one `codex_round_started` line from `codex-gate` ("diff round 1 of 3"), but the gate writes nothing when a round ends, so the history cannot say how the round ended. The check then falls back to the worker's done report, which says "Second-model review gate last line: passed (succeeded=2 failed=0 status=0), no findings" and does not quote the literal `CODEX_GATE: passed`. So the review very probably ran and passed, but nothing a reader can verify afterwards records that. The cause is in the gate, not the worker: Issue #253 (the gate keeps no result record).
+
+Times (UTC, from the history, the status log and the pull request):
+
+| What | When | Delay |
+| --- | --- | --- |
+| Request sent | 18:20:03 | |
+| `run_started` by the secretary, `work_added` | 18:20:11, 18:20:13 | 8 s, 10 s |
+| Worker terminal `working` | 18:20:14 | 11 s |
+| `run_blocked` by the worker, `approval_asked` | 18:20:34, 18:20:41 | 20 s, 7 s later |
+| `ANSWER yes` in the person's file (the click) | 18:22:27 | 1 min 46 s after `approval_asked` |
+| Secretary's `ack` of the answer, answer forwarded, `approval_removed` | 18:22:32, 18:22:35, 18:22:35 | 5 s, 8 s |
+| Worker's `ack` of the answer | 18:22:41 | 14 s |
+| `codex_round_started` (diff round 1 of 3) | 18:22:45 | |
+| `run_completed` | 18:23:06 | 31 s after the forward; 21 s after the round started (an upper bound for the review) |
+| Pull request created | 18:23:20 | 14 s after `run_completed` |
+| `ci_completed` (exit 0) | 18:23:35 | 15 s after the PR |
+
+From the request to a passing acceptance job: 3 min 32 s, of which the person's wait on the card is 1 min 46 s. The note for the click reads 18:23:00 because the owner reported it in chat; the `ANSWER` line is the time used here.
+
+Setup touches (not part of the loop, and not typed by the person): `org-start` and `layout.switch` were run by the operator's assistant from its shell, not by the person (note at 18:19:59). The core was already running. The folder-trust dialog did not show, because the folder was trusted in run 1.
+
+Failed steps:
+
+| Step | What happened | Cause | Issue |
+| --- | --- | --- | --- |
+| 8 | `8-review` FAIL: one round counted, no record of how it ended; the done report does not quote `CODEX_GATE: passed`. | The gate keeps no result record. | #253 |
+
+Run 1's four stops (#244 to #247) did not recur. Not seen by this run: a round that ends with findings, `CODEX_ROUND_DENIED`, and a review that ends `not-established`. The gate's `excludedCommands` calls worked: the review ran without a permission prompt.
