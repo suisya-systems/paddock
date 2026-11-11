@@ -45,8 +45,9 @@ Usage: org [--as <id>] <command> [args]
                                                 payload on stdin; a Bash call that is exactly
                                                 bash "$PADDOCK_CODEX_GATE" [--design] is a round
                                                 of the task named by $CLAUDE_PROJECT_DIR's last
-                                                folder; any other Bash command, skill or tool
-                                                naming codex is refused (exit 2)
+                                                folder; any other Bash command naming codex or the
+                                                gate file, or skill or tool
+                                                naming codex, is refused (exit 2)
   The rounds are counted in $PADDOCK_CODEX_DIR (default ${XDG_DATA_HOME:-~/.local/share}/paddock/
   codex-rounds), which the worker settings deny writing; each line is also put in the history.
 
@@ -444,8 +445,12 @@ case "$cmd" in
         [ "$id" = codex-gate ] || die 7 "codex_round hook runs as codex-gate"
         [ $# -eq 0 ] || die 2 "usage: codex_round hook (payload on stdin)"
         low() { tr -d "\"'\\\\\n" | tr '[:upper:]' '[:lower:]'; }
+        # The words that make a call Codex's: codex, and the gate script's file name (so a gate whose
+        # path does not say codex is still counted, and cannot be run in any other form).
+        g=${PADDOCK_CODEX_GATE:-}; gw=$(printf '%s' "${g##*/}" | low)
+        names() { local t; t=$(low); case "$t" in *codex*) return 0 ;; esac; [ -n "$gw" ] && case "$t" in *"$gw"*) return 0 ;; esac; return 1; }
         pl=$(tr -d '\n\r')
-        printf '%s' "$pl" | low | grep -q codex || exit 0
+        printf '%s' "$pl" | names || exit 0
         tool=$(printf '%s' "$pl" | sed -n 's/.*"tool_name": *"\([^"]*\)".*/\1/p')
         case "$tool" in
           *[Cc][Oo][Dd][Ee][Xx]*) refuse "$tool: a worker runs Codex only through the gate" ;;
@@ -466,8 +471,7 @@ case "$cmd" in
               if (c == "\"") { printf "%s", o; exit 0 }
               o = o c }
             exit 1 }') || refuse "cannot read the Bash command from the hook payload"
-        printf '%s' "$cmd" | low | grep -q codex || exit 0
-        g=${PADDOCK_CODEX_GATE:-}
+        printf '%s' "$cmd" | names || exit 0
         [ -n "$g" ] || refuse "no Codex gate is set up for workers (PADDOCK_CODEX_GATE is empty), so no Bash command may name codex"
         case "$cmd" in
           "bash \"$g\"") mode=diff ;;
