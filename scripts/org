@@ -331,7 +331,11 @@ case "$cmd" in
     echo "== labelled terminals (name, task_id, status)"
     names=$(hc ls 2>&1) || die 5 "cannot reach the herdr core (hc ls failed)"
     for n in $(printf '%s' "$names" | tr -d '\n' | grep -o '"name": *"[^"]*"' | sed 's/.*: *"//; s/"$//'); do
-      j=$(hc get --json "$n" 2>/dev/null | tr -d '\n') || continue
+      if ! j=$(hc get --json "$n" 2>&1); then
+        case "$j" in *not_found*) ;; *) printf '%s\t(unreadable)\n' "$n" ;; esac  # not_found: ended since hc ls
+        continue
+      fi
+      j=$(printf '%s' "$j" | tr -d '\n')
       t=$(printf '%s' "$j" | sed -n 's/.*"task_id": *"\([^"]*\)".*/\1/p')
       [ -n "$t" ] || continue
       s=$(printf '%s' "$j" | grep -Eo '"state": *"(working|blocked|done|error|idle)"' | head -1 | sed 's/.*: *"//; s/"$//')
