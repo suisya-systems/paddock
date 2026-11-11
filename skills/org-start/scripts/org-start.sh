@@ -58,7 +58,8 @@ templates=${PADDOCK_CORE_TEMPLATES_DIR:-$cfg/herdr-core/templates}
 # Issue #246: on WSL, herdr-app for Windows reads the Windows user's .config/herdr-app and sees this
 # core as another machine (wsl). A herdr-app on PATH that is not an .exe is a Linux app: WSL's folder.
 app=$(command -v herdr-app 2>/dev/null); appcfg=$cfg/herdr-app; appmachine=
-case "$(readlink -f "$app" 2>/dev/null)" in ""|*.exe) winapp=1 ;; *) winapp= ;; esac
+# readlink only on a found app: some readlink builds answer "" with the current folder.
+case "${app:+$(readlink -f "$app" 2>/dev/null)}" in ""|*.exe) winapp=1 ;; *) winapp= ;; esac
 if [ -n "${WSL_DISTRO_NAME:-}" ] && [ -n "$winapp" ] && [ -z "${PADDOCK_APP_MODS_DIR:-}" ]; then
   winhome=$(wslpath "$(cmd.exe /d /c echo %USERPROFILE% 2>/dev/null | tr -d '\r')" 2>/dev/null)
   if [ -n "$winhome" ] && [ -d "$winhome" ]; then
