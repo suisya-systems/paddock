@@ -34,8 +34,8 @@ out=$(org --as secretary check_messages | tr -d '\r'); grep -q '^b$' <<<"$out"; 
 # 2. A value with a nested "version" key is read whole.
 echo '{"nested":{"a":1,"version":2}}' > "$STUB/docval"; echo 3 > "$STUB/docver"
 out=$(org --as w1 doc get org-state); [ "$out" = '{"nested":{"a":1,"version":2}}' ]; check "doc get keeps a nested version key" $?
-org --as secretary doc update org-state -- cat >/dev/null; r=$?
-grep -q '"value":{"nested":{"a":1,"version":2}},"version":3}}$' "$STUB/set-request"; check "doc update writes the whole value back with the envelope version (exit $r)" $?
+org --as secretary doc update org-state -- sed "s/\"a\":1/\"a\":9/" >/dev/null; r=$?
+grep -q '"value":{"nested":{"a":9,"version":2}},"version":3}}$' "$STUB/set-request"; check "doc update writes the whole value back with the envelope version (exit $r)" $?
 
 # 3. An update command that prints a value and then fails writes nothing.
 rm -f "$STUB/set-request"

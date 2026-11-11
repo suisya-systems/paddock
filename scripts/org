@@ -31,10 +31,15 @@ Usage: org [--as <id>] <command> [args]
   brief                                         read-only: print secretary-handover, org-state and
                                                 each terminal labelled task_id with its status
   doc get <name>                                print a core document's value
-  doc set <name>                                set it from stdin (secretary only)
+  doc set <name>                                set it from stdin (secretary only); a value equal to
+                                                the core's is not written (no doc event)
+  doc flush <name>                              write what --lazy staged (secretary only; wait does it)
   doc update <name> -- <command...>             re-read, run command (old value on stdin, new
                                                 value on stdout), set; on a version conflict
-                                                re-read and reapply (secretary only)
+                                                re-read and reapply (secretary only). With --lazy
+                                                (org-state) after the name the result is staged and
+                                                written once per $PADDOCK_DOC_INTERVAL s (default 5);
+                                                not with --record
   doc update org-state --record <kind> --task <id> --text <t> -- <command...>
                                                 same, and the history line of the change (work_added,
                                                 work_removed, approval_asked, approval_removed) is
@@ -314,6 +319,7 @@ case "$cmd" in
     # ponytail: done records are looked for in this and the last month.
     watch() {
       local doc ids t j st fin g= w= u= x= runs
+      bash "$0" --as "$id" doc flush org-state >/dev/null 2>&1 # lazy edits reach the core before the check (Issue #76)
       doc=$(bash "$0" --as "$id" doc get org-state 2>&1) || {
         printf ',"watch_error":"%s"' "$(printf '%s' "${doc:0:120}" | json_esc)"; return; }
       # The work array is cut out with a scan that skips string contents, so a "]" in a title
@@ -352,6 +358,7 @@ case "$cmd" in
       [ -z "$u" ] || printf ',"unreported":[%s]' "$u"
       [ -z "$x" ] || printf ',"unreadable":[%s]' "$x"
     }
+    bash "$0" --as "$id" doc flush org-state >/dev/null 2>&1 # the turn ended: its staged edits are the change set (Issue #76)
     end=$((SECONDS + timeout))
     while :; do
       clock
@@ -412,10 +419,19 @@ case "$cmd" in
     esac
     case "$sub" in
       get) ;;
-      set|update)
+      set|update|flush)
         # PADDOCK_SECRETARY_NAME is the terminal name (org-start); accept it as well as `secretary`.
         [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || die 7 "only secretary writes $name"
-        if [ "$sub" = update ]; then
+        # Issue #76: --lazy stages the result and writes it once per PADDOCK_DOC_INTERVAL s, so a
+        # burst of edits is one doc event. Without it the write is at once (an approval card).
+        lazy=; [ "${1:-}" = --lazy ] && { lazy=1; shift; }
+        [ -z "$lazy" ] || [ "$name" = org-state ] || die 2 "--lazy is for org-state"
+        stage=$state/$name.staged; stamp=$state/$name.written
+        if [ "$sub" = flush ]; then
+          [ $# -eq 0 ] || die 2 "usage: doc flush <name>"
+          [ -s "$stage" ] || exit 0
+          sub=set; stdin_value=$(cat "$stage")
+        elif [ "$sub" = update ]; then
           # --record KIND --task T --text TEXT: the history line of this change, written inside the
           # same lock as the document update (Issue #77), so replay order is the order of the writes.
           rkind=; rtask=; rtext=
@@ -424,6 +440,8 @@ case "$cmd" in
             rkind=$2; rtask=$4; rtext=$6; shift 6
             case "$rkind" in work_added|work_removed|approval_asked|approval_removed) ;; *) die 2 "doc update --record: unknown kind $rkind" ;; esac
             valid_id "$rtask" || die 2 "doc update --record: bad task id"
+            # A record is the history of a change that has happened; a staged change has not.
+            [ -z "$lazy" ] || die 2 "doc update: --lazy and --record do not go together (a recorded change is written at once)"
           fi
           [ "${1:-}" = -- ] && shift
           [ $# -gt 0 ] || die 2 "usage: doc update <name> -- <command...>"
@@ -432,7 +450,7 @@ case "$cmd" in
           stdin_value=$(tr -d '\n')
           [ -n "$stdin_value" ] || die 2 "doc set: empty value on stdin"
         fi ;;
-      *) die 2 "usage: doc get|set|update <name>" ;;
+      *) die 2 "usage: doc get|set|update|flush <name>" ;;
     esac
     command -v hc >/dev/null 2>&1 || die 3 "hc not found on PATH (install herdr-core)"
 
@@ -461,7 +479,9 @@ case "$cmd" in
     tries=0
     while [ "$tries" -lt 5 ]; do
       tries=$((tries + 1))
-      read_doc
+      read_doc; core_val=$val
+      # Staged edits are the base of the next one: the core has not seen them yet.
+      [ ! -s "$stage" ] || val=$(cat "$stage")
       if [ "$sub" = set ]; then new=$stdin_value
       else
         new=$(printf '%s' "$val" | "$@") || die 10 "update command failed; $name not written"
@@ -511,11 +531,17 @@ case "$cmd" in
             exit 0 }' \
           || die 2 "secretary-handover must be null or an object with exactly last_exchange, unrecorded_decisions, open_threads and written_at (UTC ISO 8601, ending in Z); nothing written"
       fi
+      # org-state again as the core holds it: no doc.set, so no doc event.
+      if [ "$name" = org-state ] && [ "$new" = "$core_val" ]; then rm -f "$stage"; exit 0; fi
+      if [ -n "$lazy" ] && [ -f "$stamp" ] && [ $(($(date +%s) - $(date -r "$stamp" +%s))) -lt "${PADDOCK_DOC_INTERVAL:-5}" ]; then
+        printf '%s' "$new" > "$stage"; exit 0
+      fi
       ans=$(rpc "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"doc.set\",\"params\":{\"name\":\"$name\",\"value\":$new,\"version\":$ver}}")
       case "$ans" in
         *'"error"'*conflict*) continue ;;
         *'"error"'*) die 5 "doc.set $name failed: ${ans:0:200}" ;;
-        *'"result"'*) [ -z "${rkind:-}" ] || append "$rkind" "" "$rtask" "$rtext"; exit 0 ;;
+        *'"result"'*) rm -f "$stage"; mkdir -p "$state"; : > "$stamp"
+                      [ -z "${rkind:-}" ] || append "$rkind" "" "$rtask" "$rtext"; exit 0 ;;
         *) die 5 "doc.set $name: no answer from hc connect" ;;
       esac
     done
