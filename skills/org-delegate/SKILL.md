@@ -31,7 +31,7 @@ It prints `org-delegate: worker=w-<id> worktree=<path> branch=<branch>` on succe
 - **No `AGENTS.md`, no `CLAUDE.md`, no rules file in the worktree.** The role rules are `templates/worker-rules.md`, passed by the template with `--append-system-prompt-file`; the task is the launch's text ([Q12](../../docs/design/open-questions.md#q12-where-do-a-workers-role-rules-and-task-brief-live), decided). Writing `AGENTS.md` would collide with a target repository's own files.
 - **No token.** The worker template sets `GH_CONFIG_DIR` and the read-only `GH_TOKEN` itself ([Q20](../../docs/design/open-questions.md#q20-how-is-a-workers-github-access-held-to-read-only)). The script never reads or passes a token, and the task text must not hold one.
 - **No `org-state` entry.** The secretary adds the `work` entry itself, as its template says.
-- **No worker cap and no project registry ([Q14](../../docs/design/open-questions.md#q14-where-do-organization-settings-and-registries-live) is open).
+- **No worker cap and no project registry** ([Q14](../../docs/design/open-questions.md#q14-where-do-organization-settings-and-registries-live) is open).
 - **No answer to the trust dialog.** The first time a workers folder is used, a person accepts the dialog once in the window (or the secretary answers it once from the screen, never with a blind Enter: the default is "No, exit").
 
 ## Exit codes
