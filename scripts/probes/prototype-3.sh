@@ -376,7 +376,8 @@ if [ "$phase" = collect ]; then
   E="$RUN/evidence"; mkdir -p "$E" || die 6 "cannot create $E"
   { echo "== versions"; hc --version 2>&1; herdr-app --version 2>&1; claude --version 2>&1; codex --version 2>&1; gh --version 2>&1 | head -n 1
     echo "== paddock main at the run: $PADDOCK_HEAD"
-    echo "== results (prepare, then the last watch summary)"; cat "$RUN/prepare.txt" "$RUN/watch-summary.txt" 2>/dev/null
+    echo "== results (prepare, then each step watch recorded: kept even when watch was stopped)"; cat "$RUN/prepare.txt" "$RUN"/res.* 2>/dev/null
+    echo "== the last watch summary (none when watch was stopped)"; cat "$RUN/watch-summary.txt" 2>/dev/null
     echo "== notes"; cat "$RUN/notes.tsv" 2>/dev/null
     echo "== hc ls"; hc ls 2>&1
     echo "== hc get secretary"; hcj secretary; echo
