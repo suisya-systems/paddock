@@ -50,7 +50,7 @@ if git -C "$wt" merge-base --is-ancestor "origin/$base" HEAD; then echo "already
 # placed settings if the sandbox ever protects more.
 if [ -n "${PADDOCK_ORG:-}" ]; then
   mb=$(git -C "$wt" merge-base HEAD "origin/$base") || die 5 "no merge base with origin/$base"
-  hit=$(git -C "$wt" diff --name-only "$mb" "origin/$base" | grep -E '^\.claude/(skills|hooks)(/|$)|^\.claude/settings(\.local)?\.json$')
+  hit=$(git -C "$wt" diff --no-renames --name-only "$mb" "origin/$base" | grep -E '^\.claude/(skills|hooks)(/|$)|^\.claude/settings(\.local)?\.json$')
   if [ -n "$hit" ]; then
     echo "$hit" | sed 's/^/protected: /' >&2
     die 4 "origin/$base changes paths this sandbox protects (listed above); nothing was merged. Ask the secretary to run org-update-branch outside the sandbox"
