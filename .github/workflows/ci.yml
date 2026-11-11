@@ -37,3 +37,15 @@ jobs:
             node --check "${d}main.js"
             echo "ok $d"
           done
+  acceptance:
+    # Replaces the acceptance gate (Q11 decided (d)). Branch protection makes this job a
+    # required status check on main; see docs/design/acceptance-check.md.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Declared tests fail at the test commit, pass at head, stay unchanged
+        run: bash scripts/acceptance-check.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
