@@ -137,7 +137,7 @@ Times (UTC, from the status log, the history and the notes):
 | Worker terminal `working` | 16:58:31 | 18 s |
 | Worker status `done` with "test commit ... done; awaiting yes" (its turn ended, not in `org wait`) | 17:02:15 | 4 min 2 s |
 | `approval_asked` | 17:03:35 | 1 min 20 s after the worker's turn ended |
-| Secretary status `done` (idle at its prompt with work and an approval open) | 17:03:52 | |
+| Secretary status `done`: it ended its turn to ask the person how to go on after the worker's failed reports | 17:03:52 | |
 | Stopped | 17:05:40 | |
 
 Touches and stops:
@@ -149,11 +149,11 @@ Touches and stops:
 | 1 | The secretary started from `org-start` stopped at the folder-trust dialog for the paddock folder; the operator answered it with `hc keys` (touch 1, against the host rule). | A secretary's working folder that is not yet trusted. | #244 |
 | 2, collect | The runbook asks the person to type the request into the window, and runs `herdr-app` (`layout.switch`, `--version`) in WSL, where it is not on `PATH`; the request went in by `hc send`, `layout.switch` through the Windows program's path. | Runbook and setup assume herdr-app on the core's side. | #247 |
 | 5 | The worker ended its turn idle ("awaiting yes") after its `report blocked` failed, instead of waiting in `org wait`; an answer by mail would not wake it. | The worker template's fallback for a failed `org` command ("say so once in your reply and wait") ends the turn. Follows from #245, but stands alone. | Proposed: "Worker: when an org command fails, the turn still ends in a state an answer can reach" |
-| 5 | The secretary went `done` at its prompt 17 s after asking the approval, with work and an approval in `org-state`; the template says to end such a turn in `org wait --children` (Prototype 2 saw it stay `working`). Seen in the status log only; what the secretary's pane showed was not recorded. | Not established. | Proposed: "Secretary ended its turn idle with an approval open (Prototype 3)" |
+| 5 | The secretary went `done` at its prompt 17 s after asking the approval, with work and an approval in `org-state`; the template says to end such a turn in `org wait --children` (Prototype 2 saw it stay `working`). The operator saw its pane: the secretary had found that the worker's `report start` and `report blocked` failed with exit 5, and ended its turn to ask the person whether to send the answer with `hc send` or to stop and fix. | A question to the person about the #245 stop, not a silent idle. | None |
 | 0 | `notes-off` FAIL at `prepare`. | Host configuration, not the loop. | None |
 | Runbook | `5-approval` passes on the history line alone; the card is checked only by eye, so a PASS there does not mean the card was on the screen. | By design (the runbook cannot see the window). Kept; the screen is a note. | None |
 | Runbook | `evidence/summary.txt` held no step results: `watch` was stopped with Ctrl-C, which writes no summary, and `collect` read only the summary. The results above are from the run folder's per-step files. | Runbook gap. Fixed: `collect` prints each step's result file, then the summary if there is one. | None |
 
 Not exercised by this run: the answer through the card, the review gate and its `excludedCommands` (#242), the round counter, the pull request and the acceptance job (#240).
 
-New Issues for the secretary to file: the two marked "Proposed" above. #244, #245, #246 and #247 are filed. The run is to be repeated once #245 and #246 are fixed.
+New Issues for the secretary to file: the one marked "Proposed" above. #244, #245, #246 and #247 are filed. The run is to be repeated once #245 and #246 are fixed.
