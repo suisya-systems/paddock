@@ -308,11 +308,11 @@ claude_link_save
     # blocked status is Claude Code's own prompt or dialog: the worker waits for its answer in 'org wait',
     # in its turn (working). A prompt is answered in that terminal (Issue #127), so each one is a finding.
     if [ $wb -eq 1 ]; then
-      echo "NOW: $W is blocked on a prompt or dialog in its own terminal (Issue #127). If the card shows it, its button opens that terminal. Answer it there, then: note --task-id $T --touch \"answered $W's prompt: <what it asked>\""
+      echo "NOW: $W is blocked on a prompt or dialog in its own terminal. A folder-trust dialog: do NOT answer it; note --task-id $T --touch \"trust dialog in $W\" and end the run (host rule). Any other prompt (Issue #127): if the card shows it, its button opens that terminal. Answer it there, then: note --task-id $T --touch \"answered $W's prompt: <what it asked>\""
       log "finding: $W blocked on its own prompt"
     fi
     if [ $sb -eq 1 ]; then
-      echo "NOW: the secretary is blocked on a prompt in its pane. Answer it there, then: note --task-id $T --touch \"answered the secretary's prompt: <what it asked>\""
+      echo "NOW: the secretary is blocked on a prompt in its pane. A folder-trust dialog: do NOT answer it; note it with --touch and end the run (host rule). Any other prompt: answer it there, then: note --task-id $T --touch \"answered the secretary's prompt: <what it asked>\""
       log "finding: secretary blocked on its own prompt"
     fi
     # 8. the test commit, the review, done, read by the secretary
