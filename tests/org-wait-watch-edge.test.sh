@@ -37,4 +37,9 @@ echo '{"name":"w-t-a","state":"running","status":{"state":"blocked"}}' > "$STUB/
 echo '{"name":"w-t-b","state":"running","status":{"state":"working"}}' > "$STUB/term-w-t-b"
 out=$(o secretary wait --timeout 1 2>&1)
 printf '%s' "$out" | grep -q '"waiting":\["t-a"\]' && ! printf '%s' "$out" | grep -q 't-b'; check "blocked after a done record is listed, working is not ($out)" $?
+
+# A status text holding braces before the state does not hide a blocked worker.
+echo '{"name":"w-t-a","state":"running","status":{"text":"run {\"k\": 1}; ok?","state":"blocked"}}' > "$STUB/term-w-t-a"
+out=$(o secretary wait --timeout 1 2>&1)
+printf '%s' "$out" | grep -q '"waiting":\["t-a"\]'; check "braces in the status text do not hide a blocked worker ($out)" $?
 exit $fail
