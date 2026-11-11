@@ -45,13 +45,16 @@ command -v codex >/dev/null 2>&1 || { echo "CODEX_GATE: unavailable (the reviewi
 # the existing login. Do not commit it.
 src=${CODEX_HOME:-$HOME/.codex}
 export CODEX_HOME=$PWD/.codex-home
+# This script runs outside the worker sandbox (Issue #177), in a folder the worker writes: write nothing
+# through a path the worker could have turned into a link.
+[ ! -L "$CODEX_HOME" ] || { echo "CODEX_GATE: not-established ($CODEX_HOME is a symlink)"; exit 1; }
 mkdir -p "$CODEX_HOME"
 src=$(cd "$src" 2>/dev/null && pwd -P)
 if [ -n "$src" ] && [ "$src" != "$(cd "$CODEX_HOME" && pwd -P)" ]; then
-  ln -sf "$src/auth.json" "$CODEX_HOME/auth.json"; ln -sf "$src/config.toml" "$CODEX_HOME/config.toml"
+  ln -sfn "$src/auth.json" "$CODEX_HOME/auth.json"; ln -sfn "$src/config.toml" "$CODEX_HOME/config.toml"
 fi
 
-log=${TMPDIR:-/tmp}/second-review-$(printf %s "$PWD" | cksum | cut -d' ' -f1)-$mode.log
+log=$(mktemp "${TMPDIR:-/tmp}/second-review-$mode.XXXXXX") || { echo "CODEX_GATE: not-established (cannot create the log)"; exit 1; }
 if [ "$mode" = design ]; then
   prompt="Read the design at $design and verify it against this repository: every file, function, flag, hook and path it relies on exists and works as assumed, and the design reaches its stated goal without gaps. List findings as Blocker / Major / Minor, each with evidence (file:line) and a concrete fix."
   codex exec -c model_reasoning_effort=high -c sandbox_mode='"read-only"' "$prompt" </dev/null 2>&1 | tee "$log"

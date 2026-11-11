@@ -33,4 +33,16 @@ git -C "$repo" reset -q --hard HEAD~1 2>/dev/null
 printf '#!/bin/sh\necho " succeeded in 1ms:"; echo " exited 1 in 4ms:"\n' > "$tmp/bin/codex"
 run
 [ "$rc" -eq 1 ] && grep -q 'not-established' <<<"$out"; check "a command that exited non-zero is not established" $?
+# The gate runs outside the worker sandbox: the log is a fresh mktemp file, never a path a worker can pre-create,
+# and a CODEX_HOME that is a symlink is refused before anything is written through it.
+printf '#!/bin/sh\necho " succeeded in 1ms:"\n' > "$tmp/bin/codex"
+mkdir -p "$tmp/victim"; : > "$tmp/victim/keep"; mkdir -p "$tmp/tmpd"
+for n in 1 2 3; do ln -sf "$tmp/victim/keep" "$tmp/tmpd/second-review-diff.$n" 2>/dev/null; done
+ln -sf "$tmp/victim/keep" "$tmp/tmpd/second-review-diff.log"
+echo precious > "$tmp/victim/keep"
+: > "$STUB_LOG"; out=$(cd "$repo" && TMPDIR="$tmp/tmpd" PATH="$tmp/bin:$PATH" bash "$gate" 2>&1 </dev/null); rc=$?
+[ "$rc" -eq 0 ] && [ "$(cat "$tmp/victim/keep")" = precious ]; check "a pre-made link in the temp folder is not written through" $?
+rm -rf "$repo/.codex-home"; ln -s "$tmp/victim" "$repo/.codex-home"
+out=$(cd "$repo" && TMPDIR="$tmp/tmpd" PATH="$tmp/bin:$PATH" bash "$gate" 2>&1 </dev/null); rc=$?
+[ "$rc" -eq 1 ] && grep -q 'symlink' <<<"$out" && [ ! -e "$tmp/victim/auth.json" ] && [ ! -L "$tmp/victim/auth.json" ]; check "a symlinked .codex-home is refused, nothing written through it" $?
 exit $fail
