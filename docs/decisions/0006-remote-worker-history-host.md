@@ -41,5 +41,5 @@ Both options depend on something not run on a second machine. A probe on one reg
 ## Consequences
 
 - 0005: the Folder row has the sentence above.
-- The way to move to A later (if the probe shows B does not hold) is recorded in a separate Issue; its number can be added here.
+- The way to move to A later (if the probe shows B does not hold) is recorded in Issue #230.
 - A follow-up Issue for the chosen reader or writer change in `scripts/org`; no code is changed by this draft.
