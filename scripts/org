@@ -52,6 +52,21 @@ Usage: org [--as <id>] <command> [args]
   config project add <name> <path> [--base B] [--secret-block S]
   config project set <name> [--path P] [--base B] [--secret-block S]
   config project drop <name>                    change projects.md (secretary only)
+  codex_round start --task T [--design]         (codex-gate only) record a Codex review round as
+                                                codex_round_started; past the task's allowance
+                                                (3 diff rounds, 1 design review) record
+                                                codex_round_denied, tell the secretary, exit 11
+  codex_round allow --task T --rounds N [--design]
+                                                (secretary only) set task T's allowance to N
+  codex_round hook                              (codex-gate only) the workers' PreToolUse hook:
+                                                payload on stdin; a Bash call that is exactly
+                                                bash "$PADDOCK_CODEX_GATE" [--design] is a round
+                                                of the task named by $CLAUDE_PROJECT_DIR's last
+                                                folder; any other Bash command naming codex or the
+                                                gate file, or skill or tool
+                                                naming codex, is refused (exit 2)
+  The rounds are counted in $PADDOCK_CODEX_DIR (default ${XDG_DATA_HOME:-~/.local/share}/paddock/
+  codex-rounds), which the worker settings deny writing; each line is also put in the history.
 
 Your id comes from --as or $PADDOCK_ORG_ID (lowercase letters, digits, _ and -).
 History is JSON lines, events/<YYYY-MM>/<id>.jsonl under $PADDOCK_STATE_DIR
@@ -65,8 +80,8 @@ is how often wait looks at the mailbox. $PADDOCK_LOCK_WAIT seconds (default 60) 
 write waits for its id's lock when the holder is alive or unknown (a dead holder's lock is broken).
 
 Exit codes: 0 ok, 2 bad usage, 3 hc not found (doc), 5 store or core error, 6 document name
-not allowed, 7 not the document's writer, 8 value over the cap, 9 version conflict that did
-not clear after 5 tries, 10 the update command failed.
+not allowed, 7 not the writer (document, or codex_round), 8 value over the cap, 9 version conflict that did
+not clear after 5 tries, 10 the update command failed, 11 Codex round refused (over the allowance).
 USAGE
 }
 
@@ -81,7 +96,7 @@ cmd=${1:-}; [ $# -eq 0 ] || shift
 
 valid_id() { case "$1" in ''|-*|*[!a-z0-9_-]*) return 1 ;; esac; }
 case "$cmd" in
-  send_message|check_messages|set_summary|report|ci_completed|list_runs|doc|wait|brief|rebuild|config) ;;
+  send_message|check_messages|set_summary|report|ci_completed|list_runs|doc|wait|brief|rebuild|config|codex_round) ;;
   *) echo "org: unknown command: $cmd" >&2; usage >&2; exit 2 ;;
 esac
 valid_id "$id" || die 2 "no valid id: give --as <id> or set PADDOCK_ORG_ID (lowercase letters, digits, _ and -)"
@@ -417,6 +432,132 @@ case "$cmd" in
       s=$(printf '%s' "$j" | grep -Eo '"state": *"(working|blocked|done|error|idle)"' | head -1 | sed 's/.*: *"//; s/"$//')
       printf '%s\t%s\t%s\n' "$n" "$t" "${s:-no status}"
     done ;;
+
+  codex_round)
+    # Issue #225, decision 0005: the Codex review-round cap, counted outside the worker. Each line
+    # goes to $cdir, the count, under ~/.local/share/paddock, which the worker settings deny
+    # writing (sandbox denyWrite and an Edit deny); the hook runs outside the worker's sandbox,
+    # so it can write there. The same line goes to the history under $state, which a worker can
+    # still write until #160, so it is never counted.
+    cdir=${PADDOCK_CODEX_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/codex-rounds}
+    sub=${1:-}; [ $# -eq 0 ] || shift
+    task=; mode=diff; rounds=
+    refuse() { echo "org: refused: $*" >&2; exit 2; }
+    # round: under codex-gate's lock in $cdir, count the task's $mode rounds against its allowance
+    # (the secretary's latest codex_round_cap_changed, else 3 diff / 1 design) and record
+    # codex_round_started, or codex_round_denied to the secretary. Sets msg; false when refused.
+    round() {
+      local hist=$state used allowed k to f s lk=$cdir/events/$id.lock
+      state=$cdir
+      mkdir -p "$cdir/events/$cur" || die 5 "cannot create $cdir/events/$cur"
+      lock_take "$lk"
+      allowed=$(cat "$cdir"/events/*/secretary.jsonl 2>/dev/null | tsv | awk -F"$tab" -v t="$task" -v m="$mode" \
+        '$4=="codex_round_cap_changed" && $6==t { split($7, a, " "); if (a[1]==m) v=a[2] } END { print v }')
+      [ -n "$allowed" ] || { [ "$mode" = diff ] && allowed=3 || allowed=1; }
+      used=$(cat "$cdir"/events/*/codex-gate.jsonl 2>/dev/null | tsv | awk -F"$tab" -v t="$task" -v m="$mode" \
+        '$4=="codex_round_started" && $6==t && index($7, m " ")==1 { n++ } END { print n+0 }')
+      if [ "$used" -lt "$allowed" ]; then
+        k=codex_round_started; to=; msg="$mode round $((used + 1)) of $allowed"
+      else
+        k=codex_round_denied; to=secretary
+        msg="$mode round refused for task $task: $used of $allowed used; to allow more: org --as secretary codex_round allow --task $task --rounds <N>"
+        [ "$mode" = diff ] || msg="$msg --design"
+      fi
+      f="\"ts\":\"$now\",\"from\":\"$id\",\"kind\":\"$k\",\"to\":\"$to\",\"task_id\":\"$task\",\"text\":\"$(printf '%s\n' "$msg" | json_esc)\""
+      # as in put: high-water first, then the line, both inside the lock that covered the count
+      s=$(next_seq)
+      printf '%s\n' "$s" > "$cdir/events/$id.seq" && printf '{"seq":%s,%s}\n' "$s" "$f" >> "$cdir/events/$cur/$id.jsonl" \
+        || { lock_drop "$lk"; die 5 "cannot write the Codex round count in $cdir"; }
+      lock_drop "$lk"
+      state=$hist; put "$f"
+      [ "$k" = codex_round_started ]
+    }
+    args() { # --task, --design and (allow) --rounds
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --task) [ $# -ge 2 ] || die 2 "--task needs a value"; task=$2; shift 2 ;;
+          --rounds) [ "$sub" = allow ] && [ $# -ge 2 ] || die 2 "--rounds goes with allow and needs a value"; rounds=$2; shift 2 ;;
+          --design) mode=design; shift ;;
+          *) die 2 "usage: codex_round start --task T [--design] | allow --task T --rounds N [--design] | hook" ;;
+        esac
+      done
+      valid_id "$task" || die 2 "codex_round needs --task <task_id> (lowercase letters, digits, _ and -)"
+    }
+    case "$sub" in
+      start)
+        [ "$id" = codex-gate ] || die 7 "only codex-gate records a Codex round"
+        args "$@"
+        if round; then echo "$msg"; else echo "CODEX_ROUND_DENIED: $msg" >&2; exit 11; fi ;;
+      allow)
+        [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || die 7 "only secretary sets a Codex round allowance"
+        args "$@"
+        case "$rounds" in 0) ;; [1-9]*) case "$rounds" in *[!0-9]*) die 2 "--rounds needs a whole number" ;; esac ;; *) die 2 "--rounds needs a whole number" ;; esac
+        id=secretary; state=$cdir
+        put "\"ts\":\"$now\",\"from\":\"secretary\",\"kind\":\"codex_round_cap_changed\",\"to\":\"\",\"task_id\":\"$task\",\"text\":\"$mode $rounds\""
+        echo "$task: $mode allowance $rounds" ;;
+      hook)
+        # Sees only the command text: codex reached through a variable, a glob, a script file or
+        # another program is not seen (as in the predecessor's hook). No jq: paddock installs nothing.
+        [ "$id" = codex-gate ] || die 7 "codex_round hook runs as codex-gate"
+        [ $# -eq 0 ] || die 2 "usage: codex_round hook (payload on stdin)"
+        low() { tr -d "\"'\\\\\n" | tr '[:upper:]' '[:lower:]'; }
+        # The words that make a call Codex's: codex, and the gate script's file name (so a gate whose
+        # path does not say codex is still counted, and cannot be run in any other form).
+        g=${PADDOCK_CODEX_GATE:-}; gw=$(printf '%s' "${g##*/}" | low)
+        names() { local t; t=$(low); case "$t" in *codex*) return 0 ;; esac; [ -n "$gw" ] && case "$t" in *"$gw"*) return 0 ;; esac; return 1; }
+        pl=$(tr -d '\n\r')
+        # JSON's \n \r \t escapes are dropped first, so a backslash-newline inside the word still shows it.
+        printf '%s' "$pl" | sed 's/\\[nrt]//g' | names || exit 0
+        tool=$(printf '%s' "$pl" | sed -n 's/.*"tool_name": *"\([^"]*\)".*/\1/p')
+        case "$tool" in
+          *[Cc][Oo][Dd][Ee][Xx]*) refuse "$tool: a worker runs Codex only through the gate" ;;
+          Skill)
+            ! printf '%s' "$pl" | sed -n 's/.*"skill": *"\([^"]*\)".*/\1/p' | low | grep -q codex \
+              || refuse "a Codex skill: a worker runs Codex only through the gate"
+            exit 0 ;;
+          Bash) ;;
+          *) exit 0 ;;
+        esac
+        # tool_input.command, JSON-unescaped (\uXXXX becomes ?, which cannot form the word).
+        cmd=$(printf '%s' "$pl" | awk '{ i = index($0, "\"command\":"); if (!i) exit 1
+            s = substr($0, i + 10); sub(/^[ \t]*/, "", s); if (substr(s, 1, 1) != "\"") exit 1
+            o = ""; for (j = 2; j <= length(s); j++) { c = substr(s, j, 1)
+              if (c == "\\") { j++; n = substr(s, j, 1)
+                if (n == "u") { o = o "?"; j += 4; continue }
+                o = o (n == "n" ? "\n" : n == "t" ? "\t" : n == "r" ? "\r" : (n == "b" || n == "f") ? "?" : n); continue }
+              if (c == "\"") { printf "%s", o; exit 0 }
+              o = o c }
+            exit 1 }') || refuse "cannot read the Bash command from the hook payload"
+        printf '%s' "$cmd" | names || exit 0
+        # A worker's own mailbox call may say codex in its text (the brief tells it to report a
+        # refusal): `bash "$PADDOCK_ORG" --as <id> <mail command> ...` passes when the rest is one
+        # simple command: no ; & | < > ( ) { } or newline outside quotes, no $ or ` outside single quotes.
+        mp='bash "$PADDOCK_ORG" --as '
+        case "$cmd" in "$mp"*)
+          rest=${cmd#"$mp"}
+          case "${rest#* }" in send_message\ *|report\ *|set_summary\ *|check_messages|check_messages\ *|wait|wait\ *|list_runs)
+            printf '%s' "$rest" | awk 'BEGIN { RS = "\001" } { q = ""
+                for (i = 1; i <= length($0); i++) { c = substr($0, i, 1)
+                  if (q == "\047") { if (c == "\047") q = ""; continue }
+                  if (q == "\"") { if (c == "\\") { i++; continue } if (c == "\"") q = ""; else if (c == "$" || c == "`") exit 1; continue }
+                  if (c == "\\") { i++; continue }
+                  if (c == "\047" || c == "\"") { q = c; continue }
+                  if (index(";&|<>()`${}\n", c)) exit 1 }
+                exit (q != "") }' && exit 0 ;;
+          esac ;;
+        esac
+        [ -n "$g" ] || refuse "no Codex gate is set up for workers (PADDOCK_CODEX_GATE is empty), so no Bash command may name codex"
+        case "$cmd" in
+          "bash \"$g\""|'bash "$PADDOCK_CODEX_GATE"') mode=diff ;;
+          "bash \"$g\" --design"|'bash "$PADDOCK_CODEX_GATE" --design') mode=design ;;
+          *) refuse "a Bash command that names codex. Codex runs only through the gate, alone: bash \"$g\" (add --design for the one design review). Read files that mention codex with the Read or Grep tool." ;;
+        esac
+        pd=${CLAUDE_PROJECT_DIR:-}; pd=${pd%/}; task=${pd##*/}
+        valid_id "$task" || refuse "cannot tell this worker's task: CLAUDE_PROJECT_DIR ('${CLAUDE_PROJECT_DIR:-}') must end in the task id"
+        round && exit 0
+        refuse "CODEX_ROUND_DENIED: $msg. Do not run Codex again: report the open findings to the secretary and stop." ;;
+      *) die 2 "usage: codex_round start --task T [--design] | allow --task T --rounds N [--design] | hook" ;;
+    esac ;;
 
   doc)
     sub=${1:-}; [ $# -eq 0 ] || shift

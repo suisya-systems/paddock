@@ -20,6 +20,19 @@
       "Edit(.claude/settings*.json)"
     ]
   },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Skill|.*[Cc]odex.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -n \"${PADDOCK_ORG:-}\" ]; then bash \"$PADDOCK_ORG\" --as codex-gate codex_round hook || exit 2; elif grep -qi codex; then echo 'org: refused: PADDOCK_ORG is not set, so a call naming codex cannot be counted' >&2; exit 2; fi"
+          }
+        ]
+      }
+    ]
+  },
   "sandbox": {
     "enabled": true,
     "failIfUnavailable": true,
