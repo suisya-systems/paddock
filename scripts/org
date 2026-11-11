@@ -541,6 +541,8 @@ case "$cmd" in
         [ $# -ge 1 ] || die 2 "usage: codex_round result --task T [--design] <last line>"
         line=${!#}; set -- "${@:1:$#-1}"; args "$@"
         rk=codex_round_failed; case "$line" in "CODEX_GATE: passed"*) rk=codex_round_passed ;; esac
+        # ponytail: the round is the task's latest; two gate calls of one task overlapping would both
+        # name the newer round. The worker runs the gate alone in the foreground; carry a round id if not.
         gate_lock; msg="$mode round $(used): $line"; gate_line "$rk" ""
         echo "$msg" ;;
       allow)
