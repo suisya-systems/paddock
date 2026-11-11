@@ -575,8 +575,10 @@ case "$cmd" in
         [ "$op" = add ] && [ ! -f "$prjf" ] && { mkdir -p "$(dirname "$prjf")" \
           && printf '| name | path | base | secret-block |\n| --- | --- | --- | --- |\n' > "$prjf" || die 6 "cannot create $prjf"; }
         [ -f "$prjf" ] || die 2 "no such project: $pname (no $prjf)"
-        awk -F'|' -v OFS='|' -v op="$op" -v want="$pname" -v p="$ppath" -v b="$pbase" -v s="$psec" -v hp="$hp" -v hb="$hb" -v hs="$hs" '
+        # The values go in by ENVIRON: awk -v would turn a Windows path such as C:\repos\new into control characters.
+        PC_P=$ppath PC_B=$pbase PC_S=$psec awk -F'|' -v OFS='|' -v op="$op" -v want="$pname" -v hp="$hp" -v hb="$hb" -v hs="$hs" '
           function trim(x) { gsub(/^[ \t\r]+|[ \t\r]+$/, "", x); return x }
+          BEGIN { p = ENVIRON["PC_P"]; b = ENVIRON["PC_B"]; s = ENVIRON["PC_S"] }
           !hdr && /^[ \t]*\|/ { for (i = 2; i < NF; i++) { c[tolower(trim($i))] = i; col[i] = tolower(trim($i)) } hn = NF
             hdr = (c["name"] && c["path"]); print; next }
           hdr && /^[ \t]*\|/ && trim($(c["name"])) == want {
