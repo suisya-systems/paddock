@@ -96,4 +96,12 @@ rm -f "$STUB/term-w-t1"
 close --task t1 >/dev/null; rc=$?
 [ "$rc" -eq 0 ] && ! doc | grep -q Alpha && doc | grep -q Beta; check "whitespace between entries; a gone terminal still lets the entry go" $?
 
+
+# Issue #182: a task text with brackets and braces (written by org-delegate --title) does not
+# end the entry or the array; the neighbour stays.
+reset; delegate t1; worker_report t1
+printf '%s\n' '{"work":[{"task_id":"t1","title":"A ] B","task":"x } , { y ] z"},{"task_id":"t2","title":"Beta","task":"keep {me}"}],"approvals":[]}' > "$STUB/docval"
+close --task t1 >/dev/null; rc=$?
+[ "$rc" -eq 0 ] && ! doc | grep -q 'A ] B' && doc | grep -q '"task_id":"t2","title":"Beta","task":"keep {me}"}\],"approvals"'; check "] and braces inside a task or title do not break the removal" $?
+
 exit $fail

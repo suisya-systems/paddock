@@ -95,14 +95,18 @@ TASK=$task bash "$org" --as secretary doc update org-state -- awk '
   END {
     t = ENVIRON["TASK"]
     if (!match(s, /"work": *\[/)) { printf "%s", s; exit }
-    a = RSTART + RLENGTH; rest = substr(s, a); e = index(rest, "]")
-    n = split(substr(rest, 1, e - 1), p, /\}[ \t\n]*,[ \t\n]*\{/); out = ""
-    for (k = 1; k <= n; k++) {
-      sub(/^[ \n]*\{/, "", p[k]); sub(/\}[ \n]*$/, "", p[k])
-      if (p[k] == "" || p[k] ~ ("\"task_id\": *\"" t "\"")) continue
-      out = out (out == "" ? "" : ",") "{" p[k] "}"
+    # Issue #182: the entries are cut out with a scan that skips string contents, so a "]" or
+    # braces inside a task or title do not end an entry or the array.
+    a = RSTART + RLENGTH; n = length(s); q = 0; ob = 0; out = ""
+    for (i = a; i <= n; i++) { c = substr(s, i, 1)
+      if (q) { if (c == "\\") i++; else if (c == "\"") q = 0; continue }
+      if (c == "\"") q = 1
+      else if (c == "{") { if (ob++ == 0) st = i }
+      else if (c == "}") { if (--ob == 0) { o = substr(s, st, i - st + 1)
+          if (o !~ ("\"task_id\": *\"" t "\"")) out = out (out == "" ? "" : ",") o } }
+      else if (c == "]" && ob == 0) break
     }
-    printf "%s%s%s", substr(s, 1, a - 1), out, substr(rest, e)
+    printf "%s%s%s", substr(s, 1, a - 1), out, substr(s, i)
   }' >/dev/null 2>&1 || die 5 "org-state was not written; the terminal is already ended, run again"
 
 echo "org-close: closed $name${drop:+ (dropped: worktree and unused branch removed)}"

@@ -46,14 +46,28 @@ org_state_doc() {
   printf '%s' "$doc"
 }
 # work_lines <doc>: a "work<TAB>id<TAB>worktree<TAB>head<TAB>dirty<TAB>task<TAB>title" line per work
-# entry, head and dirty read from the worktree now. Fails when an entry cannot be read.
-# ponytail: grep/sed JSON reading; assumes flat entries, no braces inside strings.
+# entry that has a worktree, head and dirty read from the worktree now. Fails when the work array
+# or an entry in it is not closed. Entries are cut out with a scan that skips string contents
+# (Issue #182), so braces, brackets and commas inside a task or title do not end an entry.
+# Fields are read with sed from the one entry; flat entries are assumed.
 work_lines() {
-  local doc=$1 n_all n_ok e id wt tk ti h d
+  local doc=$1 objs e id wt tk ti h d
   jf() { printf '%s' "$1" | sed -n 's/.*"'"$2"'": *"\(\([^"\\]\|\\.\)*\)".*/\1/p'; }
-  n_all=$(printf '%s' "$doc" | grep -o '"worktree"' | wc -l); n_ok=$(printf '%s' "$doc" | grep -o '{[^{}]*"worktree"[^{}]*}' | wc -l)
-  [ "$n_all" -eq "$n_ok" ] || { echo "a work entry in org-state cannot be read (braces inside a string?)" >&2; return 1; }
-  printf '%s' "$doc" | grep -o '{[^{}]*"worktree"[^{}]*}' | while IFS= read -r e; do
+  objs=$(printf '%s' "$doc" | tr -d '\n' | awk '{
+      if (!match($0, /"work": *\[/)) exit
+      s = substr($0, RSTART + RLENGTH); q = 0; ob = 0; ok = 0
+      for (i = 1; i <= length(s); i++) { c = substr(s, i, 1)
+        if (q) { if (c == "\\") c = c substr(s, ++i, 1); else if (c == "\"") q = 0
+                 if (ob) o = o c; continue }
+        if (c == "\"") q = 1
+        else if (c == "{") ob++
+        else if (c == "}") ob--
+        else if (c == "]" && ob == 0) { ok = 1; break }
+        if (ob > 0 || c == "}") o = o c
+        if (c == "}" && ob == 0) { print o; o = "" }
+      }
+      if (!ok || ob != 0) exit 1 }') || { echo "the work list in org-state cannot be read (not closed)" >&2; return 1; }
+  printf '%s\n' "$objs" | grep '"worktree"' | while IFS= read -r e; do
     id=$(jf "$e" task_id); wt=$(jf "$e" worktree); tk=$(jf "$e" task); ti=$(jf "$e" title)
     if [ -n "$wt" ] && git -C "$wt" rev-parse HEAD >/dev/null 2>&1; then
       h=$(git -C "$wt" rev-parse HEAD); d=$(git -C "$wt" status --porcelain | wc -l | tr -d ' ')
