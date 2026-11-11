@@ -25,7 +25,9 @@ case "$1" in
   ls) [ -z "${STUB_CORE_DOWN:-}" ] || { echo '{"error":{"kind":"unavailable"}}'; exit 1; }
       echo "ok"; exit 0 ;;
   get) [ -f "$STUB/secretary" ] || { echo '{"error":{"kind":"not_found"}}'; exit 1; }
+       if [ -f "$STUB/finished" ]; then echo '{"name":"secretary","state":"finished","reason":"killed","status":null}'; exit 0; fi
        echo '{"name":"secretary","state":"live","status":{"app":"claude-code","state":"idle"}}'; exit 0 ;;
+  rm) rm -f "$STUB/secretary" "$STUB/finished"; echo '{"removed":true}'; exit 0 ;;
   run) : > "$STUB/secretary"; echo '{"name":"secretary"}'; exit 0 ;;
 esac
 exit 0
@@ -117,5 +119,17 @@ done
 ln -s "$tmp/core/templates" "$tmp/alias"
 out=$(run PADDOCK_BIN_DIR="$tmp/alias"); rc=$?
 [ "$rc" -eq 2 ] && [ -f "$tmp/core/templates/worker.md" ]; check "PADDOCK_BIN_DIR through a symlink to the templates folder refused ($rc)" $?
+
+# Issue #192: a kept secretary terminal that has finished is removed before a new one is started.
+: > "$tmp/stub/calls"; : > "$tmp/stub/secretary"; : > "$tmp/stub/finished"
+out=$(run); rc=$?
+[ "$rc" -eq 0 ]; check "finished secretary: exits 0 ($out)" $?
+r=$(grep -n '^rm secretary' "$tmp/stub/calls" | head -1 | cut -d: -f1)
+s=$(grep -n '^run ' "$tmp/stub/calls" | head -1 | cut -d: -f1)
+[ -n "$r" ] && [ -n "$s" ] && [ "$r" -lt "$s" ]; check "finished secretary: rm is logged, then run" $?
+# A live secretary is left alone.
+: > "$tmp/stub/calls"
+out=$(run); rc=$?
+! grep -Eq '^(rm|run) ' "$tmp/stub/calls"; check "live secretary: no rm, no run" $?
 
 exit $fail
