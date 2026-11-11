@@ -13,6 +13,8 @@ bash skills/org-delegate/scripts/org-delegate.sh \
   [--base main] [--branch work/<id>] [--allow-write <path>]...
 ```
 
+`--project` may be a name instead of a path: a value without a `/` (and not `.` or `..`) is looked up in `projects.md` (`$XDG_CONFIG_HOME/paddock/projects.md`, `%APPDATA%\paddock` when set; `PADDOCK_PROJECTS_FILE` overrides). The header row names the columns `name`, `path` and `base` (any order; other columns are ignored), for example `| app | /home/me/app | dev |`. The row gives the project path and the default base; an explicit `--base` wins; an empty base is `main`. A missing file or name exits 2 before anything is created.
+
 `--task-file <file>` (or `-` for stdin) replaces `--task` for a long text. Bash only, plus `git` and `hc`.
 
 ## What it does
@@ -31,7 +33,7 @@ It prints `org-delegate: worker=w-<id> worktree=<path> branch=<branch>` on succe
 - **No `AGENTS.md`, no `CLAUDE.md`, no rules file in the worktree.** The role rules are `templates/worker-rules.md`, passed by the template with `--append-system-prompt-file`; the task is the launch's text ([Q12](../../docs/design/open-questions.md#q12-where-do-a-workers-role-rules-and-task-brief-live), decided). Writing `AGENTS.md` would collide with a target repository's own files.
 - **No token.** The worker template sets `GH_CONFIG_DIR` and the read-only `GH_TOKEN` itself ([Q20](../../docs/design/open-questions.md#q20-how-is-a-workers-github-access-held-to-read-only)). The script never reads or passes a token, and the task text must not hold one.
 - **No `org-state` entry.** The secretary adds the `work` entry itself, as its template says.
-- **No worker cap and no project registry** ([Q14](../../docs/design/open-questions.md#q14-where-do-organization-settings-and-registries-live) is open).
+- **No worker cap** (only `projects.md` is read, for `--project <name>`; [Q14](../../docs/design/open-questions.md#q14-where-do-organization-settings-and-registries-live)).
 - **No answer to the trust dialog.** The first time a workers folder is used, a person accepts the dialog once in the window (or the secretary answers it once from the screen, never with a blind Enter: the default is "No, exit").
 
 ## Exit codes

@@ -14,11 +14,12 @@ Creates a git worktree for the task under the workers folder, writes
 with `scripts/org report start` (before the launch). Types nothing into any agent; writes no rules or
 brief file into the worktree (rules: --append-system-prompt-file in the template).
 
-  --project      the git repository the worker changes
+  --project      the git repository the worker changes, or a project name (no /) whose path and base
+                 are read from the row in projects.md (PADDOCK_PROJECTS_FILE, else the paddock config folder)
   --task-id      [a-z0-9_-], at most 30 characters; the worker is w-<id>, the label task_id=<id>
   --task         the task text (what to change, what not to touch, how to report)
   --task-file    the task text from a file, or - for stdin
-  --base         start point of the new branch (default main); when the project has an
+  --base         start point of the new branch (default: the project row's base, else main); when the project has an
                  origin, it is fetched first and origin/<base> is used if it exists
   --no-fetch     do not fetch origin; branch from the local base
   --branch       new branch name (default work/<id>)
@@ -42,7 +43,7 @@ USAGE
 die() { code=$1; shift; echo "org-delegate: $*" >&2; exit "$code"; }
 needs() { [ $# -ge 2 ] || die 2 "$1 needs a value"; }
 
-project= id= task= taskfile= base=main branch= allow=() fetch=1
+project= id= task= taskfile= base= branch= allow=() fetch=1
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
@@ -68,6 +69,17 @@ if [ -n "$taskfile" ]; then
 fi
 [ -n "$task" ] || die 2 "the task text is empty: give --task or --task-file"
 [ -n "$branch" ] || branch=work/$id
+# Issue #186: a --project without a "/" is a name in projects.md; its path and base come from the row.
+case "$project" in
+  */*|.|..) ;;
+  *) . "$(dirname "${BASH_SOURCE[0]}")/project.sh"
+     project_lookup "$project"; rc=$?
+     [ "$rc" -ne 2 ] || die 2 "--project $project is a name but projects.md does not exist (set PADDOCK_PROJECTS_FILE, or pass a path)"
+     [ "$rc" -eq 0 ] || die 2 "no project named $project with a path in projects.md (a path has a /)"
+     project=$project_path
+     [ -n "$base" ] || base=$project_base ;;
+esac
+[ -n "$base" ] || base=main
 for p in ${allow[@]+"${allow[@]}"}; do
   case "$p" in /*|"~/"*) ;; *) die 2 "--allow-write needs an absolute path or ~/...: $p" ;; esac
   case "$p" in *[\"\\]*) die 2 "--allow-write path has a quote or backslash: $p" ;; esac
