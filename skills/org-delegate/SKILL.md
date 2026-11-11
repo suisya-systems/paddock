@@ -13,7 +13,7 @@ bash skills/org-delegate/scripts/org-delegate.sh \
   [--base main] [--branch work/<id>] [--allow-write <path>]...
 ```
 
-`--project` may be a name instead of a path: a value without a `/` is looked up in `projects.md` (`$XDG_CONFIG_HOME/paddock/projects.md`, `%APPDATA%\paddock` when set; `PADDOCK_PROJECTS_FILE` overrides). The header row names the columns `name`, `path` and `base` (any order; other columns are ignored), for example `| app | /home/me/app | dev |`. The row gives the project path and the default base; an explicit `--base` wins; an empty base is `main`. A missing file or name exits 2 before anything is created.
+`--project` may be a name instead of a path: a value without a `/` (and not `.` or `..`) is looked up in `projects.md` (`$XDG_CONFIG_HOME/paddock/projects.md`, `%APPDATA%\paddock` when set; `PADDOCK_PROJECTS_FILE` overrides). The header row names the columns `name`, `path` and `base` (any order; other columns are ignored), for example `| app | /home/me/app | dev |`. The row gives the project path and the default base; an explicit `--base` wins; an empty base is `main`. A missing file or name exits 2 before anything is created.
 
 `--task-file <file>` (or `-` for stdin) replaces `--task` for a long text. Bash only, plus `git` and `hc`.
 

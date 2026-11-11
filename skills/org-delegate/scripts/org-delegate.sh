@@ -71,7 +71,7 @@ fi
 [ -n "$branch" ] || branch=work/$id
 # Issue #186: a --project without a "/" is a name in projects.md; its path and base come from the row.
 case "$project" in
-  */*) ;;
+  */*|.|..) ;;
   *) . "$(dirname "${BASH_SOURCE[0]}")/project.sh"
      project_lookup "$project"; rc=$?
      [ "$rc" -ne 2 ] || die 2 "--project $project is a name but projects.md does not exist (set PADDOCK_PROJECTS_FILE, or pass a path)"
