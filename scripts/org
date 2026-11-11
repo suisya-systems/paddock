@@ -28,6 +28,8 @@ Usage: org [--as <id>] <command> [args]
                                                 ended, no done record), "waiting" (blocked),
                                                 "unreported" (done in the core, no done record),
                                                 "unreadable" or "watch_error"; nothing when quiet
+  brief                                         read-only: print secretary-handover, org-state and
+                                                each terminal labelled task_id with its status
   doc get <name>                                print a core document's value
   doc set <name>                                set it from stdin (secretary only)
   doc update <name> -- <command...>             re-read, run command (old value on stdin, new
@@ -61,7 +63,7 @@ cmd=${1:-}; [ $# -eq 0 ] || shift
 
 valid_id() { case "$1" in ''|-*|*[!a-z0-9_-]*) return 1 ;; esac; }
 case "$cmd" in
-  send_message|check_messages|set_summary|report|ci_completed|list_runs|doc|wait) ;;
+  send_message|check_messages|set_summary|report|ci_completed|list_runs|doc|wait|brief) ;;
   *) echo "org: unknown command: $cmd" >&2; usage >&2; exit 2 ;;
 esac
 valid_id "$id" || die 2 "no valid id: give --as <id> or set PADDOCK_ORG_ID (lowercase letters, digits, _ and -)"
@@ -319,6 +321,22 @@ case "$cmd" in
     printf '%s\n' "$all" | awk -F"$tab" "$AWK_UNESC"'
       $4=="summary" { k=$3; if (!(k in ts) || $2>ts[k] || ($2==ts[k] && $1+0>=sq[k]+0)) { ts[k]=$2; sq[k]=$1; tx[k]=$7 } }
       END { for (k in ts) { t=unesc(tx[k]); gsub(/\n/," ",t); printf "%s\t%s\t%s\n", k, ts[k], substr(t,1,200) } }' | sort ;;
+
+  brief)
+    # Issue #191: what a resuming secretary reads, in one read-only call (hc ls, hc get, doc get).
+    [ $# -eq 0 ] || die 2 "usage: brief"
+    for d in secretary-handover org-state; do
+      echo "== $d"; bash "$0" --as "$id" doc get "$d" || exit $?
+    done
+    echo "== labelled terminals (name, task_id, status)"
+    names=$(hc ls 2>&1) || die 5 "cannot reach the herdr core (hc ls failed)"
+    for n in $(printf '%s' "$names" | tr -d '\n' | grep -o '"name": *"[^"]*"' | sed 's/.*: *"//; s/"$//'); do
+      j=$(hc get --json "$n" 2>/dev/null | tr -d '\n') || continue
+      t=$(printf '%s' "$j" | sed -n 's/.*"task_id": *"\([^"]*\)".*/\1/p')
+      [ -n "$t" ] || continue
+      s=$(printf '%s' "$j" | grep -Eo '"state": *"(working|blocked|done|error|idle)"' | head -1 | sed 's/.*: *"//; s/"$//')
+      printf '%s\t%s\t%s\n' "$n" "$t" "${s:-no status}"
+    done ;;
 
   doc)
     sub=${1:-}; [ $# -eq 0 ] || shift
