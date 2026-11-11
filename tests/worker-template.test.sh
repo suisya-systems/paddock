@@ -41,7 +41,7 @@ cmd=$(cmdline "$tpl")
 [ -n "$cmd" ]; check "command is non-empty" $?
 
 # 4. The command starts with the secretary's env -u prefix; the lists are equal.
-seccmd=$(cmdline "$sec"); prefix=${seccmd% claude}
+seccmd=$(cmdline "$sec"); prefix=${seccmd% sh -c *}
 [ -n "$cmd" ]; case "$cmd" in "$prefix "*) true ;; *) false ;; esac; check "command starts with the secretary's env -u prefix" $?
 [ -n "$(grep -o -- '-u [A-Z_]*' <<<"$seccmd")" ]; check "secretary's env -u list is not empty" $?
 # Issue #155: the worker also removes the core's variables (L-N2); the secretary keeps them (it runs hc).

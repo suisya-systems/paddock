@@ -89,7 +89,8 @@ has() { hc ls 2>&1 | grep -Eq "(^|[^A-Za-z0-9_-])$1([^A-Za-z0-9_-]|\$)"; }
 CMD=$(sed -n 's/^command: //p' "$TPLSRC")
 case "$CMD" in
   *" claude") PREFIX=${CMD% claude} ;;
-  *) echo "RESULT precondition-failed: $TPLSRC command does not end in ' claude'"; exit 1 ;;
+  *" sh -c "*) PREFIX=${CMD%% sh -c *} ;; # the secretary template passes --settings through sh -c (Issue #219)
+  *) echo "RESULT precondition-failed: $TPLSRC command does not end in ' claude' or run claude through sh -c"; exit 1 ;;
 esac
 for t in p34-control p34-parent p34-child-sh p34-child-claude; do
   [ -e "$TPL_DIR/$t.md" ] && { echo "RESULT precondition-failed: $TPL_DIR/$t.md exists; remove it first"; exit 1; }
