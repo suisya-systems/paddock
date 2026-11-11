@@ -146,12 +146,12 @@ list=$(PADDOCK_STATE_DIR="$tmp/state" PADDOCK_NOW=2026-11-10T01:09:05Z bash "$or
 grep -Eq '^t1[[:space:]]+w-t1[[:space:]]+done' <<<"$list"; check "a worker's later done wins over the delegation record in list_runs" $?
 
 # Options.
-reset; out=$(run -- "${good[@]}" --branch feat/x --base main --allow-write "$tmp/out dir" --allow-write '~/notes'); rc=$?
+reset; out=$(run -- "${good[@]}" --branch feat/x --base main --allow-write "$tmp/out dir" --allow-write '~/notes' --allow-write "$tmp/a&b"); rc=$?
 [ "$rc" -eq 0 ] && [ "$(git -C "$workers/t1" rev-parse --abbrev-ref HEAD)" = feat/x ]; check "--branch names the branch" $?
 # Issue #160: in the worker's own --settings file (Claude Code ignores allowWrite in settings.local.json once
 # allowUnsandboxedCommands is false there), not in settings.local.json.
 sj=$(tr -d '\n' < "$tmp/state/settings/t1.json")
-grep -q '"allowWrite"' <<<"$sj" && grep -qF "\"$tmp/out dir\"" <<<"$sj" && grep -qF '"~/notes"' <<<"$sj" \
+grep -q '"allowWrite"' <<<"$sj" && grep -qF "\"$tmp/out dir\"" <<<"$sj" && grep -qF '"~/notes"' <<<"$sj" && grep -qF "\"$tmp/a&b\"" <<<"$sj" \
   && grep -q '"sandbox"' <<<"$sj" && grep -q '"filesystem"' <<<"$sj" \
   && ! grep -q '"allowWrite"' "$workers/t1/.claude/settings.local.json"
 check "--allow-write lands in sandbox.filesystem.allowWrite of the per-task settings file" $?

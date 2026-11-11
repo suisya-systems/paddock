@@ -198,7 +198,9 @@ tpl=$(cat "$root/templates/worker-settings.json") || fail_undone 6 "cannot read 
 [ "$(grep -c '"allowWrite": \[\]' <<<"$tpl")" = 1 ] \
   || fail_undone 6 "templates/worker-settings.json must hold exactly one empty \"allowWrite\": [] to fill in"
 ws=$state/settings/$id.json
-{ mkdir -p "$state/settings" && printf '%s\n' "${tpl/'"allowWrite": []'/\"allowWrite\": [$list]}" > "$ws.tmp" && mv -f "$ws.tmp" "$ws"; } 2>/dev/null \
+# both sides quoted: an & in a path stays literal (bash 5.2 patsub_replacement)
+old='"allowWrite": []' new="\"allowWrite\": [$list]"
+{ mkdir -p "$state/settings" && printf '%s\n' "${tpl/"$old"/"$new"}" > "$ws.tmp" && mv -f "$ws.tmp" "$ws"; } 2>/dev/null \
   || fail_undone 6 "cannot write the worker's settings file $ws"
 # Issue #189: caches go to the sandbox temporary folder of the worker. Claude Code does not expand $TMPDIR in a
 # settings env value (measured on 2.1.322), so write the path out; the sandbox's TMPDIR is /tmp/claude-<uid>.
