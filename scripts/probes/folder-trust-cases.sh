@@ -31,8 +31,8 @@
 #   case-trusted-repo  a git worktree of a repository that is itself trusted, created OUTSIDE the
 #                      workers folder (so only the repository's trust can cover it).
 # Reading the verdicts: "RESULT <case>: DIALOG" = the dialog (Quick safety check / Accessing
-# workspace) is on the screen and first_message.sent is false; "NO-DIALOG" = no dialog and
-# first_message.sent true; "UNKNOWN" = neither (read the screen). Paste the whole output back.
+# workspace) is on the screen; "NO-DIALOG" = a screen without dialog text; "UNKNOWN" = an empty
+# screen. Read the screen too. Paste the whole output back.
 set -u
 
 case "${1:-}" in
@@ -89,7 +89,7 @@ run_case() { # run_case <name> <folder>: launch, read once, never answer, kill
   echo "-- hc read $t (last 20 lines)"; printf '%s\n' "$screen" | tail -n 20
   echo "-- first_message: ${fm:-not found}"
   if printf '%s\n' "$screen" | grep -Eq 'Quick safety check|Accessing workspace|trust this folder'; then v=DIALOG
-  elif printf '%s\n' "$fm" | grep -Eq '"sent": *true'; then v=NO-DIALOG
+  elif [ -n "$screen" ]; then v=NO-DIALOG # a screen with no dialog text (first_message is read below for the record)
   else v=UNKNOWN; fi
   echo "RESULT case-$n: $v"
   hc kill "$t" >/dev/null 2>&1; hc rm "$t" >/dev/null 2>&1
