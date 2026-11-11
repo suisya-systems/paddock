@@ -30,8 +30,8 @@ check "worker settings set sandbox.allowUnsandboxedCommands false" $?
 js "$settings" 'const a = s.sandbox.filesystem.allowWrite || [];
   process.exit(a.some(p => /^~\/\.local(\/state(\/paddock\/?)?)?\/?$/.test(p) || p.startsWith("~/.local/state/paddock")) ? 1 : 0)'
 check "worker settings allow no write under the state folder" $?
-js "$settings" 'process.exit(s.permissions.deny.includes("Edit(~/.local/state/paddock/**)") ? 0 : 1)'
-check "worker settings deny the Edit and Write tools in the state folder" $?
+js "$settings" 'process.exit(s.permissions.deny.includes("Edit(~/.local/state/paddock/**)") ? 1 : 0)'
+check "no Edit deny on the state folder (Claude Code makes it a denyWrite; a hook holds the file tools, Issue #245)" $?
 js "$settings" 'process.exit((s.sandbox.filesystem.denyWrite || []).some(p => p.startsWith("~/.local/state/paddock")) ? 1 : 0)'
 check "no denyWrite on the state folder (it would beat the own-file entries)" $?
 

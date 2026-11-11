@@ -162,10 +162,18 @@ append() {
 # file <lock>.break, and only if the pid it re-reads there is still that dead one. A lock with no
 # pid recorded (holder killed right after mkdir) or a .break left behind is never broken: the
 # send gives up after $PADDOCK_LOCK_WAIT s (default 60) with exit 5 and names what to remove.
+# A lock that cannot be made (Issue #245: the sandbox refused the mkdir, or the pid file in a folder
+# just made) is not held: nothing is there. Seen 20 times in a row (1 s, longer than any race) it
+# exits 5 at once and says so, with mkdir's own error.
 lock_take() {
-  local lk=$1 me=${BASHPID:-$$} n=0 o end
+  local lk=$1 me=${BASHPID:-$$} n=0 bad=0 o e end
   end=$((SECONDS + ${PADDOCK_LOCK_WAIT:-60}))
-  until mkdir "$lk" 2>/dev/null && excl "$lk/pid" "$me"; do
+  until e=$(mkdir "$lk" 2>&1) && excl "$lk/pid" "$me"; do
+    if [ -z "$e" ] && [ ! -e "$lk/pid" ]; then
+      rmdir "$lk" 2>/dev/null; e="cannot write $lk/pid"; bad=$((bad + 1))
+    elif [ ! -d "$lk" ]; then bad=$((bad + 1))
+    else bad=0; fi
+    [ "$bad" -lt 20 ] || die 5 "cannot create lock $lk ($e); it is not held: the sandbox or the folder's permissions refuse writing in ${lk%/*}"
     n=$((n + 1))
     if [ $((n % 20)) -eq 0 ]; then
       o=$(cat "$lk/pid" 2>/dev/null)
