@@ -14,7 +14,7 @@ bash skills/org-resume/scripts/org-resume.sh --apply    # relaunches workers who
 
 ## What it does
 
-1. Reads the `suspend.record` that [org-suspend](../org-suspend/SKILL.md) wrote. No record: exit 9, nothing launched.
+1. Reads the `suspend.record` that [org-suspend](../org-suspend/SKILL.md) wrote. **No record** (an unplanned core stop: a crash or a restart): it reads the `work` entries of `org-state` instead, says so in its output and lists what it could not restore (the git comparison with a record, the recorded terminal names, the recorded terminal states), then goes on as below with `w-<task_id>` as the name and the core's answer as the state. No record and no `work` entry: exit 9, nothing launched.
 2. Per worker (`work` entry), finds its terminal by the `task_id` label and prints: the git comparison (`HEAD` unchanged or changed, uncommitted files, worktree missing) and whether the terminal is alive (it reports a status) or gone.
 3. Prints the plan and stops. Without `--apply` it runs no `hc run`, `hc kill` or `hc rm`.
 4. With `--apply`, for each worker whose terminal is gone:
@@ -35,7 +35,16 @@ Workers that are alive are left alone. Unlabelled terminals are never touched. I
 
 ## Exit codes
 
-0 plan printed or workers resumed, 2 bad argument, 3 `hc` not found, 4 run inside an agent, 5 core unreachable or `hc rm` failed, 9 no suspend record, 13 a worker could not be relaunched.
+0 plan printed or workers resumed, 2 bad argument, 3 `hc` not found, 4 run inside an agent, 5 core unreachable or `hc rm` failed, 9 no suspend record and no work in the work list, 13 a worker could not be relaunched.
+
+## Measured
+
+The no-record path was measured once on a real core (hc 0.1.18, Claude Code 2.1.322) with `scripts/probes/org-resume-no-record.sh`: a worker in progress, `hc server stop` with no `org-suspend`, then `org-resume` and `org-resume --apply`. All checks passed:
+
+- `org-state` survived the core stop, so the work list was there to read.
+- The worker's terminal record remained after the stop, without a status (`exit_code` null). `org-resume` treats that as gone, as designed.
+- The plan said "no suspend record; resuming from the work list" and what it could not restore, and launched nothing.
+- `--apply`: `worker-continue` did not come up; the fresh-worker fallback did, and the terminal reported a status. So the fallback ran end to end. Why `--continue` did not come up was not read from the output (the probe stops the first turn after 5 s; no conversation may have been saved).
 
 ## Not measured
 

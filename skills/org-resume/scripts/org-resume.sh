@@ -8,7 +8,7 @@ usage() {
   cat <<'USAGE'
 Usage: org-resume.sh [--apply] [-h|--help]
 
-Reads the record org-suspend wrote, finds each worker's terminal by its task_id label,
+Reads the record org-suspend wrote (without one, the work entries of org-state; it says so), finds each worker's terminal by its task_id label,
 compares its worktree's git state with the record, and prints a plan. It launches
 nothing unless --apply is given. With --apply, for a worker whose terminal is gone it
 tries worker-continue (claude --continue in the worktree, original task in the launch)
@@ -22,7 +22,7 @@ Environment overrides:
   PADDOCK_READY_TRIES                    seconds to wait for a status (default 15)
 
 Exit codes: 0 plan printed or workers resumed, 2 bad argument, 3 hc not found,
-4 run inside an agent, 5 core unreachable or hc kill/rm failed, 9 no suspend record,
+4 run inside an agent, 5 core unreachable or hc kill/rm failed, 9 no suspend record and no work in org-state,
 13 a worker could not be relaunched.
 USAGE
 }
@@ -45,8 +45,19 @@ rec=$dir/suspend.record
 fresh_t=${PADDOCK_WORKER_TEMPLATE:-worker}
 cont_t=${PADDOCK_WORKER_CONTINUE_TEMPLATE:-worker-continue}
 tries=${PADDOCK_READY_TRIES:-15}
-[ -f "$rec" ] || die 9 "no suspend record at $rec (run org-suspend first); nothing was launched"
 hc ls >/dev/null 2>&1 || die 5 "cannot reach the herdr core (hc ls failed)"
+fromlist=
+if [ ! -f "$rec" ]; then
+  # No suspend record (an unplanned core stop): the work list in org-state has what a resume needs.
+  doc=$(org_state_doc 2>&1) || die 5 "no suspend record at $rec and org-state is unreadable ($doc); nothing was launched"
+  works=$(work_lines "$doc" 2>&1) || die 5 "$works; nothing was launched"
+  [ -n "$works" ] || die 9 "no suspend record at $rec and no in-progress work in the work list (org-state); nothing was launched"
+  rec=$(mktemp "${TMPDIR:-/tmp}/org-resume.XXXXXX") || die 5 "cannot create a temporary file"
+  trap 'rm -f "$rec"' EXIT
+  printf '%s\n' "$works" > "$rec"; fromlist=1
+  echo "org-resume: no suspend record; resuming from the work list in org-state."
+  echo "org-resume: could not restore: the git comparison with a record (none was written), the recorded terminal names (w-<task_id> is used) and the recorded terminal states (read from the core now)."
+fi
 
 # launch <template> <name> <cwd> <id> <task>: ok only when the task reached the worker and a status shows.
 launch() {
@@ -81,7 +92,8 @@ while IFS=$'\t' read -r kind id wt head dirty task title; do
     echo "$id: git: worktree missing ($wt)"
   else
     now=$(git -C "$wt" rev-parse HEAD); dn=$(git -C "$wt" status --porcelain | wc -l | tr -d ' ')
-    if [ "$now" = "$head" ]; then echo "$id: git: HEAD unchanged, $dn uncommitted file(s) (was $dirty)"
+    if [ -n "$fromlist" ]; then echo "$id: git: HEAD $now, $dn uncommitted file(s) (no record to compare with)"
+    elif [ "$now" = "$head" ]; then echo "$id: git: HEAD unchanged, $dn uncommitted file(s) (was $dirty)"
     else echo "$id: git: HEAD changed since the record ($head -> $now), $dn uncommitted file(s) (was $dirty)"; fi
   fi
   if [ "$st" != gone ] && [ "$st" != none ]; then
