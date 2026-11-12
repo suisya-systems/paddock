@@ -239,3 +239,42 @@ Touches and stops (all before the request; each is a person acting by hand, whic
 New Issues filed for these stops: #267 (stops 2 and 7, manual preparation), #268 (3, `claude` not on the terminal's `PATH`), #269 (4, `org-start` gives no reason), #270 (5, `layout.switch` and the Windows window), #271 (6, the runbook's shell outside herdr). Stop 1 is #264.
 
 The run is to be repeated once these are fixed. #243 stays open.
+
+### Run 4
+
+Run 2026-11-12 on `main` at `47050ed` (after #267, #268, #270, #271 and #279/#280), task `p3-202611120831`, the same throwaway repository. Versions: hc 0.1.20, herdr-app 0.1.15, Claude Code 2.1.322, codex-cli 0.153.4. The setup ran inside herdr (the prepare command from #267 and #271), the window was the Windows herdr-app, and the person's only actions were Yes on the card and looking at the window. **The owner stopped the run at 08:50:42 because the worker gave up waiting before the card was answered.** G1 is not met: the request reached a worker and the approval showed on the card and was answered, but the worker did not receive the answer, so there is no commit after the test, no review, and no pull request. The record comes from `evidence/summary.txt`, `notes.tsv` and `watch.log` of the run folder, plus the operator's observations (the rows below).
+
+What held (every `RESULT` line up to step 7 is PASS): `preconditions`, `notes-off`, `worker-token`, `project-trust`, `codex-cli`, `1-placed-files` (8 files), `1-secretary`, `2-request`, `3-own-settings`, `3-worktree`, `4-work-entry`, `4-worker`, `4-worker-report`, `5-blocked`, `5-approval` (`p3-202611120831-20261112T083333Z`), `6-card-answer`, `7-secretary-read`, `7-forwarded`, `7-approval-removed`. Not reached: `8-*`, `9-*`, `10-no-touch`. The fixes that worked: #268 (`claude` started by its absolute path; no exit 127), #270 (`layout.switch` through the Windows herdr-app), #271 (`prepare` from a terminal inside herdr), #267 (one prepare command; the folder trust was done on the person's behalf by the secretary, not by the person).
+
+Times (UTC, from the history, the status log and `notes.tsv`):
+
+| What | When | Delay |
+| --- | --- | --- |
+| Request sent | 08:32:47 | |
+| `run_started` by the secretary, `work_added` | 08:32:55, 08:32:58 | 8 s, 11 s |
+| Worker terminal `working` | 08:32:58 | 11 s |
+| `run_started` by the worker, `run_blocked` | 08:33:10, 08:33:17 | 12 s, 7 s later |
+| `approval_asked` (the card) | 08:33:34 | 17 s after `run_blocked` |
+| Layout seen by the person (secretary centre, workers left, card right) | 08:35:32 | |
+| Worker terminal `done` (it ended its turn and asked in its own terminal) | 08:36:44 | 3 min 10 s after the card; **3 min 34 s before the click** |
+| `ANSWER yes` in the person's file (the click) | 08:40:18 | 6 min 44 s after the card |
+| Secretary's `ack`, answer forwarded, `approval_removed` | 08:40:23, 08:40:26, 08:40:26 | 5 s, 3 s |
+| Stopped by the owner | 08:50:42 | 10 min 16 s after the forward, with the worker still idle |
+
+**What stopped it.** The worker's `org wait` returned `{"reason":"timeout","watch_error":"org: doc.get org-state failed: "}` three times. After the third it stopped waiting and ended its turn at 08:36, asking yes/no in its own terminal. The secretary forwarded the `ANSWER` at 08:40:26 and it reached the worker's mailbox, but an idle worker is not woken by a message, so nothing happened. The person would have had to type in the worker's terminal, which the pass line forbids. The `doc.get org-state` failure itself is not explained by this run: `org-state` read fine for `watch` at 08:33:42 and 08:40:28, and the error text after `failed:` is empty.
+
+Stops and touches (the first is what ended the run; the rest the person or the operator felt):
+
+| # | Step | What happened | Cause | Issue |
+| --- | --- | --- | --- | --- |
+| 1 | 5-7 | The worker's wait failed three times (`watch_error`), it stopped waiting and asked in its own terminal; the forwarded answer cannot wake an idle worker. | The wait returns an empty `watch_error` and the worker rules let it end its turn; a message does not wake a finished turn. | New (A, B) |
+| 2 | 2 | The request text tells the secretary to call `org-escalation ask --answer-in`; that option does not exist. The secretary dropped it and ran the command without it. | The runbook's request text names a flag the command does not have. | New (C) |
+| 3 | 5 | The card was in English while the secretary spoke Japanese. `templates/secretary.md:9` decides the conversation language `auto` from the locale, and the host's locale is `en_US.UTF-8`. | The language rule reads the locale, not the person's language. | New (D) |
+| 4 | 6 | The person's input waits up to 1 minute: the secretary waits with `wait --children` for at most 60 s at a time (`scripts/org:24-27`, `templates/secretary.md:27-28`). | The wait is a poll, not a push. | New (E) |
+| 5 | 0 | The prepare command lives inside the paddock clone that it updates, so it could not be run from a stale clone (`No such file`). | The entry point is in the thing it refreshes. | New (F) |
+| 6 | 1 | Run 3's secretary terminal was replaced by a plain shell when the core stopped, kept the name `secretary`, and blocked `prepare`. | A terminal that outlives its program keeps the name. | New (G) |
+| 7 | 1 | The agent (the secretary) created and removed terminals inside herdr. Claude Code's auto-mode classifier refused it once; a person's explicit permission let it through. | The classifier does not know that the secretary's terminal control is expected. | New (H) |
+
+The person's actions in the loop: Yes on the card (1) and looking at the window. The permission in row 7 was given by the person to the assistant and is a touch the pass line does not allow.
+
+Not exercised by this run: the second commit, the review gate and its round counter, the pull request and the acceptance job. Run 2's result for those stands for `63c8e54`. Run 4 is to be repeated once A and B are fixed. #243 stays open.
