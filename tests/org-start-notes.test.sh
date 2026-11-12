@@ -22,6 +22,7 @@ esac
 exit 0
 EOF2
 chmod +x "$tmp/bin/hc"
+printf '#!/bin/sh\n' > "$tmp/bin/claude"; chmod +x "$tmp/bin/claude" # Issue #268: org-start needs claude on PATH
 
 run() { # run <core config dir>
   mkdir -p "$tmp/stub"

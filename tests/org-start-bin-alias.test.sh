@@ -6,6 +6,7 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/bin"
 printf '#!/bin/sh\ncase "$1" in get) exit 1 ;; esac\nexit 0\n' > "$tmp/bin/hc"; chmod +x "$tmp/bin/hc"
+printf '#!/bin/sh\n' > "$tmp/bin/claude"; chmod +x "$tmp/bin/claude" # Issue #268: org-start needs claude on PATH
 env -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID \
     -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN PATH="$tmp/bin:$PATH" \
     PADDOCK_CORE_CONFIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fixtures/core-notes-off" PADDOCK_CORE_TEMPLATES_DIR="$tmp/p/templates" PADDOCK_APP_MODS_DIR="$tmp/mods" \

@@ -52,6 +52,7 @@ esac
 exit 0
 EOF2
 chmod +x "$stubdir/hc"
+printf '#!/bin/sh\n' > "$stubdir/claude"; chmod +x "$stubdir/claude" # Issue #268: org-start needs claude on PATH
 
 export PADDOCK_STATE_DIR=$tmp/state PADDOCK_ORG_CONFIG_FILE=$tmp/cfg/org-config.md PADDOCK_PROJECTS_FILE=$tmp/cfg/projects.md
 lang() { bash "$here/scripts/org" --as secretary config set conversation_language "$1" >/dev/null; }

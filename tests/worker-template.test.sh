@@ -141,6 +141,7 @@ esac
 exit 0
 EOF3
 chmod +x "$hcstub/hc"; mkdir -p "$tmp/stubstate"
+printf '#!/bin/sh\n' > "$hcstub/claude"; chmod +x "$hcstub/claude" # Issue #268: org-start needs claude on PATH
 xdg=$tmp/xdg; mkdir -p "$xdg"
 startrun() { # startrun [extra env...]
   env -u APPDATA -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID \

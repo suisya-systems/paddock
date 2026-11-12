@@ -77,6 +77,7 @@ esac
 exit 0
 EOF2
 chmod +x "$stubdir/hc" "$stubdir/gh"
+printf '#!/bin/sh\n' > "$stubdir/claude"; chmod +x "$stubdir/claude" # Issue #268: org-start needs claude on PATH
 calls=$tmp/stub/calls
 
 # org-pull-request follows the setting.
