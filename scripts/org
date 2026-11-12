@@ -381,6 +381,9 @@ case "$cmd" in
     # ponytail: done records are looked for in this and the last month.
     watch() {
       local doc ids t j st fin g= w= u= x= runs
+      # Issue #281: only the secretary watches. A worker is kept off hc, so its read of the core
+      # failed (empty watch_error) and the worker took that for a reason to stop waiting.
+      [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || return 0
       flush_staged # lazy edits reach the core before the check (Issue #76)
       [ -z "$flushmsg" ] || printf ',"flush_error":"%s"' "$(printf '%s' "$flushmsg" | json_esc)"
       doc=$(bash "$0" --as "$id" doc get org-state 2>&1) || {
