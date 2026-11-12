@@ -90,4 +90,9 @@ printf '%s' "$out" | grep -q 't-fin'; [ $? -ne 0 ]; check "after its done record
 out=$(STUB_CORE_DOWN=1 o secretary wait --timeout 1 2>&1)
 printf '%s' "$out" | grep -q '"reason":"timeout"' && printf '%s' "$out" | grep -q '"watch_error"'; check "core unreachable: watch_error ($out)" $?
 
+# Issue #281: a worker's wait only reads its mailbox. It must not read the core (a worker is
+# kept off hc), so an unreadable core is never a watch_error in a worker's line.
+out=$(STUB_CORE_DOWN=1 o w-t-ok wait --timeout 1 2>&1)
+printf '%s' "$out" | grep -q '"reason":"timeout"' && ! printf '%s' "$out" | grep -q 'watch_error'; check "worker: no watch_error when the core is unreachable ($out)" $?
+
 exit $fail
