@@ -15,8 +15,8 @@
 #   sh scripts/probes/prototype-3.sh collect --task-id T
 #   sh scripts/probes/prototype-3.sh cleanup --task-id T
 #
-# prepare: from a terminal in herdr. The core must already be running (hc server status): prepare
-#   never starts it, so the core's environment is never this shell's or an agent's. Checks the
+# prepare: from a terminal in herdr. The core must already be running (the process herdr-core serve; no hc
+#   call can tell, any may start it): prepare never starts it, so the core's environment is never this shell's or an agent's. Checks the
 #   paddock checkout, the fixture and the host, saves the run and the request, prints the setup
 #   commands. It starts nothing.
 # watch: start it and keep it running. Polls every 5 s and prints one RESULT line per step as it
@@ -118,7 +118,7 @@ if [ -z "$HERDR_APP" ]; then
   done
 fi
 [ -n "$HERDR_APP" ] || HERDR_APP=herdr-app # not found: the commands say so when run (PADDOCK_HERDR_APP names it)
-for c in hc git gh bash awk sed grep cmp; do command -v "$c" >/dev/null 2>&1 || die 3 "$c not found on PATH"; done
+for c in hc git gh bash awk sed grep cmp pgrep; do command -v "$c" >/dev/null 2>&1 || die 3 "$c not found on PATH"; done
 hcj() { hc get --json "$1" 2>/dev/null | one_line; }
 field() { grep -Eo "\"$1\": *(\"[^\"]*\"|[0-9]+)" | head -n 1 | sed 's/^[^:]*: *//; s/"//g'; }
 state_of() { hcj "$1" | grep -Eo '"status": *\{[^{}]*"state": *"[a-z]*"' | grep -Eo '"state": *"[a-z]*"' | tail -n 1 | sed 's/.*: *"//; s/"$//'; } # up to the state key: a status text may hold braces
@@ -126,8 +126,9 @@ orgstate() { bash "$ORG" --as secretary doc get org-state 2>/dev/null | one_line
 
 if [ "$phase" = prepare ]; then
   # Host rule (org-start's Q17): the first hc command starts a core that inherits the caller's
-  # environment. `hc server status` does not start one, and a run never does.
-  hc server status >/dev/null 2>&1 || die 6 "the core is not running: start herdr first (this runbook never starts the core, so it never gets this shell's environment)"
+  # environment. Every hc command can start one (even `hc server status`, hc 0.1.20 on Unix), so the
+  # check calls no hc: the core is the process `herdr-core serve`.
+  pgrep -f '(^|/)herdr-core serve' >/dev/null 2>&1 || die 6 "the core is not running: start herdr first (this runbook never starts the core, so it never gets this shell's environment)"
   # The paddock checkout: main, clean, at origin/main (the loop is run on today's main).
   pb=$(git -C "$ROOT" symbolic-ref --short HEAD 2>/dev/null)
   [ "$pb" = main ] || die 6 "the paddock checkout is on '${pb:-detached}', not main"
