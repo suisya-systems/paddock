@@ -72,6 +72,18 @@ function duration(ms) {
   const h = Math.floor(m / 60);
   return h < 48 ? `${h}h` : `${Math.floor(h / 24)}d`;
 }
+// Text on a filled state colour: black or white, whichever contrasts more with it (WCAG relative
+// luminance), so a label on the amber or red fill stays readable in light and dark themes alike.
+function ink(hex) {
+  const m = /^#?([0-9a-f]{6})/i.exec(hex ?? "");
+  if (!m) return "#ffffff";
+  const [r, g, b] = [0, 2, 4].map((i) => {
+    const v = parseInt(m[1].slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return (l + 0.05) / 0.05 >= 1.05 / (l + 0.05) ? "#000000" : "#ffffff";
+}
 const since = (iso, now) => (iso ? duration(now - Date.parse(iso)) : "");
 
 // The last meaningful lines of a screen. Claude Code draws an input box and footer hints at the
@@ -291,19 +303,23 @@ export default class Cockpit extends View {
     });
   }
 
-  // Yes is the one filled amber control on the screen; No is the same size, only unfilled.
+  // The amber fill follows the secretary's recommendation; with none, both answers are outlined.
   choice(t, a, word, label, primary) {
     const s = this.sent.get(a.id);
     const busy = s?.state === "sending";
     const mine = busy && s.word === word;
     const c = t.blocked;
-    return div().id(`${word}-${a.id}`).flex_1().h(36).rounded(8).flex().items_center().justify_center()
-      .text_size(13).font_semibold().bg(primary ? c : t.raised).text_color(primary ? t.background : t.foreground)
+    return h_flex().id(`${word}-${a.id}`).flex_1().min_w(0).h(36).rounded(8).gap(6).items_center().justify_center()
+      .text_size(13).font_semibold()
+      .when(primary, (el) => el.bg(c).text_color(ink(c)))
+      .when(!primary, (el) => el.border(1).border_color(t.foreground + "29").text_color(t.foreground))
       .when(busy, (el) => el.opacity(mine ? 0.6 : 0.35))
       .when(!busy, (el) => el.cursor_pointer().hover((st) => st.bg(primary ? c + "d9" : t.hover)))
       .on_click(() => this.answer(a, word))
-      .child(mine ? "Sending…" : label);
+      .child(mine ? "Sending…" : label)
+      .when(primary && !mine, (el) => el.child(div().text_size(12).font_medium().child("Recommended")));
   }
+
 
   // Answering in words goes to the secretary, never to a worker's terminal.
   secretaryLink(t) {
@@ -311,14 +327,16 @@ export default class Cockpit extends View {
     return div().id("open-secretary").truncate().text_size(12)
       .when(Boolean(sec), (el) => el.text_color(t.muted).cursor_pointer().hover((s) => s.text_color(t.foreground))
         .on_click(() => run("pane.focus", { terminal: sec.address })))
-      .when(!sec, (el) => el.text_color(t.dim))
+      .when(!sec, (el) => el.text_color(t.muted))
       .child(sec ? "Open the secretary to answer in words" : "The secretary is not running");
   }
 
   // Who answers (architecture 7.1): answer_in "worker" is a worker's own permission prompt or
   // dialog, answered only in its terminal, so the card opens it and offers no Yes / No. Anything
   // else is answered through the secretary: Yes / No to its mailbox, or in words in its pane.
-  card(t, a, more, now) {
+  // Three bands: the state strip and the controls are pinned, the text between them scrolls, so
+  // nothing the secretary wrote is cut (Issue #258).
+  card(t, a, more, now, title) {
     const c = t.blocked;
     const inWorker = a.answer_in === "worker";
     const term = inWorker && terminals().find((x) => x.state === "live" && x.labels?.task_id === a.task_id);
@@ -331,33 +349,78 @@ export default class Cockpit extends View {
     const question = a.question || `Approval ${a.id || "without an id"} for ${task}`;
     const note = !a.question ? "No question was written. Ask the secretary what it needs."
       : inWorker ? "Answered in its own terminal, not from here." : null;
+    const waited = since(a.asked_at, now);
     // The secretary removes an answered approval; until it does, the card says it may be answered.
-    const meta = `waiting ${since(a.asked_at, now)} · ${task}` + (term && !stillBlocked ? " · no longer blocked, answered?" : "");
+    const meta = [title && title !== task && task, waited && `waiting ${waited}`, term && !stillBlocked && "no longer blocked, answered?"]
+      .filter(Boolean).join(" · ");
     const loud = !inWorker || !term || stillBlocked;
     const label = inWorker ? `${String(a.task_id || "a worker").toUpperCase()} NEEDS YOU` : "THE SECRETARY IS ASKING YOU";
+    const rec = a.recommend === "yes" || a.recommend === "no" ? a.recommend : null;
+    const missing = [!a.background && "background", !a.if_yes && "what Yes does", !a.if_no && "what No does", !rec && "recommendation"].filter(Boolean);
+    // A field the secretary left out is named where it would be; with nothing written, one line.
+    const none = missing.length === 4;
+    const gone = (names) => names.length > 0 && !none;
+    const unwritten = (names) => div().text_size(12).line_height(1.4).text_color(t.foreground).whitespace_normal()
+      .child(`Not written: ${names.join(", ")}.` + (none && a.question ? " Ask the secretary before answering." : ""));
+    const outs = missing.filter((m) => m.startsWith("what"));
+    const text = (s, color) => div().text_size(13).line_height(1.45).text_color(color).whitespace_normal().child(s);
+    const outcome = (word, s) => h_flex().gap(8).items_start()
+      .child(div().w(28).flex_none().text_size(13).font_semibold().line_height(1.45).text_color(t.foreground).child(word))
+      .child(text(s, t.foreground).flex_1().min_w(0));
     const open = term && div().id("open").h(36).rounded(8).flex().items_center().justify_center().cursor_pointer()
-      .text_size(13).font_semibold().bg(stillBlocked ? c : t.raised).text_color(stillBlocked ? t.background : t.foreground)
+      .text_size(13).font_semibold()
+      .when(stillBlocked, (el) => el.bg(c).text_color(ink(c)))
+      .when(!stillBlocked, (el) => el.border(1).border_color(t.foreground + "29").text_color(t.foreground))
       .hover((st) => st.bg(stillBlocked ? c + "d9" : t.hover))
       .on_click(() => run("terminal.peek", { terminal: term.address }))
       .child(stillBlocked ? `Open ${a.task_id} to answer` : `Open ${a.task_id}`);
-    return v_flex().gap(8)
-      .child(h_flex().id(`ap-${a.id}`).items_stretch().rounded(12).overflow_hidden().bg(c + "26")
-        .child(div().w(4).flex_none().bg(c))
-        .child(v_flex().flex_1().min_w(0).px(16).py(16).gap(12)
-          .child(h_flex().gap(8).items_center()
-            .child(div().size(8).flex_none().rounded(4).bg(c).when(loud, (el) => el.loop("opacity", { from: 0.35, to: 1, period: 1400 })))
-            .child(this.label(t, label, c)))
-          .child(div().text_size(16).font_semibold().line_height(1.3).text_color(a.question ? t.foreground : t.muted).whitespace_normal().max_h(63).overflow_hidden().child(question))
-          .when(Boolean(note), (el) => el.child(div().text_size(12).text_color(t.muted).whitespace_normal().child(note)))
-          .child(div().text_size(11).text_color(t.muted).truncate().child(meta))
+    // Two parts of one card: the text (head), which renderApproval puts in the rail's scroll area,
+    // and the controls (foot), pinned below it. A scroll area nested in auto-height columns is
+    // measured at zero height by the layout (Issue #258's first render showed no text at all), so
+    // the scroll area is the rail itself, sized by the layout block.
+    const edge = c + "59";
+    const head = v_flex().id(`ap-${a.id}`).flex_none().rounded_t(12).bg(t.raised).border_t(1).border_x(1).border_color(edge)
+        .child(h_flex().flex_none().h(36).px(16).gap(8).items_center().rounded_t(11).bg(c + "1f")
+          .child(div().size(8).flex_none().rounded(4).bg(c).when(loud, (el) => el.loop("opacity", { from: 0.35, to: 1, period: 1400 })))
+          .child(this.label(t, label, c)))
+        .child(v_flex().px(16).pt(14).pb(16).gap(16)
+          .child(v_flex().gap(4)
+            .child(div().text_size(13).font_semibold().line_height(1.35).text_color(t.foreground).whitespace_normal().child(title || task))
+            .when(Boolean(meta), (el) => el.child(div().text_size(11).text_color(t.muted).whitespace_normal().child(meta))))
+          .child(v_flex().gap(6)
+            .child(div().text_size(15).font_semibold().line_height(1.35).text_color(a.question ? t.foreground : t.muted).whitespace_normal().child(question))
+            .when(Boolean(note), (el) => el.child(div().text_size(12).line_height(1.4).text_color(t.foreground).whitespace_normal().child(note))))
+          .when(Boolean(a.background), (el) => el.child(v_flex().gap(4)
+            .child(this.label(t, "BACKGROUND", t.muted))
+            .child(text(a.background, t.foreground))))
+          .when(gone(a.background ? [] : ["background"]), (el) => el.child(unwritten(["background"])))
+          .when(Boolean(a.if_yes || a.if_no), (el) => el.child(v_flex().gap(6)
+            .child(this.label(t, "IF YOU ANSWER", t.muted))
+            .when(Boolean(a.if_yes), (e) => e.child(outcome("Yes", a.if_yes)))
+            .when(Boolean(a.if_no), (e) => e.child(outcome("No", a.if_no)))
+            .when(gone(outs), (e) => e.child(unwritten(outs)))))
+          .when(!a.if_yes && !a.if_no && gone(outs), (el) => el.child(unwritten(outs)))
+          .when(Boolean(rec || a.why), (el) => el.child(v_flex().rounded(8).bg(t.background).px(12).py(10).gap(6)
+            .child(h_flex().gap(8).items_center()
+              .child(this.label(t, rec ? "SECRETARY RECOMMENDS" : "FROM THE SECRETARY", t.muted))
+              .when(Boolean(rec), (e) => e.child(div().flex_none().px(6).h(18).rounded(5).bg(c).flex().items_center()
+                .text_size(12).font_semibold().text_color(ink(c)).child(rec === "yes" ? "Yes" : "No"))))
+            .when(Boolean(a.why), (e) => e.child(text(a.why, t.foreground)))))
+          .when(gone(rec ? [] : ["recommendation"]), (el) => el.child(unwritten(["recommendation"])))
+          .when(none, (el) => el.child(unwritten(missing))));
+    const foot = v_flex().flex_none().gap(8)
+      .child(v_flex().rounded_b(12).bg(t.raised).border_b(1).border_x(1).border_color(edge)
+        .child(div().mx(16).h(1).bg(t.foreground + "14"))
+        .child(v_flex().px(16).py(12).gap(10)
           .when(failed, (el) => el.child(div().text_size(12).text_color(c).child("Not sent. Try again.")))
           .when(answerable, (el) => el.child(h_flex().gap(8)
-            .child(this.choice(t, a, "yes", "Yes", true))
-            .child(this.choice(t, a, "no", "No", false))))
+            .child(this.choice(t, a, "yes", "Yes", rec === "yes"))
+            .child(this.choice(t, a, "no", "No", rec === "no"))))
           .when(Boolean(open), (el) => el.child(open))
-          .when(inWorker && !term, (el) => el.child(div().text_size(12).text_color(c).whitespace_normal().child(`No terminal for ${task}. Tell the secretary.`)))
+          .when(inWorker && !term, (el) => el.child(div().text_size(12).line_height(1.4).text_color(c).whitespace_normal().child(`No terminal for ${task}. Tell the secretary.`)))
           .when(!inWorker || !term, (el) => el.child(this.secretaryLink(t)))))
       .when(more > 0, (el) => el.child(div().px(4).text_size(12).text_color(t.muted).child(`and ${more} more waiting`)));
+    return { head, foot };
   }
 
   // A sent answer, quiet, until the secretary removes the approval; loud again after 2 minutes.
@@ -380,11 +443,17 @@ export default class Cockpit extends View {
       const waiting = approvals.filter((a) => !isSent(a));
       const sent = approvals.filter(isSent);
       const now = Date.now();
-      body = v_flex().gap(8)
-        .children(sent.slice(0, 2).map((a) => this.sentRow(t, a, this.sent.get(a.id), now)))
-        .when(sent.length > 2, (el) => el.child(div().px(4).text_size(11).text_color(t.muted).child(`+${sent.length - 2} answered`)))
-        .child(waiting.length ? this.card(t, waiting[0], waiting.length - 1, now)
-          : this.quiet(t, sent.length ? "Nothing else waiting for you." : "Nothing waiting for you."));
+      const titles = new Map((this.value().work ?? []).map((w) => [w.task_id, w.title]));
+      const card = waiting.length ? this.card(t, waiting[0], waiting.length - 1, now, titles.get(waiting[0].task_id)) : null;
+      // The rail scrolls; the spacer keeps a short card at the bottom, and flex_none keeps a long
+      // one from being squeezed. The card's controls stay pinned under the scroll area.
+      return v_flex().size_full().min_h(0).pb(4)
+        .child(v_flex().id("approval-scroll").flex_1().min_h(0).gap(8).overflow_y_scrollbar()
+          .child(div().flex_1())
+          .children(sent.slice(0, 2).map((a) => this.sentRow(t, a, this.sent.get(a.id), now).flex_none()))
+          .when(sent.length > 2, (el) => el.child(div().flex_none().px(4).text_size(11).text_color(t.muted).child(`+${sent.length - 2} answered`)))
+          .child(card ? card.head : this.quiet(t, sent.length ? "Nothing else waiting for you." : "Nothing waiting for you.").flex_none()))
+        .when(Boolean(card), (el) => el.child(card.foot));
     }
     return v_flex().size_full().min_h(0).justify_end().pb(4).child(body);
   }
