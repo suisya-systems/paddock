@@ -25,6 +25,9 @@ done
 mkdir -p "$tmp/bin" "$tmp/home"
 cat > "$tmp/bin/gh" <<'EOF'
 #!/bin/sh
+if [ "$1" = api ]; then # Issue #286: serves the file the way the contents API does
+  echo "$2" >> "$STUB_GH_LOG"; cat "$STUB_SETUP_SRC"; exit 0
+fi
 [ "$1 $2" = "repo clone" ] || exit 9
 echo "$3" >> "$STUB_GH_LOG"
 exec git clone -q "$STUB_THROWAWAY" "$4"
@@ -92,4 +95,19 @@ out=$(cd "$tmp" && TOKF="$tmp/tok" run --repo Acme/Throwaway --project p --paddo
 
 # prepare points at the setup command instead of leaving the person to work it out.
 grep -q 'prototype-3-setup.sh' scripts/probes/prototype-3.sh; check "prepare names the setup command" $?
+
+# Issue #286: a stale clone has no setup command. The runbook gives an entry point that does not
+# live in the clone: fetch the script from origin/main with gh, then run that copy.
+D=docs/design/prototype-3.md
+fetch=$(grep -m1 '^gh api repos/suisya-systems/paddock/contents/scripts/probes/prototype-3-setup.sh ' "$D")
+[ -n "$fetch" ]; check "the runbook has a fetch command for the setup script" $?
+[ -n "$fetch" ] && grep -B3 -A3 -F "$fetch" "$D" | grep -qi 'stale\|older\|outside'; check "the runbook says it is for a clone without the script" $?
+mkdir -p "$tmp/elsewhere" "$tmp/home2"
+(cd "$tmp/elsewhere" && env HOME="$tmp/home2" PATH="$tmp/bin:$PATH" STUB_GH_LOG="$tmp/gh2.log" STUB_SETUP_SRC="$S" sh -c "$fetch") >/dev/null 2>&1
+[ -s "$tmp/home2/prototype-3-setup.sh" ] && sh -n "$tmp/home2/prototype-3-setup.sh"; check "the fetch command saves a parseable script outside any clone" $?
+out=$(cd "$tmp/elsewhere" && env -u CLAUDE_CONFIG_DIR -u APPDATA -u XDG_CONFIG_HOME PADDOCK_WORKER_GH_TOKEN_FILE="$tmp/tok" \
+  HOME="$tmp/home2" PATH="$tmp/bin:$PATH" STUB_GH_LOG="$tmp/gh2.log" STUB_THROWAWAY="$tmp/throwaway.git" \
+  PADDOCK_REPO_URL="$tmp/paddock.git" PADDOCK_WORKERS_DIR="$tmp/workers2" \
+  sh "$tmp/home2/prototype-3-setup.sh" --repo Acme/Throwaway --project "$tmp/p4" --paddock "$tmp/c4" </dev/null 2>&1)
+[ -d "$tmp/c4/.git" ] && grep -q '^next: ' <<<"$out"; check "the fetched copy runs from outside and sets up the clean clone" $?
 exit $fail
