@@ -14,7 +14,7 @@ cat > "$tmp/bin/hc" <<'S'
 echo "$*" >> "$STUB/calls"
 case $1 in
   read) cat "$STUB/screen" ;;
-  keys) ;;
+  keys) [ "$3" != down ] || [ ! -f "$STUB/screen.down" ] || cp "$STUB/screen.down" "$STUB/screen" ;;
   get) [ "$(cat "$STUB/state")" != broken ] || exit 1
        if [ "$(cat "$STUB/state")" = none ]; then echo '{"name":"w-t1","status":null}'; else echo "{\"name\":\"w-t1\",\"status\":{\"state\":\"$(cat "$STUB/state")\"}}"; fi ;;
   connect)
@@ -75,4 +75,41 @@ rc=$(ans " Bash command
  ❯ 1. Yes
    2. No")
 [ "$rc" = 0 ] && grep -q '^keys w-t1 enter' "$STUB/calls"; check "the cursor alone on '1. Yes': enter ($rc)" $?
+# The host's real layouts (#260 host check): the trust dialog's choices carry no numbers, and the
+# transcript above a permission dialog may change between two reads; the dialog starts at a rule line.
+rm -f "$STUB/screen.down"
+printf '%s\n' '────────' ' Accessing workspace:' ' Quick safety check: Is this a project you created or one you trust?' \
+  ' ❯ No, exit' '   Yes, I trust this folder' ' Enter to confirm · Esc to cancel' > "$STUB/screen.down"
+sed 's/^ ❯ No, exit$/   No, exit/; s/^   Yes, I trust/ ❯ Yes, I trust/' "$STUB/screen.down" > "$tmp/down"
+cp "$STUB/screen.down" "$tmp/up"; mv "$tmp/down" "$STUB/screen.down"
+: > "$STUB/calls"; cp "$tmp/up" "$STUB/screen"; echo none > "$STUB/state"
+PATH="$tmp/bin:$PATH" bash "$script" prompt --task t1 >/dev/null 2>&1; rc=$?
+[ $rc -eq 0 ] && grep -q '^keys w-t1 down' "$STUB/calls" && grep -q '^keys w-t1 enter' "$STUB/calls"
+check "the trust dialog without numbered choices: down, enter ($rc)" $?
+rm -f "$STUB/screen.down"
+
+ans2() { # like ans, but the transcript above the dialog's rule line changes before the answer
+  : > "$STUB/calls"; printf '{"work":[],"approvals":[]}\n' > "$STUB/docval-org-state"; rm -f "$STUB"/docver-*
+  printf '%s\n' "$1" > "$STUB/screen"; echo blocked > "$STUB/state"
+  e() { env -u PADDOCK_ORG_ID -u PADDOCK_SECRETARY_NAME PADDOCK_HC_HOLD=0 PADDOCK_STATE_DIR="$tmp/state" PATH="$tmp/bin:$PATH" bash "$script" "$@" 2>/dev/null; }
+  p=$(e prompt --task t1 | sed -n 's/^PROMPT=//p')
+  id=$(e ask --task t1 --question "q?" --prompt "$p" | sed -n 's/^APPROVAL_ID=//p')
+  printf '%s\n' "$2" > "$STUB/screen"
+  : > "$STUB/calls"; e answer --id "$id" --text yes >/dev/null; echo $?
+}
+dlg='──────
+ Bash command
+   touch /x/p260-yes.txt
+ Do you want to proceed?
+ ❯ 1. Yes
+   4. No'
+rc=$(ans2 "● Bash(touch /x/p260-yes.txt)
+  ⎿ Running… (3s)
+$dlg" "● Bash(touch /x/p260-yes.txt)
+  ⎿ Running… (9s)
+$dlg")
+[ "$rc" = 0 ] && grep -q '^keys w-t1 enter' "$STUB/calls"; check "a change above the dialog's rule line does not stop the relay ($rc)" $?
+rc=$(ans2 "$dlg" "${dlg/p260-yes/p260-other}")
+[ "$rc" = 10 ] && ! grep -q '^keys' "$STUB/calls"; check "a change inside the dialog stops it ($rc)" $?
+
 [ "$fail" -eq 0 ] && echo "all passed" || { echo "FAILED"; exit 1; }

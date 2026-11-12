@@ -151,11 +151,13 @@ valid_aid() { case "$1" in ''|-*|*[!A-Za-z0-9_-]*) return 1 ;; esac; }  # approv
 clean() { printf '%s' "$1" | tr '\000-\037\177' ' '; }
 jstr() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 psum() { printf '%s' "$1" | cksum | tr ' ' -; }
-# block <screen>: all its non-empty lines, trailing blanks cut, on one line. What a prompt entry
-# records and what answer compares; the sum, not the text, so the document's escaping does not matter.
-# ponytail: the whole screen, so any change on it (a timer, a redraw) refuses the relay, and a request
-# taller than the screen is compared only where it shows; hc read --lines can widen it if a host run asks.
-block() { clean "$(printf '%s\n' "$1" | sed 's/[[:space:]]*$//' | grep -v '^$')"; }
+# block <screen>: the dialog, on one line: its non-empty lines from the last rule line (only ─) to the end,
+# trailing blanks cut; with no rule line, the whole screen. What a prompt entry records and what answer
+# compares; the sum, not the text, so the document's escaping does not matter. The host check of #260 saw
+# the transcript above the dialog change between two reads, so it is left out.
+# ponytail: a request taller than the screen is compared only where it shows; hc read --lines can widen it.
+block() { clean "$(printf '%s\n' "$1" | sed 's/[[:space:]]*$//' | grep -v '^$' \
+  | awk '{ l[NR] = $0 } /^ *(─)+ *$/ { s = NR } END { for (i = (s ? s : 1); i <= NR; i++) print l[i] }')"; }
 # ctx <key> <option> <max bytes> <value if set>: append ,"<key>":"<value>" to $ctx when the option
 # was given; exit 2 when it is empty or too long.
 ctx() {
@@ -268,11 +270,11 @@ case $cmd in
     j=$(hc get --json "$w" 2>/dev/null) || j=
     nostatus=; case $j in *'"name"'*) printf '%s' "$j" | tr -d '\n' | grep -Eq '"status": *\{' || nostatus=1 ;; esac
     if [ -n "$nostatus" ] \
-       && printf '%s\n' "$scr" | grep -Eq '^ *(❯ *)?[0-9]\. No, exit *$' \
-       && printf '%s\n' "$scr" | grep -Eq '^ *(❯ *)?[0-9]\. Yes, I trust this folder *$' \
+       && printf '%s\n' "$scr" | grep -Eq '^ *(❯ *)?([0-9]\. *)?No, exit *$' \
+       && printf '%s\n' "$scr" | grep -Eq '^ *(❯ *)?([0-9]\. *)?Yes, I trust this folder *$' \
        && ! printf '%s\n' "$scr" | grep -q 'Do you want'; then
       hc keys "$w" down >/dev/null 2>&1; sleep 1
-      hc read "$w" 2>/dev/null | grep -Eq '^ *❯ *[0-9]\. Yes, I trust this folder *$' \
+      hc read "$w" 2>/dev/null | grep -Eq '^ *❯ *([0-9]\. *)?Yes, I trust this folder *$' \
         || die 10 "$w shows the folder-trust dialog and the cursor did not reach 'Yes, I trust this folder'; nothing confirmed. Read it with hc read $w"
       hc keys "$w" enter >/dev/null 2>&1 || die 8 "hc keys enter failed on $w"
       echo "POLICY folder-trust $w"

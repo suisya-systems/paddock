@@ -71,7 +71,7 @@ wait_state() { # wait_state <terminal> <regex> <seconds>
 }
 ready() { # ready <terminal>: up to 90 s for an empty prompt
   i=0; while [ "$i" -lt 90 ]; do
-    hc read "$1" 2>/dev/null | grep -Eq 'for shortcuts|\? for|❯ *$' && return 0; i=$((i + 1)); sleep 1
+    hc read "$1" 2>/dev/null | grep -Eq 'for shortcuts|\? for|^❯' && return 0; i=$((i + 1)); sleep 1
   done; return 1
 }
 
@@ -79,7 +79,7 @@ echo "== A. auto mode: what still prompts"
 hc run --bg --name w-p260a --cwd "$WORK/a" p260-auto >/dev/null 2>&1 || echo "hc run w-p260a failed"
 if ready w-p260a; then echo "RESULT auto-start: INFO reached the prompt"; else
   echo "RESULT auto-start: INFO no empty prompt after 90 s; screen:"; hc read w-p260a 2>&1 | tail -n 20; fi
-hc send w-p260a "Probe task. Do these in order, each as its own tool call, and keep going if one is refused: (1) run: touch ok.txt (2) write the file .claude/settings.local.json with the content {} (3) run: curl -sI https://example.com (4) run: git push origin HEAD. Then say done." >/dev/null 2>&1
+sleep 3; hc send w-p260a "Probe task. Do these in order, each as its own tool call, and keep going if one is refused: (1) run: touch ok.txt (2) write the file .claude/settings.local.json with the content {} (3) run: curl -sI https://example.com (4) run: git push origin HEAD. Then say done." >/dev/null 2>&1
 wait_state w-p260a 'blocked|idle|done' 120
 s=$(state_of w-p260a); scr=$(hc read w-p260a 2>&1)
 if printf '%s\n' "$scr" | grep -Eq 'Do you want|❯ *1\. Yes'; then
@@ -92,7 +92,7 @@ relay() { # relay <task> <dir> <yes|no>: start, reach a Bash prompt, record it, 
   t=$1; w=w-$1; f=$2/p260-$3.txt
   hc run --bg --name "$w" --cwd "$2" p260-default >/dev/null 2>&1 || { echo "hc run $w failed"; return 1; }
   ready "$w" || { echo "-- $w: no prompt after 90 s"; hc read "$w" 2>&1 | tail -n 15; }
-  hc send "$w" "Probe task. Run exactly this shell command with your Bash tool and nothing else: touch $f" >/dev/null 2>&1
+  sleep 3; hc send "$w" "Probe task. Run exactly this shell command with your Bash tool and nothing else: touch $f" >/dev/null 2>&1
   wait_state "$w" blocked 90 || { echo "-- $w never blocked; state $(state_of "$w")"; hc read "$w" 2>&1 | tail -n 15; }
   out=$(bash "$ESC" prompt --task "$t" 2>&1); rc=$?
   p=$(printf '%s\n' "$out" | sed -n 's/^PROMPT=//p')
@@ -106,6 +106,10 @@ relay() { # relay <task> <dir> <yes|no>: start, reach a Bash prompt, record it, 
          --background "Probe for Issue #260; answered by the probe itself." --if-yes "The file is made." \
          --if-no "Nothing runs." --recommend "$3" --why "probe" 2>&1 | sed -n 's/^APPROVAL_ID=//p')
   a=$(bash "$ESC" answer --id "$id" --text "$3" 2>&1); arc=$?
+  if [ "$arc" -eq 10 ]; then # what changed between the recorded prompt and the screen now
+    echo "-- recorded: $p"; echo "-- now     : $(bash "$ESC" prompt --task "$t" 2>&1 | sed -n 's/^PROMPT=//p')"
+    echo "-- full screen now:"; hc read "$w" 2>&1
+  fi
   sleep 8
   case $3 in
     yes) if [ "$arc" -eq 0 ] && [ -e "$f" ]; then echo "RESULT relay-yes: PASS ($a)"; else
