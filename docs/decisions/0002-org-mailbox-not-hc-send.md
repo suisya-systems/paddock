@@ -21,6 +21,8 @@ Messages between agents go through the organization's mailbox: an `org` mailbox 
 
 `hc send` is used only to give an agent its first task (normally inside `hc run` itself) and for interrupts. No agent types into another agent's prompt to talk to it.
 
+One more use (Issue #282): after `org-escalation answer`, an `idle` worker gets one `hc send --if idle` that only tells it to run `check_messages`. The answer itself still travels in the mailbox. A worker that has ended its turn starts no next turn without outside input, so a mailbox message alone never wakes it. A working worker is not touched, and a refused nudge does not fail the answer.
+
 ## Consequences
 
 - Status, messages and signals stay on three separate channels (OSC 7501 status in herdr-core, the mailbox, and window notifications), as the [architecture](../design/architecture.md#2-design-principles) requires.
