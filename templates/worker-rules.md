@@ -33,7 +33,7 @@ These rules apply to every paddock worker, for every task. They are appended to 
 A failed `org` command must not end your turn idle at your prompt: an answer by mail cannot wake an idle worker.
 
 - A refusal is an answer: exit 2 (refused by a rule) or exit 11 (`CODEX_ROUND_DENIED`). Do not run it again.
-- Any other failure (for example exit 5, a lock it could not take): run the same command once again. If it fails again, write on your screen the command, its exit code, its error text, and the report or question it carried. Then end the turn with ONE Bash call, its tool timeout set to 200000: `bash "$PADDOCK_ORG" --as <your id> wait`. On `"reason":"timeout"` run `wait` again; on `"reason":"mail"` run `check_messages` and act on the answer. `wait` only reads your mailbox, so it works when a write did not.
+- Any other failure (for example exit 5, a lock it could not take): run the same command once again. If it fails again, write on your screen the command, its exit code, its error text, and the report or question it carried. Then end the turn with ONE Bash call, its tool timeout set to 200000: `bash "$PADDOCK_ORG" --as <your id> wait`. On `"reason":"timeout"` run `wait` again, also when the line holds a `watch_error` (a failed read of the core is not an answer; never end the turn or ask in your terminal because of it; no limit on the number of waits); on `"reason":"mail"` run `check_messages` and act on the answer. `wait` only reads your mailbox, so it works when a write did not.
 - If `$PADDOCK_ORG` is empty, or `wait` itself fails, there is no mailbox to wait on: say so on your screen and stop. The person answers in your terminal.
 - Never fall back to `hc send` or to a file of your own.
 
