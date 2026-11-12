@@ -27,7 +27,7 @@ Environment overrides:
   PADDOCK_WORKER_GH_TOKEN_FILE  read-only GitHub token file for workers (default $cfg/paddock/worker-gh-token)
   PADDOCK_SECRETARY_NAME      terminal name of the secretary (default secretary)
 
-Exit codes: 0 ready, 2 bad argument, 3 hc not found, 4 run inside an agent,
+Exit codes: 0 ready (7 also prints the terminal exit code and last line), 2 bad argument, 3 hc not found, 4 run inside an agent,
 5 core unreachable, 6 files could not be placed, 7 secretary has no status,
 8 herdr-core notes are on (no notes = false in the core config).
 USAGE
@@ -196,4 +196,15 @@ $task}" >/dev/null 2>&1 \
   fi
   i=$((i + 1)); sleep 1
 done
-die 7 "secretary has no status after ${tries}s; look at 'hc get $name' and 'hc read $name'"
+# Issue #269: say why. The terminal's exit state and its last output line, from hc get --json / hc read.
+info=$(hc get --json "$name" 2>/dev/null)
+code=$(printf '%s' "$info" | sed -n 's/.*"exit_code": *\(-\{0,1\}[0-9][0-9]*\).*/\1/p' | head -n 1)
+last=$(hc read "$name" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -n 1)
+why=
+if [ -n "$code" ]; then why=" The terminal ended with exit code $code."; fi
+if [ -n "$last" ]; then why="$why Its last line: $last"; fi
+# Exit 127 or a "claude ... not found" line: the launch command (the template runs claude) was not on the terminal's PATH.
+if [ "$code" = 127 ] || printf '%s' "$last" | grep -qi 'claude.*not found'; then
+  why="$why. claude was not found: the secretary template (secretary.md in $templates) starts claude, and it is not on the PATH of the core's terminals; install it or fix that PATH"
+fi
+die 7 "secretary has no status after ${tries}s.$why Look at 'hc get $name' and 'hc read $name'"
