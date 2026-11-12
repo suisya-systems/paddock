@@ -156,8 +156,9 @@ psum() { printf '%s' "$1" | cksum | tr ' ' -; }
 # compares; the sum, not the text, so the document's escaping does not matter. The host check of #260 saw
 # the transcript above the dialog change between two reads, so it is left out.
 # ponytail: a request taller than the screen is compared only where it shows; hc read --lines can widen it.
-block() { clean "$(printf '%s\n' "$1" | sed 's/[[:space:]]*$//' | grep -v '^$' \
-  | awk '{ l[NR] = $0 } /^ *(─)+ *$/ { s = NR } END { for (i = (s ? s : 1); i <= NR; i++) print l[i] }')"; }
+dialog() { printf '%s\n' "$1" | sed 's/[[:space:]]*$//' | grep -v '^$' \
+  | awk '{ l[NR] = $0 } /^ *(─)+ *$/ { s = NR } END { for (i = (s ? s : 1); i <= NR; i++) print l[i] }'; }
+block() { clean "$(dialog "$1")"; }
 # ctx <key> <option> <max bytes> <value if set>: append ,"<key>":"<value>" to $ctx when the option
 # was given; exit 2 when it is empty or too long.
 ctx() {
@@ -246,9 +247,10 @@ case $cmd in
       scr=$(hc read "$w" 2>/dev/null) || die 10 "cannot read the screen of $w; nothing pressed, entry $id kept"
       [ "$(psum "$(block "$scr")")" = "$sum" ] \
         || die 10 "the screen of $w no longer shows the prompt recorded in $id; nothing pressed, entry kept. Read it with prompt --task $wtask"
-      # One cursor line on the screen, and it is the one-time Yes as a whole line (not "Yes, and ...").
-      [ "$key" = esc ] || { [ "$(printf '%s\n' "$scr" | grep -c '^ *❯')" = 1 ] \
-        && printf '%s\n' "$scr" | grep -Eq '^ *❯ *1\. Yes *$'; } \
+      # One cursor line in the dialog, and it is the one-time Yes as a whole line (not "Yes, and ...").
+      # The transcript above the dialog shows sent messages with the same ❯ (host check of #260).
+      [ "$key" = esc ] || { [ "$(dialog "$scr" | grep -c '^ *❯')" = 1 ] \
+        && dialog "$scr" | grep -Eq '^ *❯ *1\. Yes *$'; } \
         || die 10 "the cursor of $w is not on '1. Yes' alone; nothing pressed, entry $id kept"
       hc keys "$w" "$key" >/dev/null 2>&1 || die 8 "hc keys $key failed on $w; entry $id kept"
       ( update remove "$id" ) || die 9 "answered $w but entry $id could not be removed; run: remove --id $id"

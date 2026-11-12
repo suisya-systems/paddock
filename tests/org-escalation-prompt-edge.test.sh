@@ -109,6 +109,10 @@ $dlg" "● Bash(touch /x/p260-yes.txt)
   ⎿ Running… (9s)
 $dlg")
 [ "$rc" = 0 ] && grep -q '^keys w-t1 enter' "$STUB/calls"; check "a change above the dialog's rule line does not stop the relay ($rc)" $?
+rc=$(ans2 "❯ Probe task. Run touch.
+$dlg" "❯ Probe task. Run touch.
+$dlg")
+[ "$rc" = 0 ] && grep -q '^keys w-t1 enter' "$STUB/calls"; check "a sent message's ❯ above the dialog's rule line is not a second cursor ($rc)" $?
 rc=$(ans2 "$dlg" "${dlg/p260-yes/p260-other}")
 [ "$rc" = 10 ] && ! grep -q '^keys' "$STUB/calls"; check "a change inside the dialog stops it ($rc)" $?
 
