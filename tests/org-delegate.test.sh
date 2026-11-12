@@ -251,8 +251,9 @@ out=$(run -- "${good[@]}"); rc=$?
 # brief is sent again; nothing else is typed.
 reset; out=$(run STUB_FIRST_SENT=false STUB_TRUST=1 -- "${good[@]}"); rc=$?
 [ "$rc" -eq 0 ] && grep -q '^keys w-t1 down' "$calls" && grep -q '^keys w-t1 enter' "$calls" \
-  && grep -q '^send w-t1 Your org id is w-t1' "$calls" && ! grep -Eq '^(kill|rm) ' "$calls"
-check "folder-trust at launch: down, enter, the brief sent again, exit 0" $?
+  && grep -q '^send w-t1 You are a worker of a paddock organization' "$calls" && grep -q '^Your org id is w-t1' "$calls" \
+  && ! grep -Eq '^(kill|rm) ' "$calls"
+check "folder-trust at launch: down, enter, the template body and the brief sent again, exit 0" $?
 
 # The start record cannot be written: nothing is started, the worktree is removed (exit 12).
 if [ "$(id -u)" -eq 0 ]; then echo "skip record failure (running as root)"; else
