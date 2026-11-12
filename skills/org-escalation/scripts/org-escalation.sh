@@ -260,6 +260,11 @@ case $cmd in
     fi
     secretary send_message "w-$wtask" "Answer to your question ($id): $t" >/dev/null \
       || die 8 "the answer could not be put in the mailbox of w-$wtask; entry $id kept"
+    # Issue #282: a worker that ended its turn never reads its mailbox. --if idle: a working worker
+    # is not interrupted (it reads the mail itself), and a refused nudge does not fail the answer.
+    # ponytail: only status "idle"; a worker with no status or blocked is left to the secretary's wait.
+    hc get --json "w-$wtask" 2>/dev/null | tr -d '\n' | grep -Eq '"status": *\{[^{}]*"state": *"idle"' \
+      && hc send --if idle "w-$wtask" "Your question was answered. Run check_messages and go on." >/dev/null 2>&1
     ( update remove "$id" ) || die 9 "answer sent to w-$wtask but entry $id could not be removed; run: remove --id $id"
     echo "ANSWERED $id -> w-$wtask" ;;
 
