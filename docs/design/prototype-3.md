@@ -267,13 +267,13 @@ Stops and touches (the first is what ended the run; the rest the person or the o
 
 | # | Step | What happened | Cause | Issue |
 | --- | --- | --- | --- | --- |
-| 1 | 5-7 | The worker's wait failed three times (`watch_error`), it stopped waiting and asked in its own terminal; the forwarded answer cannot wake an idle worker. | The wait returns an empty `watch_error` and the worker rules let it end its turn; a message does not wake a finished turn. | New (A, B) |
-| 2 | 2 | The request text tells the secretary to call `org-escalation ask --answer-in`; that option does not exist. The secretary dropped it and ran the command without it. | The runbook's request text names a flag the command does not have. | New (C) |
-| 3 | 5 | The card was in English while the secretary spoke Japanese. `templates/secretary.md:9` decides the conversation language `auto` from the locale, and the host's locale is `en_US.UTF-8`. | The language rule reads the locale, not the person's language. | New (D) |
-| 4 | 6 | The person's input waits up to 1 minute: the secretary waits with `wait --children` for at most 60 s at a time (`scripts/org:24-27`, `templates/secretary.md:27-28`). | The wait is a poll, not a push. | New (E) |
-| 5 | 0 | The prepare command lives inside the paddock clone that it updates, so it could not be run from a stale clone (`No such file`). | The entry point is in the thing it refreshes. | New (F) |
-| 6 | 1 | Run 3's secretary terminal was replaced by a plain shell when the core stopped, kept the name `secretary`, and blocked `prepare`. | A terminal that outlives its program keeps the name. | New (G) |
-| 7 | 1 | The agent (the secretary) created and removed terminals inside herdr. Claude Code's auto-mode classifier refused it once; a person's explicit permission let it through. | The classifier does not know that the secretary's terminal control is expected. | New (H) |
+| 1 | 5-7 | The worker's wait failed three times (`watch_error`), it stopped waiting and asked in its own terminal; the forwarded answer cannot wake an idle worker. | The wait returns an empty `watch_error` and the worker rules let it end its turn; a message does not wake a finished turn. | #281, #282 |
+| 2 | 2 | The request text tells the secretary to call `org-escalation ask --answer-in`; that option does not exist. The secretary dropped it and ran the command without it. | The runbook's request text names a flag the command does not have. | #283 |
+| 3 | 5 | The card was in English while the secretary spoke Japanese. `templates/secretary.md:9` decides the conversation language `auto` from the locale, and the host's locale is `en_US.UTF-8`. | The language rule reads the locale, not the person's language. | #284 |
+| 4 | 6 | The person's input waits up to 1 minute: the secretary waits with `wait --children` for at most 60 s at a time (`scripts/org:24-27`, `templates/secretary.md:27-28`). | The wait is a poll, not a push. | #285 |
+| 5 | 0 | The setup command `scripts/probes/prototype-3-setup.sh` lives inside the paddock clone that it updates, so it could not be run from a stale clone (`No such file`). | The entry point is in the thing it refreshes. | #286 |
+| 6 | 1 | Run 3's secretary terminal was replaced by a plain shell when the core stopped, kept the name `secretary`, and blocked `prepare`. | A terminal that outlives its program keeps the name. | #287 |
+| 7 | 1 | The agent that did the host steps for the person (the role #271 assumes) created and removed terminals inside herdr with `hc`. Claude Code's auto-mode classifier refused it once; a person's explicit permission let it through. | The classifier does not know that this agent's `hc` terminal control is expected. | #288 |
 
 The person's actions in the loop: Yes on the card (1) and looking at the window. The permission in row 7 was given by the person to the assistant and is a touch the pass line does not allow.
 
