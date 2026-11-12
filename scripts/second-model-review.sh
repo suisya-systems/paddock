@@ -53,6 +53,11 @@ else
     || { end 1 "CODEX_GATE: not-established (no change against $base, or no $base: nothing to review)"; }
 fi
 
+# Issue #298: this runs from the core's PATH, which may lack codex's folder. org-start recorded the path
+# it found beside this script (codex-path); put that folder on PATH when codex is not found otherwise.
+if ! command -v codex >/dev/null 2>&1; then
+  cp=$(cat "$(dirname "$0")/codex-path" 2>/dev/null) && [ -x "$cp" ] && PATH=$(dirname "$cp"):$PATH
+fi
 command -v codex >/dev/null 2>&1 || { end 3 "CODEX_GATE: unavailable (the reviewing CLI is not installed)"; }
 
 # The reviewer keeps its login and settings in CODEX_HOME. A worker's sandbox may not let it write

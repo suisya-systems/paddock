@@ -124,6 +124,11 @@ for f in scripts/org scripts/second-model-review.sh scripts/hooks/premise-remind
   cp -f "$root/$f" "$orgbin/${f##*/}" || die 6 "cannot copy $f to $orgbin"
 done
 printf '%s\n' "$claudebin" > "$orgbin/claude-path" || die 6 "cannot write $orgbin/claude-path"
+# Issue #298: same for the review gate's CLI, which often lives in a Node version manager's folder. Optional:
+# without it the gate ends "unavailable" and prepare's codex-cli check says so. Drop a stale record.
+rm -f "$orgbin/codex-path" || die 6 "cannot remove the old $orgbin/codex-path"
+codexbin=$(command -v codex 2>/dev/null)
+case "$codexbin" in /*) printf '%s\n' "$codexbin" > "$orgbin/codex-path" || die 6 "cannot write $orgbin/codex-path" ;; esac
 # Copies an older org-start placed beside the templates (Issue #129).
 rm -f "$templates/worker-rules.md" "$templates/worker-settings.json" \
   || die 6 "cannot remove the old worker-rules.md / worker-settings.json from $templates"
