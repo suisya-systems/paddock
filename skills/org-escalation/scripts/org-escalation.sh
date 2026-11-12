@@ -19,10 +19,10 @@ Usage: org-escalation.sh prompt --task TASK_ID [--then-send TEXT]
        org-escalation.sh sweep
 
   prompt  read the screen of w-<task_id>. A prompt in the policy list (folder-trust: Claude
-          Code's folder-trust dialog) is answered here: down, read again, enter only with the
+          Code's folder-trust dialog, on a terminal with no status yet) is answered here: down, read again, enter only with the
           cursor on "Yes, I trust this folder"; prints POLICY folder-trust w-<task_id>. With
           --then-send, once the terminal reports a status, TEXT is sent with hc send (the first
-          message the dialog stopped). Any other screen: prints PROMPT=<its last lines> and
+          message the dialog stopped). Any other screen: prints PROMPT=<the whole screen> and
           exits 3, nothing pressed; record it with ask --prompt
   ask     add an entry to org-state.approvals; prints APPROVAL_ID=<task_id>-<UTC time>
           --prompt: the PROMPT= text; the entry is a worker's prompt, answered by answer
@@ -151,10 +151,11 @@ valid_aid() { case "$1" in ''|-*|*[!A-Za-z0-9_-]*) return 1 ;; esac; }  # approv
 clean() { printf '%s' "$1" | tr '\000-\037\177' ' '; }
 jstr() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 psum() { printf '%s' "$1" | cksum | tr ' ' -; }
-# block <screen>: its last 15 non-empty lines, trailing blanks cut, on one line. What a prompt entry
+# block <screen>: all its non-empty lines, trailing blanks cut, on one line. What a prompt entry
 # records and what answer compares; the sum, not the text, so the document's escaping does not matter.
-# ponytail: any change in those lines (a timer, a redraw) refuses the relay; widen it if a host run shows that.
-block() { clean "$(printf '%s\n' "$1" | sed 's/[[:space:]]*$//' | grep -v '^$' | tail -n 15)"; }
+# ponytail: the whole screen, so any change on it (a timer, a redraw) refuses the relay, and a request
+# taller than the screen is compared only where it shows; hc read --lines can widen it if a host run asks.
+block() { clean "$(printf '%s\n' "$1" | sed 's/[[:space:]]*$//' | grep -v '^$')"; }
 # ctx <key> <option> <max bytes> <value if set>: append ,"<key>":"<value>" to $ctx when the option
 # was given; exit 2 when it is empty or too long.
 ctx() {
@@ -216,7 +217,7 @@ case $cmd in
     ctx if_no --if-no 300 ${if_no+"$if_no"}
     ctx recommend --recommend 3 ${recommend+"$recommend"}
     ctx why --why 400 ${why+"$why"}
-    ctx prompt --prompt 4000 ${prompt+"$prompt"}
+    ctx prompt --prompt 16000 ${prompt+"$prompt"}
     [ -z "${prompt+set}" ] || ctx="$ctx,\"prompt_sum\":\"$(psum "$(clean "$prompt")")\""
     ESC_ENTRY="{\"id\":\"$id\",\"task_id\":\"$task\",\"question\":\"$(jstr "$q")\",\"asked_at\":\"$now\"$ctx}"
     export ESC_ENTRY
@@ -259,9 +260,15 @@ case $cmd in
     w=w-$task
     scr=$(hc read "$w" 2>/dev/null) || die 11 "cannot read the screen of $w; nothing pressed"
     # The policy list (L-N3): the only prompt answered without the person. Same steps as org-start (#254).
-    if printf '%s\n' "$scr" | grep -Eq 'Quick safety check|Yes, I trust this folder'; then
+    # The folder-trust dialog comes before Claude Code reports any status, so a terminal with a status
+    # (a tool prompt is blocked) never matches; its two choices must be whole lines, not text in output.
+    j=$(hc get --json "$w" 2>/dev/null | tr -d '\n') || j='"status":{'
+    if ! printf '%s' "$j" | grep -Eq '"status": *\{' \
+       && printf '%s\n' "$scr" | grep -Eq '^ *(❯ *)?[0-9]\. No, exit *$' \
+       && printf '%s\n' "$scr" | grep -Eq '^ *(❯ *)?[0-9]\. Yes, I trust this folder *$' \
+       && ! printf '%s\n' "$scr" | grep -q 'Do you want'; then
       hc keys "$w" down >/dev/null 2>&1; sleep 1
-      hc read "$w" 2>/dev/null | grep -q '❯.*Yes, I trust this folder' \
+      hc read "$w" 2>/dev/null | grep -Eq '^ *❯ *[0-9]\. Yes, I trust this folder *$' \
         || die 10 "$w shows the folder-trust dialog and the cursor did not reach 'Yes, I trust this folder'; nothing confirmed. Read it with hc read $w"
       hc keys "$w" enter >/dev/null 2>&1 || die 8 "hc keys enter failed on $w"
       echo "POLICY folder-trust $w"
