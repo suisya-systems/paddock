@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Acceptance test for `org-escalation.sh sweep` (Issue #181). Needs only bash and coreutils:
+# Acceptance test for `org-escalation.sh sweep` (Issues #181, #260: it looks at prompt entries, those with a "prompt" field). Needs only bash and coreutils:
 # hc is a stub on PATH (documents and `hc get --json`), so no core runs. scripts/org is the
 # real one, writing under a throwaway state dir.
 set -u
@@ -46,14 +46,15 @@ EOF2
 chmod +x "$stubdir/hc"
 
 export STUB=$tmp/stub; state=$tmp/state
-# setdoc <answer_in of t1> ...: one entry per "task:answer_in" pair (answer_in "-" = field absent)
+# setdoc <task:kind> ...: one entry per pair. kind prompt = a "prompt" field (a worker's prompt, #260);
+# worker / secretary = an answer_in field of that value (written before #260); "-" = neither.
 setdoc() {
   rm -rf "$STUB"; mkdir -p "$STUB"; : > "$STUB/calls"
   local e="" t a
   for p in "$@"; do
     t=${p%%:*}; a=${p#*:}
     [ -z "$e" ] || e="$e,"
-    if [ "$a" = - ]; then ai=; else ai=",\"answer_in\":\"$a\""; fi
+    case $a in -) ai= ;; prompt) ai=",\"prompt\":\"Do you want to proceed?\"" ;; *) ai=",\"answer_in\":\"$a\"" ;; esac
     e="$e{\"id\":\"$t-1\",\"task_id\":\"$t\",\"question\":\"Q $t?\",\"asked_at\":\"x\"$ai}"
   done
   printf '{"work":[],"approvals":[%s]}\n' "$e" > "$STUB/docval-org-state"
@@ -68,31 +69,32 @@ has() { case $(doc) in *"\"id\":\"$1-1\""*) return 0 ;; *) return 1 ;; esac; }
 
 # the states that remove the entry
 for s in working idle done; do
-  setdoc t1:worker; term t1 $s; out=$(sweep); rc=$?
+  setdoc t1:prompt; term t1 $s; out=$(sweep); rc=$?
   [ $rc -eq 0 ]; check "sweep exits 0 ($s)" $?
-  has t1; [ $? -ne 0 ]; check "a worker approval is removed when the core shows $s" $?
+  has t1; [ $? -ne 0 ]; check "a prompt approval is removed when the core shows $s" $?
   case $out in *t1-1*) r=0 ;; *) r=1 ;; esac; check "sweep names the removed id ($s)" $r
 done
 
 # the cases that keep it
-setdoc t1:worker; term t1 none; sweep >/dev/null
+setdoc t1:prompt; term t1 none; sweep >/dev/null
 has t1; check "no status (a dialog) keeps the entry" $?
-setdoc t1:worker; sweep >/dev/null
+setdoc t1:prompt; sweep >/dev/null
 has t1; check "a missing terminal keeps the entry" $?
-setdoc t1:worker; term t1 broken; sweep >/dev/null; rc=$?
+setdoc t1:prompt; term t1 broken; sweep >/dev/null; rc=$?
 has t1; check "a failed lookup keeps the entry" $?
 [ $rc -eq 0 ]; check "a failed lookup does not fail the sweep" $?
-setdoc t1:worker; term t1 blocked; sweep >/dev/null
+setdoc t1:prompt; term t1 blocked; sweep >/dev/null
 has t1; check "blocked keeps the entry" $?
 
-# only worker entries are looked at
-setdoc t1:secretary t2:- t3:worker; term t1 working; term t2 working; term t3 working; sweep >/dev/null
+# only prompt entries are looked at
+setdoc t1:secretary t2:- t3:prompt t4:worker; term t1 working; term t2 working; term t3 working; term t4 working; sweep >/dev/null
 has t1; check "an answer_in secretary entry stays even when working" $?
-has t2; check "an entry without answer_in stays" $?
-has t3; [ $? -ne 0 ]; check "the worker entry beside them is removed" $?
+has t2; check "an entry without a prompt stays" $?
+has t3; [ $? -ne 0 ]; check "the prompt entry beside them is removed" $?
+has t4; check "an old answer_in worker entry (no prompt) stays; it is answered as a question" $?
 
 # a mix: each entry is judged on its own terminal
-setdoc t1:worker t2:worker t3:worker; term t1 working; term t2 none; term t3 done; sweep >/dev/null
+setdoc t1:prompt t2:prompt t3:prompt; term t1 working; term t2 none; term t3 done; sweep >/dev/null
 has t1; [ $? -ne 0 ]; check "mix: working removed" $?
 has t2; check "mix: no status kept" $?
 has t3; [ $? -ne 0 ]; check "mix: done removed" $?
