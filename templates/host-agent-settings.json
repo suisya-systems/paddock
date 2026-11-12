@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(hc run --bg:*)",
+      "Bash(hc send:*)",
+      "Bash(hc kill:*)",
+      "Bash(hc rm:*)",
+      "Bash(hc ls:*)"
+    ]
+  }
+}
