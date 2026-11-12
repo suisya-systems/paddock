@@ -30,6 +30,7 @@ Environment overrides:
 Exit codes: 0 ready (7 also prints the terminal exit code and last line), 2 bad argument, 3 hc not found, 4 run inside an agent,
 5 core unreachable, 6 files could not be placed, 7 secretary has no status,
 8 herdr-core notes are on (no notes = false in the core config).
+9 claude not found from org-start's shell (the templates need its absolute path).
 USAGE
 }
 
