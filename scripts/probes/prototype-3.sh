@@ -130,6 +130,14 @@ if [ "$phase" = prepare ]; then
   # environment. Every hc command can start one (even `hc server status`, hc 0.1.20 on Unix), so the
   # check calls no hc: the core is the process `herdr-core serve`.
   pgrep -f '(^|/)herdr-core serve' >/dev/null 2>&1 || die 6 "the core is not running: start herdr first (this runbook never starts the core, so it never gets this shell's environment)"
+  # Terminal names first (Issue #287): a stale terminal is named with its program and how to remove it.
+  hc ls >/dev/null 2>&1 || die 6 "hc ls failed: the core is not reachable"
+  if sj=$(hc get --json secretary 2>/dev/null); then
+    sa=$(printf '%s' "$sj" | one_line | field app); [ -n "$sa" ] || sa=unknown
+    die 6 "a terminal named secretary exists (running: $sa); the run starts the secretary fresh from the template. If it is yours to end: hc kill secretary; hc rm secretary (or org-down --secretary)"
+  fi
+  hc get --json "$W" >/dev/null 2>&1 && die 6 "a terminal named $W exists (end it: hc kill $W; hc rm $W)"
+  hc ls 2>/dev/null | grep -q "task_id=$T" && die 6 "a terminal labelled task_id=$T exists"
   # The paddock checkout: main, clean, at origin/main (the loop is run on today's main).
   pb=$(git -C "$ROOT" symbolic-ref --short HEAD 2>/dev/null)
   [ "$pb" = main ] || die 6 "the paddock checkout is on '${pb:-detached}', not main; make a clean clone: $SETUP --repo $repo --project <throwaway clone> --paddock <new folder>, and run prepare there"
@@ -163,10 +171,6 @@ if [ "$phase" = prepare ]; then
   [ ! -e "$WT" ] || die 6 "$WT exists; pick another --task-id"
   ! git -C "$project" rev-parse --verify -q "refs/heads/$BR" >/dev/null || die 6 "branch $BR exists in $project; pick another --task-id"
   [ -z "$(git -C "$project" ls-remote --heads origin "$BR" 2>/dev/null)" ] || die 6 "branch $BR exists on origin; pick another --task-id"
-  hc ls >/dev/null 2>&1 || die 6 "hc ls failed: the core is not reachable"
-  hc get --json secretary >/dev/null 2>&1 && die 6 "a terminal named secretary exists; the run starts the secretary fresh from the template (end it with org-down --secretary, if it is yours to end)"
-  hc get --json "$W" >/dev/null 2>&1 && die 6 "a terminal named $W exists"
-  hc ls 2>/dev/null | grep -q "task_id=$T" && die 6 "a terminal labelled task_id=$T exists"
   os=$(bash "$ORG" --as secretary doc get org-state 2>&1) || die 6 "cannot read org-state, so the run cannot know it is free: $os"
   os=$(printf '%s' "$os" | one_line)
   printf '%s' "$os" | grep -Eq '"task_id"' && die 6 "org-state holds other work or approvals; the run needs the organization to itself (org-state: $os)"
