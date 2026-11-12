@@ -69,6 +69,7 @@ ROOT=$(pwd)
 [ -f "$ROOT/scripts/org" ] && [ -f "$ROOT/templates/worker.md" ] || die 2 "run from the paddock repository root"
 ORG="$ROOT/scripts/org"
 HERE=$(cd "$(dirname "$0")" && pwd)
+SETUP="sh $HERE/prototype-3-setup.sh" # Issue #267: clones, the workers folder, the token, what a person must do
 FIXTURE="$HERE/prototype-3-acceptance.yml" # beside this script: the run may call it from another checkout
 STATE=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
 RUNS=${XDG_STATE_HOME:-$HOME/.local/state}/paddock-proto3
@@ -131,13 +132,13 @@ if [ "$phase" = prepare ]; then
   pgrep -f '(^|/)herdr-core serve' >/dev/null 2>&1 || die 6 "the core is not running: start herdr first (this runbook never starts the core, so it never gets this shell's environment)"
   # The paddock checkout: main, clean, at origin/main (the loop is run on today's main).
   pb=$(git -C "$ROOT" symbolic-ref --short HEAD 2>/dev/null)
-  [ "$pb" = main ] || die 6 "the paddock checkout is on '${pb:-detached}', not main"
-  [ -z "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ] || die 6 "the paddock checkout is not clean (git status --porcelain shows changes or untracked files)"
+  [ "$pb" = main ] || die 6 "the paddock checkout is on '${pb:-detached}', not main; make a clean clone: $SETUP --repo $repo --project <throwaway clone> --paddock <new folder>, and run prepare there"
+  [ -z "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ] || die 6 "the paddock checkout is not clean (git status --porcelain shows changes or untracked files); make a clean clone: $SETUP --repo $repo --project <throwaway clone> --paddock <new folder>, and run prepare there"
   phead=$(git -C "$ROOT" rev-parse HEAD)
   [ "$phead" = "$(git -C "$ROOT" rev-parse -q --verify origin/main 2>/dev/null)" ] \
-    || die 6 "the paddock checkout is not at origin/main: git fetch origin && git merge --ff-only origin/main"
+    || die 6 "the paddock checkout is not at origin/main: git fetch origin && git merge --ff-only origin/main (or rerun $SETUP --repo $repo --project <throwaway clone> --paddock <this folder>)"
   # The fixture: a git repository whose origin (fetch AND push) is the named throwaway repository.
-  project=$(cd "$project" 2>/dev/null && pwd) || die 6 "no such folder: --project"
+  project=$(cd "$project" 2>/dev/null && pwd) || die 6 "no such folder: --project; clone the throwaway repository with: $SETUP --repo $repo --project $project --paddock <paddock clone>"
   git -C "$project" rev-parse --git-dir >/dev/null 2>&1 || die 6 "$project is not a git repository"
   urls=$( { git -C "$project" remote get-url --all origin; git -C "$project" remote get-url --push --all origin; } 2>/dev/null)
   [ -n "$urls" ] || die 6 "$project has no origin"
@@ -169,7 +170,6 @@ if [ "$phase" = prepare ]; then
   os=$(bash "$ORG" --as secretary doc get org-state 2>&1) || die 6 "cannot read org-state, so the run cannot know it is free: $os"
   os=$(printf '%s' "$os" | one_line)
   printf '%s' "$os" | grep -Eq '"task_id"' && die 6 "org-state holds other work or approvals; the run needs the organization to itself (org-state: $os)"
-  [ -d "$workers" ] || echo "prototype-3: note: $workers does not exist yet; org-delegate creates it, and its first worker meets the folder-trust dialog once (Q13)" >&2
   mkdir -p "$RUN" || die 6 "cannot create $RUN"
   [ ! -f "$RUN/run.env" ] || die 6 "run $T was prepared already ($RUN)"
   START=$(now)
@@ -190,7 +190,11 @@ EOF
   case "$nl" in *false*) echo "RESULT notes-off: PASS ($nl)" | tee -a "$RUN/prepare.txt" ;;
     *) echo "RESULT notes-off: FAIL (no 'notes = false' under $cfg; set it before the run, decision 0002; a note typed into the secretary counts as a touch)" | tee -a "$RUN/prepare.txt" ;; esac
   { [ -s "${PADDOCK_WORKER_GH_TOKEN_FILE:-$cfg/../paddock/worker-gh-token}" ] \
-    && echo "RESULT worker-token: PASS (file exists, not read)" || echo "RESULT worker-token: FAIL (no read-only token file; see skills/org-start/SKILL.md, Worker token)"; } | tee -a "$RUN/prepare.txt"
+    && echo "RESULT worker-token: PASS (file exists, not read)" || echo "RESULT worker-token: FAIL (no read-only token file; run: $SETUP --repo $repo --project $project --paddock $ROOT; it prints the token page to open and the command that saves the token; see skills/org-start/SKILL.md, Worker token)"; } | tee -a "$RUN/prepare.txt"
+  # Trust of the throwaway clone (Q13, reopened): workers are worktrees of it and take its trust. A first-worker dialog ends the run (host rule), so a person answers it once now.
+  { if sh "$HERE/prototype-3-setup.sh" --check-trust "$project"; then
+      echo "RESULT project-trust: PASS ($project is recorded as trusted)"
+    else echo "RESULT project-trust: FAIL ($project is not recorded as trusted; run: $SETUP --repo $repo --project $project --paddock $ROOT, then follow its TODO folder-trust line)"; fi; } | tee -a "$RUN/prepare.txt"
   # The review gate calls the reviewing CLI with the login in CODEX_HOME (scripts/second-model-review.sh).
   { if command -v codex >/dev/null 2>&1 && [ -e "${CODEX_HOME:-$HOME/.codex}/auth.json" ]; then
       echo "RESULT codex-cli: PASS ($(codex --version 2>/dev/null | head -n 1); login file exists, not read)"
