@@ -285,3 +285,66 @@ Stops and touches (the first is what ended the run; the rest the person or the o
 The person's actions in the loop: Yes on the card (1) and looking at the window. The permission in row 7 was given by the person to the assistant and is a touch the pass line does not allow.
 
 Not exercised by this run: the second commit, the review gate and its round counter, the pull request and the acceptance job. Run 2's result for those stands for `63c8e54`. Run 4 is to be repeated once A and B are fixed. #243 stays open.
+
+### Run 5
+
+Run 2026-11-12 (UTC) on `main` at `d958004` (after #292, #293, #295, #296 and #297), task `p3-202611122252`, the same throwaway repository. Versions: hc 0.1.18, herdr-app 0.1.15, Claude Code 2.1.323, codex-cli 0.157.0, gh 2.96.0. **The owner was away, so the operator's assistant did the host steps and answered the card with the card's own command instead of a click. G1 is not met for that reason**: no person looked at the screen or clicked, so the pass line's "nobody touches a terminal" and "the approval is answered on the screen" were not tested as written. The record comes from `evidence/summary.txt`, `notes.tsv` and `watch-summary.txt` of the run folder.
+
+What held: the request reached the secretary, the secretary delegated, the worker ran under its own settings file, asked for approval, got the answer through the secretary, committed the test and then the file, reported done, and the secretary opened a pull request that passed the acceptance job. Pull request: PR #4 in the throwaway repository (`acceptance-check`: the test fails at the test commit and passes at head; `ACCEPTANCE: pass`).
+
+`RESULT` lines:
+
+| Step | RESULT |
+| --- | --- |
+| `preconditions`, `worker-token`, `project-trust`, `codex-cli` | PASS |
+| `notes-off` | FAIL (no `notes = false` in the core's config; see touch 1) |
+| `1-secretary`, `1-placed-files` (8 files) | PASS |
+| `2-request` | PASS |
+| `3-own-settings`, `3-worktree` | PASS |
+| `4-work-entry`, `4-worker`, `4-worker-report` | PASS |
+| `5-blocked`, `5-approval` | PASS |
+| `6-card-answer` | PASS (the `ANSWER` line is in the person's file; sent by the assistant, see touch 2) |
+| `7-secretary-read`, `7-forwarded`, `7-approval-removed` | PASS |
+| `8-test-commit` | PASS (first own commit declares `tests/paddock-proto3.test.sh` and changes only it) |
+| `8-review` | **FAIL** (`codex_round_failed`: `CODEX_GATE: unavailable (the reviewing CLI is not installed)`) |
+| `8-done`, `8-secretary-read` | PASS |
+| `9-pull-request`, `9-ci-record`, `9-acceptance` | PASS (PR #4; CI run exit 0) |
+| `10-no-touch` | **FAIL** (2 touch notes, 0 prompts in the status log) |
+
+Times (UTC, from the history, the status log and `notes.tsv`; the request was sent at 22:54:36):
+
+| What | When | Delay |
+| --- | --- | --- |
+| Request sent | 22:54:36 | |
+| `run_started` by the secretary, `work_added` | 22:55:00, 22:55:03 | 24 s, 27 s |
+| Worker terminal `working` | 22:55:06 | 30 s |
+| `run_started` by the worker (`4-worker`) | 22:55:11 | 35 s |
+| `run_blocked` | 22:55:19 | 8 s after `run_started` |
+| `approval_asked` (the card) | 22:55:29 | 10 s after `run_blocked` |
+| `ANSWER yes` in the person's file (the assistant's command, not a click) | 22:56:14 | 45 s after the card |
+| Secretary's `ack` of it, answer forwarded, `approval_removed` | 22:56:18, 22:56:24, 22:56:24 | 4 s, 6 s |
+| Worker's `ack` of the answer | 22:56:27 | 3 s after the forward |
+| `codex_round_started`, `codex_round_failed` | 22:56:32, 22:56:32 | 0 s (the gate refused at once) |
+| `run_completed` by the worker | 22:56:44 | 20 s after the forward; the review's share is 0 s |
+| Pull request created | 22:57:04 | 20 s after `run_completed` |
+| `ci_completed` (exit 0) | 22:57:27 | 23 s after the pull request |
+
+Request to pull request: 2 min 28 s. The 45 s between the card and the answer is the assistant's, not a person's reaction time, so it says nothing about the screen. Run 4's stops did not repeat: the worker's wait did not fail (#281, #282), the request text named only options `org-escalation ask` has (#283), and the setup command ran from outside a stale clone (#286).
+
+Touches, failed steps and other things the operator noted (rows 1 and 2 are touches; rows 3 and 4 are the `RESULT` FAIL lines):
+
+| # | Step | What happened | Cause | Issue |
+| --- | --- | --- | --- | --- |
+| 1 | 0 | Touch: `notes = false` was written to the core's empty `config.toml` by the operator's assistant (owner away); removed at cleanup. `notes-off` FAILed before that. | `prepare` only reports it; nothing sets it. | #264 (existing) |
+| 2 | 6 | Touch: the assistant answered the card with the card's own command (`org --as person send_message secretary 'ANSWER <id> yes'`) from a herdr terminal instead of a click; the card was not looked at. | The owner was away. | none (not a defect; this is why G1 is not met) |
+| 3 | 8 | Failed: `8-review`. The worker's call of the gate ended with `unavailable (the reviewing CLI is not installed)` and the gate recorded `codex_round_failed` for round 1 of 3, although `codex-cli 0.157.0` was installed on the host and `codex-cli` passed in `prepare`. The worker reported done with the note that the work was not reviewed by the second model, and the pull request went ahead. | Not found by this run. | #298 |
+| 4 | 10 | Failed: `10-no-touch`, because of rows 1 and 2. A fact about the run, not a second defect. | See rows 1 and 2. | none |
+| 5 | 1, 6 | The assistant ran `org-start` and `layout.switch` in a herdr terminal (`hc run` / `hc send`); the screen was not looked at by a person. | The owner was away. | none |
+| 6 | 2 | The assistant's first copy of `watch` ended early, because a pipe in the assistant's own command closed it after the request was sent; it was restarted 12 s later (22:54:48) and recorded the rest. | The assistant's command, not paddock. | none |
+| 7 | 6 | The first send of the answer went into the terminal where `watch` was running, which was busy, so it did not run; it was sent again from a new terminal. The text left in the first terminal ran after `watch` ended and put a second `ANSWER` for the same id into the person's file (22:57:33). The secretary read it (its `ack`, `person 8`) and sent no second message. | The assistant used the busy terminal. | none |
+| 8 | 8 | The worker's worktree held untracked files the worker did not make (`.bashrc`, `.claude/`, `.mcp.json` and others); the worker left them alone and said so in its `run_completed` text. | Not found by this run. | #299 |
+| 9 | 8, 9 | The loop gives the person no way to tell that the second-model review did not happen: the worker's report says so, but neither the pull request nor the secretary's report does, and the card is gone. | Nothing in the pull request or the secretary's closing text carries the gate's last line. | proposed: The pull request and the secretary's report do not show that the second-model review did not run |
+
+Issues for these stops: #298 (the review gate says the CLI is not installed although the host has it) and #299 (untracked files in the worker's worktree); row 1 is #264. Row 9 is a proposed new Issue for the secretary to file.
+
+Not exercised by this run: a person's click on the card and a person looking at the layout (the pass line's own wording); the gate's rounds beyond round 1; a review finding handled by the worker. Run 5 is to be repeated with the owner present once #298 is fixed. #243 stays open.
