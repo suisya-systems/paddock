@@ -244,8 +244,10 @@ case $cmd in
       scr=$(hc read "$w" 2>/dev/null) || die 10 "cannot read the screen of $w; nothing pressed, entry $id kept"
       [ "$(psum "$(block "$scr")")" = "$sum" ] \
         || die 10 "the screen of $w no longer shows the prompt recorded in $id; nothing pressed, entry kept. Read it with prompt --task $wtask"
-      [ "$key" = esc ] || printf '%s\n' "$scr" | grep -Eq '❯ *1\. Yes' \
-        || die 10 "the cursor of $w is not on '1. Yes'; nothing pressed, entry $id kept"
+      # One cursor line on the screen, and it is the one-time Yes as a whole line (not "Yes, and ...").
+      [ "$key" = esc ] || { [ "$(printf '%s\n' "$scr" | grep -c '^ *❯')" = 1 ] \
+        && printf '%s\n' "$scr" | grep -Eq '^ *❯ *1\. Yes *$'; } \
+        || die 10 "the cursor of $w is not on '1. Yes' alone; nothing pressed, entry $id kept"
       hc keys "$w" "$key" >/dev/null 2>&1 || die 8 "hc keys $key failed on $w; entry $id kept"
       ( update remove "$id" ) || die 9 "answered $w but entry $id could not be removed; run: remove --id $id"
       echo "RELAYED $id $key -> $w"; exit 0
@@ -262,8 +264,10 @@ case $cmd in
     # The policy list (L-N3): the only prompt answered without the person. Same steps as org-start (#254).
     # The folder-trust dialog comes before Claude Code reports any status, so a terminal with a status
     # (a tool prompt is blocked) never matches; its two choices must be whole lines, not text in output.
-    j=$(hc get --json "$w" 2>/dev/null | tr -d '\n') || j='"status":{'
-    if ! printf '%s' "$j" | grep -Eq '"status": *\{' \
+    # No status = hc get answered for the terminal and its status is null or absent; a failed lookup is not "no status".
+    j=$(hc get --json "$w" 2>/dev/null) || j=
+    nostatus=; case $j in *'"name"'*) printf '%s' "$j" | tr -d '\n' | grep -Eq '"status": *\{' || nostatus=1 ;; esac
+    if [ -n "$nostatus" ] \
        && printf '%s\n' "$scr" | grep -Eq '^ *(❯ *)?[0-9]\. No, exit *$' \
        && printf '%s\n' "$scr" | grep -Eq '^ *(❯ *)?[0-9]\. Yes, I trust this folder *$' \
        && ! printf '%s\n' "$scr" | grep -q 'Do you want'; then
