@@ -33,6 +33,7 @@ esac
 exit 0
 EOF2
 chmod +x "$stubdir/hc"
+printf '#!/bin/sh\n' > "$stubdir/claude"; chmod +x "$stubdir/claude" # Issue #268: org-start needs claude on PATH
 
 run() { # run <extra env...> -- ; uses fresh dirs under $tmp/w unless reused
   env -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID \

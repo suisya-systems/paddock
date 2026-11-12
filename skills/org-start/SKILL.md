@@ -35,7 +35,7 @@ A worker starts only with a read-only GitHub token ([Q20](../../docs/design/open
 
 ## Exit codes
 
-0 ready, 2 bad argument, 3 `hc` not found, 4 run inside an agent, 5 core unreachable or `hc run` failed, 6 files could not be placed, 7 no status yet (the message gives the terminal's exit code and last output line, and names a missing `claude`, Issue #269), 8 the core's notes are not off.
+0 ready, 2 bad argument, 3 `hc` not found, 4 run inside an agent, 5 core unreachable or `hc run` failed, 6 files could not be placed, 7 no status yet (the message gives the terminal's exit code and last output line, and names a missing `claude`, Issue #269), 8 the core's notes are not off, 9 `claude` not found from org-start's shell (Issue #268: its absolute path is recorded in `claude-path` beside the org script, and the templates start it by that path).
 
 ## After it runs
 

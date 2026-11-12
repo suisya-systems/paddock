@@ -53,6 +53,7 @@ esac
 exit 0
 EOF3
 chmod +x "$hcstub/hc"
+printf '#!/bin/sh\n' > "$hcstub/claude"; chmod +x "$hcstub/claude" # Issue #268: org-start needs claude on PATH
 env -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN \
     STUB="$tmp/stub" PATH="$hcstub:$PATH" XDG_CONFIG_HOME="$tmp/xdg" PADDOCK_CORE_CONFIG_DIR="$here/tests/fixtures/core-notes-off" PADDOCK_CORE_TEMPLATES_DIR="$tmp/core/templates" \
     PADDOCK_APP_MODS_DIR="$tmp/app/mods" PADDOCK_BIN_DIR="$tmp/bin-org" PADDOCK_READY_TRIES=2 bash "$start" >/dev/null 2>&1

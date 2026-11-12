@@ -15,7 +15,7 @@ check() { if [ "$2" -eq 0 ]; then echo "ok   $1"; else echo "FAIL $1"; fail=1; f
 
 # ---- 1. workers run in auto mode ---------------------------------------------
 cmd=$(sed -n '2,${/^---[[:space:]]*$/q;p;}' "$here/templates/worker.md" | grep -m1 '^command:')
-grep -q -- 'claude --permission-mode auto ' <<<"$cmd"; check "the worker template starts claude with --permission-mode auto" $?
+grep -q -- '"$c" --permission-mode auto ' <<<"$cmd"; check "the worker template starts claude with --permission-mode auto" $?
 sec=$(sed -n '2,${/^---[[:space:]]*$/q;p;}' "$here/templates/secretary.md" | grep -m1 '^command:')
 ! grep -q -- '--permission-mode' <<<"$sec"; check "the secretary keeps Claude Code's default prompts" $?
 

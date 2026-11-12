@@ -41,6 +41,7 @@ cat > "$exe" <<'EOF2'
 echo "$*" >> "$STUB/app-calls"
 exit 0
 EOF2
+printf '#!/bin/sh\n' > "$stubdir/claude"; chmod +x "$stubdir/claude"
 chmod +x "$stubdir/hc" "$stubdir/cmd.exe" "$stubdir/wslpath" "$exe"
 
 run() {
