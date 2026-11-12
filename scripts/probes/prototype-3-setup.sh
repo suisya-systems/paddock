@@ -25,16 +25,13 @@
 # 6 refused or failed.
 set -u
 
-# This script never starts it; the word is built here because tests/probe-claude-link.test.sh reads it
-# on a code line as a start of the agent.
-CL=clau'de'
 die() { c=$1; shift; echo "prototype-3-setup: $*" >&2; exit "$c"; }
 usage() { sed -n '2,25p' "$0"; }
 
 # Is DIR itself recorded as trusted in the agent's config? Not a folder above it: trust follows the
 # git repository (Q13, reopened). The key is not a documented interface. ponytail: braces inside strings are not skipped; fine for this file.
 trusted() {
-  cf=${CLAUDE_CONFIG_DIR:-$HOME}/.$CL.json
+  cf=${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json
   [ -r "$cf" ] || return 1
   d=$(cd "$1" 2>/dev/null && pwd -P) || return 1
   tr '\n\r' '  ' < "$cf" | awk -v k="\"$d\"" '{
@@ -125,7 +122,7 @@ if trusted "$project"; then
 else
   todo=1
   echo "TODO folder-trust: $project is not recorded as trusted; a worker cut from it would stop at the dialog. Run once:"
-  echo "  cd '$project' && $CL   # answer 'Yes, I trust this folder', then leave with /exit"
+  echo "  cd '$project' && claude   # answer 'Yes, I trust this folder', then leave with /exit"
 fi
 
 echo "next: cd '$paddock' && sh scripts/probes/prototype-3.sh prepare --project '$project' --repo $repo"
