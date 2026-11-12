@@ -33,7 +33,9 @@ case "$cmd" in
   ls) [ -z "${STUB_LS_FAIL:-}" ] || { echo 'hc: cannot reach the core' >&2; exit 1; }; echo '[]'; exit 0 ;;
   get) name=; for a in "$@"; do case "$a" in --*) ;; *) name=$a ;; esac; done
        [ -f "$STUB/term-$name" ] || { echo '{"error":{"kind":"not_found"}}'; exit 1; }
-       echo "{\"name\":\"$name\",\"state\":\"live\"}"; exit 0 ;;
+       if [ -n "${STUB_TRUST:-}" ]; then echo "{\"name\":\"$name\",\"state\":\"live\",\"status\":{\"state\":\"idle\"}}"
+       else echo "{\"name\":\"$name\",\"state\":\"live\"}"; fi; exit 0 ;;
+  read) [ -z "${STUB_TRUST:-}" ] || printf ' Quick safety check\n   1. No, exit\n \342\235\257 2. Yes, I trust this folder\n'; exit 0 ;;
   file) [ "$1" = write ] || exit 2; shift
         [ -z "${STUB_WRITE_FAIL:-}" ] || { echo 'hc: write refused' >&2; exit 1; }
         path=; for a in "$@"; do case "$a" in --*) ;; *) path=$a ;; esac; done
@@ -244,6 +246,13 @@ grep -q 'sent' <<<"$out" && grep -qi 'trust' <<<"$out"; check "exit 10 prints th
 blocked_t1; check "exit 10 leaves a blocked record" $?
 out=$(run -- "${good[@]}"); rc=$?
 [ "$rc" -eq 7 ]; check "rerun after exit 10 with the same id is refused (terminal still there)" $?
+
+# Issue #260: the folder-trust dialog (the policy list) is answered after a screen read, and the
+# brief is sent again; nothing else is typed.
+reset; out=$(run STUB_FIRST_SENT=false STUB_TRUST=1 -- "${good[@]}"); rc=$?
+[ "$rc" -eq 0 ] && grep -q '^keys w-t1 down' "$calls" && grep -q '^keys w-t1 enter' "$calls" \
+  && grep -q '^send w-t1 Your org id is w-t1' "$calls" && ! grep -Eq '^(kill|rm) ' "$calls"
+check "folder-trust at launch: down, enter, the brief sent again, exit 0" $?
 
 # The start record cannot be written: nothing is started, the worktree is removed (exit 12).
 if [ "$(id -u)" -eq 0 ]; then echo "skip record failure (running as root)"; else

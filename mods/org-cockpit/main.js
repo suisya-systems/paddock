@@ -2,8 +2,8 @@
 // roles placed by layouts/paddock.json through props.role:
 //   "workers"  left: one tile per worker terminal (labelled task_id): status colour, its last
 //              lines, "Needs you" when blocked. Click opens the terminal to answer there.
-//   "approval" bottom right: the oldest org-state approval as one card, its controls following
-//              who answers it (answer_in: the worker's own terminal, or the secretary).
+//   "approval" bottom right: the oldest org-state approval as one card, answered Yes / No
+//              through the secretary (a worker's prompt too: the secretary relays it, #260).
 //   "consult"  floating: what the secretary asks the person, while its terminal is blocked.
 // The secretary itself is a terminal block in the layout, not drawn here.
 // org-state reading is prototype 1's (mods/org-agents/main.js); mods cannot import across folders.
@@ -331,30 +331,24 @@ export default class Cockpit extends View {
       .child(sec ? "Open the secretary to answer in words" : "The secretary is not running");
   }
 
-  // Who answers (architecture 7.1): answer_in "worker" is a worker's own permission prompt or
-  // dialog, answered only in its terminal, so the card opens it and offers no Yes / No. Anything
-  // else is answered through the secretary: Yes / No to its mailbox, or in words in its pane.
+  // Every approval is answered through the secretary (architecture 7.1, Issue #260): Yes / No to
+  // its mailbox, or in words in its pane. A worker's prompt is one too; the secretary relays it.
   // Three bands: the state strip and the controls are pinned, the text between them scrolls, so
   // nothing the secretary wrote is cut (Issue #258).
   card(t, a, more, now, title) {
     const c = t.blocked;
-    const inWorker = a.answer_in === "worker";
-    const term = inWorker && terminals().find((x) => x.state === "live" && x.labels?.task_id === a.task_id);
-    const stillBlocked = term && term.status === "blocked";
     const failed = this.sent.get(a.id)?.state === "failed";
     // An approval without an id cannot be answered here (the secretary matches answers by id).
-    const answerable = !inWorker && typeof a.id === "string" && a.id !== "";
+    const answerable = typeof a.id === "string" && a.id !== "";
     const task = a.task_id || "an unnamed task";
     // A malformed entry still says which approval it is, so the person can ask about it.
     const question = a.question || `Approval ${a.id || "without an id"} for ${task}`;
-    const note = !a.question ? "No question was written. Ask the secretary what it needs."
-      : inWorker ? "Answered in its own terminal, not from here." : null;
+    const note = !a.question ? "No question was written. Ask the secretary what it needs." : null;
     const waited = since(a.asked_at, now);
     // The secretary removes an answered approval; until it does, the card says it may be answered.
-    const meta = [title && title !== task && task, waited && `waiting ${waited}`, term && !stillBlocked && "no longer blocked, answered?"]
+    const meta = [title && title !== task && task, waited && `waiting ${waited}`]
       .filter(Boolean).join(" · ");
-    const loud = !inWorker || !term || stillBlocked;
-    const label = inWorker ? `${String(a.task_id || "a worker").toUpperCase()} NEEDS YOU` : "THE SECRETARY IS ASKING YOU";
+    const label = "THE SECRETARY IS ASKING YOU";
     const rec = a.recommend === "yes" || a.recommend === "no" ? a.recommend : null;
     const missing = [!a.background && "background", !a.if_yes && "what Yes does", !a.if_no && "what No does", !rec && "recommendation"].filter(Boolean);
     // A field the secretary left out is named where it would be; with nothing written, one line.
@@ -367,13 +361,6 @@ export default class Cockpit extends View {
     const outcome = (word, s) => h_flex().gap(8).items_start()
       .child(div().w(28).flex_none().text_size(13).font_semibold().line_height(1.45).text_color(t.foreground).child(word))
       .child(text(s, t.foreground).flex_1().min_w(0));
-    const open = term && div().id("open").h(36).rounded(8).flex().items_center().justify_center().cursor_pointer()
-      .text_size(13).font_semibold()
-      .when(stillBlocked, (el) => el.bg(c).text_color(ink(c)))
-      .when(!stillBlocked, (el) => el.border(1).border_color(t.foreground + "29").text_color(t.foreground))
-      .hover((st) => st.bg(stillBlocked ? c + "d9" : t.hover))
-      .on_click(() => run("terminal.peek", { terminal: term.address }))
-      .child(stillBlocked ? `Open ${a.task_id} to answer` : `Open ${a.task_id}`);
     // Two parts of one card: the text (head), which renderApproval puts in the rail's scroll area,
     // and the controls (foot), pinned below it. A scroll area nested in auto-height columns is
     // measured at zero height by the layout (Issue #258's first render showed no text at all), so
@@ -381,7 +368,7 @@ export default class Cockpit extends View {
     const edge = c + "59";
     const head = v_flex().id(`ap-${a.id}`).flex_none().rounded_t(12).bg(t.raised).border_t(1).border_x(1).border_color(edge)
         .child(h_flex().flex_none().h(36).px(16).gap(8).items_center().rounded_t(11).bg(c + "1f")
-          .child(div().size(8).flex_none().rounded(4).bg(c).when(loud, (el) => el.loop("opacity", { from: 0.35, to: 1, period: 1400 })))
+          .child(div().size(8).flex_none().rounded(4).bg(c).loop("opacity", { from: 0.35, to: 1, period: 1400 }))
           .child(this.label(t, label, c)))
         .child(v_flex().px(16).pt(14).pb(16).gap(16)
           .child(v_flex().gap(4)
@@ -416,9 +403,7 @@ export default class Cockpit extends View {
           .when(answerable, (el) => el.child(h_flex().gap(8)
             .child(this.choice(t, a, "yes", "Yes", rec === "yes"))
             .child(this.choice(t, a, "no", "No", rec === "no"))))
-          .when(Boolean(open), (el) => el.child(open))
-          .when(inWorker && !term, (el) => el.child(div().text_size(12).line_height(1.4).text_color(c).whitespace_normal().child(`No terminal for ${task}. Tell the secretary.`)))
-          .when(!inWorker || !term, (el) => el.child(this.secretaryLink(t)))))
+          .child(this.secretaryLink(t))))
       .when(more > 0, (el) => el.child(div().px(4).text_size(12).text_color(t.muted).child(`and ${more} more waiting`)));
     return { head, foot };
   }

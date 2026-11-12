@@ -4,7 +4,7 @@
 #
 #   sh scripts/approval-card-samples.sh show full      # every context field, long text
 #   sh scripts/approval-card-samples.sh show minimal   # question only, as before #258
-#   sh scripts/approval-card-samples.sh show worker    # a worker's own prompt, partial context
+#   sh scripts/approval-card-samples.sh show worker    # a worker's own prompt (relayed, #260), partial context
 #   sh scripts/approval-card-samples.sh restore        # put the saved org-state back
 #
 # `show` replaces org-state with one sample task and approval. The first `show` saves the
@@ -27,7 +27,7 @@ case ${1:-} in
     case ${2:-} in
       full) entry='{"id":"paddock-258-sample-full","task_id":"paddock-258","question":"May I add paddock-proto3.txt at the repository root, next to README.md, so the Prototype 3 runbook has a file whose change it can follow from the worker to the pull request?","asked_at":"'$since'","answer_in":"secretary","background":"The runbook needs one small, visible change per run to check that a worker'"'"'s commit reaches the PR and CI. The worker proposed a new file at the root; nothing else in the repository depends on it, and it would be removed again at the end of Prototype 3.","if_yes":"The worker adds paddock-proto3.txt in its branch, commits it and reports done; the PR then shows one new file at the root.","if_no":"The worker writes the marker under docs/design/ instead, where run records already live, and the root stays as it is.","recommend":"no","why":"docs/design/ already holds the run records, so the marker belongs there and the root stays clean."}' ;;
       minimal) entry='{"id":"paddock-258-sample-minimal","task_id":"paddock-258","question":"May I add paddock-proto3.txt at the repository root?","asked_at":"'$since'","answer_in":"secretary"}' ;;
-      worker) entry='{"id":"paddock-258-sample-worker","task_id":"paddock-258","question":"Allow the worker to run npm install with network access?","asked_at":"'$since'","answer_in":"worker","background":"The worker'"'"'s sandbox blocks the registry; its permission prompt waits in its terminal.","recommend":"yes","why":"The lockfile is pinned and the registry is the public one."}' ;;
+      worker) entry='{"id":"paddock-258-sample-worker","task_id":"paddock-258","question":"Allow the worker to run npm install with network access?","asked_at":"'$since'","prompt":"Bash command npm install Do you want to proceed?","prompt_sum":"0-0","background":"The worker'"'"'s sandbox blocks the registry; its permission prompt waits in its terminal, and the secretary relays your answer to it.","recommend":"yes","why":"The lockfile is pinned and the registry is the public one."}' ;;
       *) echo "usage: $0 show full|minimal|worker | restore" >&2; exit 2 ;;
     esac
     mkdir -p "$state"
