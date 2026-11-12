@@ -93,6 +93,11 @@ name=${PADDOCK_SECRETARY_NAME:-secretary} # terminal name only; the template sta
 # 1. Reuse the core (this starts one from this shell if none runs).
 hc ls >/dev/null 2>&1 || die 5 "cannot reach the herdr core (hc ls failed)"
 
+# Issue #268: a terminal takes PATH from the core's holder, which may lack claude's folder. Record the
+# absolute path found here; the templates exec it (and fall back to plain claude if the file is stale).
+claudebin=$(command -v claude 2>/dev/null)
+case "$claudebin" in /*) ;; *) die 9 "claude not found on PATH in this shell: put its folder on PATH (often ~/.local/bin) and run org-start again" ;; esac
+
 # 2. Place the template and the mods. Plain copies: re-running changes nothing.
 mkdir -p "$templates" || die 6 "cannot create $templates"
 mkdir -p "$orgbin" || die 6 "cannot create $orgbin"
@@ -108,6 +113,7 @@ cp -f "$root/templates/worker.md" "$templates/worker.md" || die 6 "cannot copy t
 for f in scripts/org scripts/second-model-review.sh scripts/hooks/premise-reminder.sh templates/secretary-settings.json templates/worker-rules.md templates/worker-settings.json; do
   cp -f "$root/$f" "$orgbin/${f##*/}" || die 6 "cannot copy $f to $orgbin"
 done
+printf '%s\n' "$claudebin" > "$orgbin/claude-path" || die 6 "cannot write $orgbin/claude-path"
 # Copies an older org-start placed beside the templates (Issue #129).
 rm -f "$templates/worker-rules.md" "$templates/worker-settings.json" \
   || die 6 "cannot remove the old worker-rules.md / worker-settings.json from $templates"
