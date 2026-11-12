@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The Prototype 3 runbook's guards, without a core: syntax, help, arguments, and the refusals that
-# keep a run off this repository, out of an agent and off a changed data folder. The run itself is a
-# host run (Issue #243).
+# keep a run off this repository and off a changed data folder (the core check is in
+# prototype-3-runbook-in-herdr.test.sh). The run itself is a host run (Issue #243).
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$here" || exit 1
@@ -20,7 +20,6 @@ sh "$S" >/dev/null 2>&1; [ $? -eq 2 ]; check "no phase exits 2" $?
 clean prepare --repo a/b >/dev/null 2>&1; [ $? -eq 2 ]; check "prepare without --project exits 2" $?
 clean prepare --project . --repo nobody >/dev/null 2>&1; [ $? -eq 2 ]; check "--repo without a slash exits 2" $?
 clean prepare --project . --repo Suisya-Systems/Paddock >/dev/null 2>&1; [ $? -eq 6 ]; check "this repository is refused, any case" $?
-CLAUDECODE=1 XDG_STATE_HOME="$tmp" sh "$S" prepare --project . --repo a/b >/dev/null 2>&1; [ $? -eq 4 ]; check "prepare inside an agent exits 4" $?
 env -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET \
   -u CLAUDE_CODE_MESSAGING_TOKEN XDG_STATE_HOME="$tmp" XDG_DATA_HOME="$tmp/data" sh "$S" prepare --project . --repo a/b >/dev/null 2>&1
 [ $? -eq 6 ]; check "prepare with XDG_DATA_HOME set exits 6 (host rule)" $?
