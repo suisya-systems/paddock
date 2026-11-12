@@ -54,7 +54,7 @@ exit 0
 EOF3
 chmod +x "$hcstub/hc"
 env -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN \
-    STUB="$tmp/stub" PATH="$hcstub:$PATH" XDG_CONFIG_HOME="$tmp/xdg" PADDOCK_CORE_TEMPLATES_DIR="$tmp/core/templates" \
+    STUB="$tmp/stub" PATH="$hcstub:$PATH" XDG_CONFIG_HOME="$tmp/xdg" PADDOCK_CORE_CONFIG_DIR="$here/tests/fixtures/core-notes-off" PADDOCK_CORE_TEMPLATES_DIR="$tmp/core/templates" \
     PADDOCK_APP_MODS_DIR="$tmp/app/mods" PADDOCK_BIN_DIR="$tmp/bin-org" PADDOCK_READY_TRIES=2 bash "$start" >/dev/null 2>&1
 cmp -s "$hook" "$tmp/bin-org/premise-reminder.sh" && cmp -s "$settings" "$tmp/bin-org/secretary-settings.json"; check "org-start places the hook and the secretary settings in the bin folder" $?
 

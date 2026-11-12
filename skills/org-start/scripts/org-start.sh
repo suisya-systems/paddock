@@ -15,6 +15,7 @@ A folder-trust dialog on the secretary is answered once (Yes, checked on the scr
 
 Environment overrides:
   PADDOCK_CORE_TEMPLATES_DIR  herdr-core templates folder
+  PADDOCK_CORE_CONFIG_DIR     herdr-core config folder checked for notes = false (default $cfg/herdr-core)
   PADDOCK_APP_MODS_DIR        herdr-app mods folder
   PADDOCK_APP_LAYOUTS_DIR     herdr-app layouts folder
   PADDOCK_APP_MACHINE         machine name the app gives this core; the layout's secretary prop
@@ -27,7 +28,8 @@ Environment overrides:
   PADDOCK_SECRETARY_NAME      terminal name of the secretary (default secretary)
 
 Exit codes: 0 ready, 2 bad argument, 3 hc not found, 4 run inside an agent,
-5 core unreachable, 6 files could not be placed, 7 secretary has no status.
+5 core unreachable, 6 files could not be placed, 7 secretary has no status,
+8 herdr-core notes are on (no notes = false in the core config).
 USAGE
 }
 
@@ -56,6 +58,12 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 cfg=${XDG_CONFIG_HOME:-$HOME/.config}
 [ -n "${APPDATA:-}" ] && cfg=$APPDATA # Windows (Git Bash)
 templates=${PADDOCK_CORE_TEMPLATES_DIR:-$cfg/herdr-core/templates}
+# Issue #264 (decision 0002): the core's child notes must be off. Never written here (the secretary may not
+# write the core's config, L-N1). Only config.toml counts (the file the core reads, hc --help Settings), and only
+# its top level: lines before the first [table] heading.
+coreconf=${PADDOCK_CORE_CONFIG_DIR:-$cfg/herdr-core}
+awk '/^[[:space:]]*\[/{exit} /^[[:space:]]*notes[[:space:]]*=[[:space:]]*false([[:space:]#]|$)/{f=1} END{exit !f}' "$coreconf/config.toml" 2>/dev/null ||
+  die 8 "herdr-core's notes are on: add the line 'notes = false' at the top of $coreconf/config.toml, then restart the core if the change does not take effect (org-start does not write it)"
 # Issue #246: on WSL, herdr-app for Windows reads the Windows user's .config/herdr-app and sees this
 # core as another machine (wsl). A herdr-app on PATH that is not an .exe is a Linux app: WSL's folder.
 app=$(command -v herdr-app 2>/dev/null); appcfg=$cfg/herdr-app; appmachine=

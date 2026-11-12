@@ -38,7 +38,7 @@ run() { # run <extra env...> -- ; uses fresh dirs under $tmp/w unless reused
   env -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID \
       -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN \
       STUB="$tmp/stub" PATH="$stubdir:$PATH" \
-      PADDOCK_CORE_TEMPLATES_DIR="$tmp/core/templates" \
+      PADDOCK_CORE_CONFIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fixtures/core-notes-off" PADDOCK_CORE_TEMPLATES_DIR="$tmp/core/templates" \
       PADDOCK_APP_MODS_DIR="$tmp/app/mods" PADDOCK_APP_LAYOUTS_DIR="$tmp/app/layouts" PADDOCK_BIN_DIR="$tmp/bin-org" \
       PADDOCK_READY_TRIES=2 "$@" bash "$script" 2>&1
 }
@@ -108,7 +108,7 @@ cmp -s "$here/templates/worker-rules.md" "$tmp/bin-org/worker-rules.md"; check "
 ro=$tmp/ro/templates; mkdir -p "$ro"
 cp "$here/templates/secretary.md" "$here/templates/worker.md" "$ro/"; printf 'stale\n' > "$ro/worker-rules.md"
 chmod a-w "$ro"
-out=$(run PADDOCK_CORE_TEMPLATES_DIR="$ro"); rc=$?
+out=$(run PADDOCK_CORE_CONFIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fixtures/core-notes-off" PADDOCK_CORE_TEMPLATES_DIR="$ro"); rc=$?
 chmod u+w "$ro"
 [ "$rc" -eq 6 ]; check "a stale copy that cannot be removed exits 6 ($rc)" $?
 # The bin folder must not be the templates folder, nor inside it, nor an alias of it.
