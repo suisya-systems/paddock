@@ -11,7 +11,7 @@ Status: prototype. This is the first runnable piece of paddock. It shows, in her
 
 Not in it: the events bridge. (The `org` mailbox commands and the history files came after this prototype, as [`scripts/org`](../../scripts/org); see the README.) The mod opens as a dialog. The [screen](architecture.md#7-the-screen) itself (worker tiles on the left, the secretary in the centre, the secretary's questions floating, one approval card bottom right) came after this prototype, as the layout [`layouts/paddock.json`](../../layouts/paddock.json) with the mod [`mods/org-cockpit/`](../../mods/org-cockpit/); it reads the same `org-state` (see the [README](../../README.md#the-screen)).
 
-Also built after this prototype: the delegation skill [`skills/org-delegate`](../../skills/org-delegate/SKILL.md), which makes a task's worktree and starts a worker from `templates/worker.md`. A real worker started by the skill is not measured yet: the probes of Issues #40, #42 and #43 are a host run.
+Also built after this prototype: the delegation skill [`skills/org-delegate`](../../skills/org-delegate/SKILL.md), which makes a task's worktree and starts a worker from `templates/worker.md`. A real worker started by the skill has since been measured: [prototype 2](prototype-2.md) (2026-11-10) and [prototype 3](prototype-3.md) (2026-11-11, 20 of 21 steps pass) started workers with `org-delegate` on a host.
 
 ## The `org-state` document
 
@@ -69,7 +69,7 @@ The prototype is done when `check` passes and the shot shows both the approvals 
 
 ## Open after this prototype
 
-- The conversation language is a line in the template body (`Conversation language: auto`). That is one option of [Q9](open-questions.md#q9-where-does-the-conversation-language-setting-live), used here to have something runnable; Q9 stays open.
+- The conversation language is a line in the template body (`Conversation language: auto`). That is one option of [Q9](open-questions.md#q9-where-does-the-conversation-language-setting-live), used here to have something runnable. Q9 is decided (2026-11-11): the value lives in `org-config.md` and is added to the secretary's launch task.
 - The template tells the secretary to use the `org` commands (`scripts/org`, built in Issue #60) and not to fall back to `hc send` ([decision 0002](../decisions/0002-org-mailbox-not-hc-send.md)). Missing from them: the sender id is taken on trust (`--as`), and the document helper's `doc.set` parameters are not measured against a real core.
 - The secretary writes `org-state` with `scripts/org doc update` (re-read, reapply, set on a version conflict). Its `doc.set` request shape is an assumption until a host probe runs.
 - The mod polls. Core sends doc events in `hc events`; following them needs a reader that outlives one `exec` call (30 seconds).

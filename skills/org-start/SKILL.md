@@ -11,7 +11,7 @@ Run this from the person's login shell (or a service). Never from inside an agen
 bash skills/org-start/scripts/org-start.sh
 ```
 
-Bash only. There is no `.ps1` yet: the pwsh path could not be tested, so it is not shipped. On Windows run the script from Git Bash, where `sh` must be on `PATH` anyway (templates run their command through `sh`).
+Bash only. There is no `.ps1` yet: the pwsh path could not be tested, so it is not shipped. On Windows, run it inside WSL2: core and agents run only there ([Q7](../../docs/design/open-questions.md#q7-windows), decided 2026-11-11). Native Windows (Git Bash) is not supported for the core or agents.
 
 ## What it does
 
