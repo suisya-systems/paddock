@@ -18,11 +18,13 @@ Usage: org-escalation.sh prompt --task TASK_ID [--then-send TEXT]
        org-escalation.sh list
        org-escalation.sh sweep
 
-  prompt  read the screen of w-<task_id>. A prompt in the policy list (folder-trust: Claude
-          Code's folder-trust dialog, on a terminal with no status yet) is answered here: down, read again, enter only with the
-          cursor on "Yes, I trust this folder"; prints POLICY folder-trust w-<task_id>. With
+  prompt  read the screen of w-<task_id>. A prompt in the policy list is answered here (down,
+          read again, enter only with the cursor on the expected line): folder-trust (Claude
+          Code's folder-trust dialog, on a terminal with no status yet) -> "Yes, I trust this
+          folder"; auto-mode-setup ("Teach auto mode about your environment?") -> "Don't show
+          again". Prints POLICY <entry> w-<task_id>. With
           --then-send, once the terminal reports a status, TEXT is sent with hc send (the first
-          message the dialog stopped). Any other screen: prints PROMPT=<the whole screen> and
+          message the dialog stopped). Any other screen: prints PROMPT=<the dialog> and
           exits 3, nothing pressed; record it with ask --prompt
   ask     add an entry to org-state.approvals; prints APPROVAL_ID=<task_id>-<UTC time>
           --prompt: the PROMPT= text; the entry is a worker's prompt, answered by answer
@@ -265,21 +267,41 @@ case $cmd in
     valid_id "$task" || die 2 "prompt needs --task <task_id>"
     w=w-$task
     scr=$(hc read "$w" 2>/dev/null) || die 11 "cannot read the screen of $w; nothing pressed"
-    # The policy list (L-N3): the only prompt answered without the person. Same steps as org-start (#254).
-    # The folder-trust dialog comes before Claude Code reports any status, so a terminal with a status
-    # (a tool prompt is blocked) never matches; its two choices must be whole lines, not text in output.
-    # No status = hc get answered for the terminal and its status is null or absent; a failed lookup is not "no status".
-    j=$(hc get --json "$w" 2>/dev/null) || j=
-    nostatus=; case $j in *'"name"'*) printf '%s' "$j" | tr -d '\n' | grep -Eq '"status": *\{' || nostatus=1 ;; esac
-    if [ -n "$nostatus" ] \
-       && printf '%s\n' "$scr" | grep -Eq '^ *(❯ *)?([0-9]\. *)?No, exit *$' \
-       && printf '%s\n' "$scr" | grep -Eq '^ *(❯ *)?([0-9]\. *)?Yes, I trust this folder *$' \
-       && ! printf '%s\n' "$scr" | grep -q 'Do you want'; then
-      hc keys "$w" down >/dev/null 2>&1; sleep 1
-      hc read "$w" 2>/dev/null | grep -Eq '^ *❯ *([0-9]\. *)?Yes, I trust this folder *$' \
-        || die 10 "$w shows the folder-trust dialog and the cursor did not reach 'Yes, I trust this folder'; nothing confirmed. Read it with hc read $w"
+    # The policy list (L-N3): the only prompts answered without the person, each by its whole option
+    # lines, never with a "Do you want" question on the screen. Keys as org-start (#254): read, down,
+    # read again, enter only with the cursor on the expected line.
+    # pick <target line ERE> <max downs>: down until a fresh read shows the cursor on the target line.
+    pick() {
+      local n=0
+      until hc read "$w" 2>/dev/null | grep -Eq "^ *❯ *([0-9]\\. *)?$1 *\$"; do
+        [ "$n" -lt "$2" ] || return 1
+        hc keys "$w" down >/dev/null 2>&1; sleep 1; n=$((n + 1))
+      done
       hc keys "$w" enter >/dev/null 2>&1 || die 8 "hc keys enter failed on $w"
-      echo "POLICY folder-trust $w"
+    }
+    opt() { printf '%s\n' "$scr" | grep -Eq "^ *(❯ *)?([0-9]\\. *)?$1 *\$"; }
+    policy=
+    if ! printf '%s\n' "$scr" | grep -q 'Do you want'; then
+      # folder-trust: comes before Claude Code reports any status, so a terminal with a status (a tool
+      # prompt is blocked) never matches. No status = hc get answered for the terminal and its status is
+      # null or absent; a failed lookup is not "no status".
+      j=$(hc get --json "$w" 2>/dev/null) || j=
+      nostatus=; case $j in *'"name"'*) printf '%s' "$j" | tr -d '\n' | grep -Eq '"status": *\{' || nostatus=1 ;; esac
+      if [ -n "$nostatus" ] && opt 'No, exit' && opt 'Yes, I trust this folder'; then policy=folder-trust
+      # auto-mode-setup: Claude Code's "Teach auto mode about your environment?" (Yes / Not now /
+      # Don't show again), shown once to an auto-mode worker; answered "Don't show again" (owner, #260).
+      elif printf '%s\n' "$scr" | grep -Eq '^ *Teach auto mode about your environment\? *$' \
+           && opt 'Not now' && opt "Don't show again"; then policy=auto-mode-setup
+      fi
+    fi
+    case $policy in
+      folder-trust) pick 'Yes, I trust this folder' 1 \
+        || die 10 "$w shows the folder-trust dialog and the cursor did not reach 'Yes, I trust this folder'; nothing confirmed. Read it with hc read $w" ;;
+      auto-mode-setup) pick "Don't show again" 2 \
+        || die 10 "$w shows the auto mode setup dialog and the cursor did not reach \"Don't show again\"; nothing confirmed. Read it with hc read $w" ;;
+    esac
+    if [ -n "$policy" ]; then
+      echo "POLICY $policy $w"
       [ -n "${then_send+set}" ] || exit 0
       i=0
       until hc get --json "$w" 2>/dev/null | tr -d '\n' | grep -Eq '"status": *\{'; do

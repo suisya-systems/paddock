@@ -14,7 +14,11 @@ cat > "$tmp/bin/hc" <<'S'
 echo "$*" >> "$STUB/calls"
 case $1 in
   read) cat "$STUB/screen" ;;
-  keys) [ "$3" != down ] || [ ! -f "$STUB/screen.down" ] || cp "$STUB/screen.down" "$STUB/screen" ;;
+  keys) if [ "$3" = down ]; then
+          n=$(( $(cat "$STUB/n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STUB/n"
+          if [ -f "$STUB/screen.$n" ]; then cp "$STUB/screen.$n" "$STUB/screen"
+          elif [ -f "$STUB/screen.down" ]; then cp "$STUB/screen.down" "$STUB/screen"; fi
+        fi ;;
   get) [ "$(cat "$STUB/state")" != broken ] || exit 1
        if [ "$(cat "$STUB/state")" = none ]; then echo '{"name":"w-t1","status":null}'; else echo "{\"name\":\"w-t1\",\"status\":{\"state\":\"$(cat "$STUB/state")\"}}"; fi ;;
   connect)
@@ -115,5 +119,34 @@ $dlg")
 [ "$rc" = 0 ] && grep -q '^keys w-t1 enter' "$STUB/calls"; check "a sent message's ❯ above the dialog's rule line is not a second cursor ($rc)" $?
 rc=$(ans2 "$dlg" "${dlg/p260-yes/p260-other}")
 [ "$rc" = 10 ] && ! grep -q '^keys' "$STUB/calls"; check "a change inside the dialog stops it ($rc)" $?
+
+# auto-mode-setup (owner, #260): Claude Code's "Teach auto mode about your environment?" dialog
+# (text as in Claude Code 2.1.322: Yes / Not now / Don't show again) is answered "Don't show again",
+# moving down one line at a time and reading after each move.
+setup_dlg() { # setup_dlg <cursor line 1|2|3>
+  local a=' ' b=' ' c=' '; case $1 in 1) a='❯' ;; 2) b='❯' ;; 3) c='❯' ;; esac
+  printf '%s\n' '────────' ' Teach auto mode about your environment?' \
+    ' Auto mode works better when it knows your environment. Takes about a minute.' \
+    " $a 1. Yes" " $b 2. Not now" " $c 3. Don't show again"
+}
+rm -f "$STUB"/screen.* "$STUB/n"; setup_dlg 1 > "$STUB/screen"; setup_dlg 2 > "$STUB/screen.1"; setup_dlg 3 > "$STUB/screen.2"
+: > "$STUB/calls"; echo idle > "$STUB/state"
+out=$(PATH="$tmp/bin:$PATH" bash "$script" prompt --task t1 2>&1); rc=$?
+[ $rc -eq 0 ] && grep -q 'POLICY auto-mode-setup' <<<"$out"; check "auto-mode-setup: matched ($rc $out)" $?
+[ "$(grep '^keys' "$STUB/calls" | tr '\n' ';')" = "keys w-t1 down;keys w-t1 down;keys w-t1 enter;" ]; check "auto-mode-setup: down, down, enter" $?
+awk '/^keys w-t1 down/{d=NR} /^read w-t1/{if(d)r=NR} /^keys w-t1 enter/{e=NR} END{exit !(d&&r&&e&&d<r&&r<e)}' "$STUB/calls"
+check "auto-mode-setup: the screen is read again after the last down, before enter" $?
+rm -f "$STUB"/screen.* "$STUB/n"; setup_dlg 1 > "$STUB/screen"; setup_dlg 2 > "$STUB/screen.1"   # stuck on Not now
+: > "$STUB/calls"
+PATH="$tmp/bin:$PATH" bash "$script" prompt --task t1 >/dev/null 2>&1; rc=$?
+[ $rc -eq 10 ] && ! grep -q '^keys w-t1 enter' "$STUB/calls"; check "auto-mode-setup: the cursor never reaches Don't show again: exit 10, no enter ($rc)" $?
+rm -f "$STUB"/screen.* "$STUB/n"
+run blocked " Bash command
+   echo 'Teach auto mode about your environment?'
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Not now
+   3. Don't show again"; rc=$?
+[ $rc -eq 3 ] && ! grep -q '^keys' "$STUB/calls"; check "auto-mode-setup words inside a tool prompt: exit 3, no key ($rc)" $?
 
 [ "$fail" -eq 0 ] && echo "all passed" || { echo "FAILED"; exit 1; }

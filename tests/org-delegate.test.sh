@@ -35,8 +35,10 @@ case "$cmd" in
        [ -f "$STUB/term-$name" ] || { echo '{"error":{"kind":"not_found"}}'; exit 1; }
        if [ -n "${STUB_TRUST:-}" ] && [ -f "$STUB/entered" ]; then echo "{\"name\":\"$name\",\"state\":\"live\",\"status\":{\"state\":\"idle\"}}"
        else echo "{\"name\":\"$name\",\"state\":\"live\"}"; fi; exit 0 ;;
-  keys) [ "$2" != enter ] || : > "$STUB/entered"; exit 0 ;;
-  read) [ -z "${STUB_TRUST:-}" ] || printf ' Quick safety check\n   1. No, exit\n \342\235\257 2. Yes, I trust this folder\n'; exit 0 ;;
+  keys) [ "$2" != enter ] || : > "$STUB/entered"; [ "$2" != down ] || : > "$STUB/down"; exit 0 ;;
+  read) [ -n "${STUB_TRUST:-}" ] || exit 0
+        if [ -f "$STUB/down" ]; then printf ' Quick safety check\n   1. No, exit\n \342\235\257 2. Yes, I trust this folder\n'
+        else printf ' Quick safety check\n \342\235\257 1. No, exit\n   2. Yes, I trust this folder\n'; fi; exit 0 ;;
   file) [ "$1" = write ] || exit 2; shift
         [ -z "${STUB_WRITE_FAIL:-}" ] || { echo 'hc: write refused' >&2; exit 1; }
         path=; for a in "$@"; do case "$a" in --*) ;; *) path=$a ;; esac; done

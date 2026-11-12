@@ -115,7 +115,7 @@ The screen is not an admin console. It is drawn by herdr-app mods ([decision 000
 Every approval is answered through the secretary: Yes / No on the card, or in words in the secretary's pane (the card's link focuses it). The card never opens a worker's terminal. A worker's own permission prompt or dialog is one more kind of question ([L-N3](predecessor-inventory.md), Issue #260):
 
 - Workers run in Claude Code's auto permission mode, so most prompts never appear: what its classifier judges safe runs, what it judges risky is refused and the worker reports `blocked`.
-- A prompt that still appears is read before it is answered, never blind. The secretary runs `org-escalation prompt`: a prompt in the policy list (only the folder-trust dialog) is answered by the script after a fresh screen read; any other prompt is recorded as an approval that also keeps the prompt text and its checksum (`prompt`, `prompt_sum`).
+- A prompt that still appears is read before it is answered, never blind. The secretary runs `org-escalation prompt`: a prompt in the policy list (the folder-trust dialog, and the auto mode setup dialog answered "Don't show again") is answered by the script after a fresh screen read; any other prompt is recorded as an approval that also keeps the prompt text and its checksum (`prompt`, `prompt_sum`).
 - On the person's Yes or No, `org-escalation answer` reads the screen again and presses one key (the one-time Yes, or esc) only while the same prompt is on a blocked terminal.
 - The old `answer_in` field is no longer written; an entry that still has `answer_in: "worker"` is shown as an ordinary question.
 
