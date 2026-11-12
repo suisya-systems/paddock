@@ -1,6 +1,6 @@
 # Prototype 3
 
-Status: prototype, a host run (Issue #243). Run 1 on 2026-11-11: the loop stopped at the worker's first report, before the card was answered; four stops are filed. Run 2, the same day after #244 to #247: 20 of 21 steps pass and the person's only action was Yes on the card; one step fails because the gate keeps no result record ([Result](#result)). [Prototype 2](prototype-2.md) ran the loop once on 2026-11-10. Since then most parts of that loop were replaced, each tested and measured alone. This prototype runs the same loop again on a clean checkout of today's `main`, with all of them together: the runbook sends one request to the secretary, a worker does one small task with an acceptance test first, asks one question that the person answers on the card, has its diff reviewed by a second model through the gate, and finishes; a pull request exists at the end and passes the acceptance job. Its goal clause is G1 (ledger, 2026-11-12): a request alone (here sent by the runbook) gets a worker going, approvals on screen, and a PR, with today's `main`.
+Status: prototype, a host run (Issue #243). Run 1 on 2026-11-11: the loop stopped at the worker's first report, before the card was answered; four stops are filed. Run 2, the same day after #244 to #247: 20 of 21 steps pass and the person's only action was Yes on the card; one step fails because the gate keeps no result record ([Result](#result)). Run 3 on 2026-11-12, on `main` at `31adf37`: stopped by the owner during setup, before the request was sent; G1 is not met ([Run 3](#run-3)). [Prototype 2](prototype-2.md) ran the loop once on 2026-11-10. Since then most parts of that loop were replaced, each tested and measured alone. This prototype runs the same loop again on a clean checkout of today's `main`, with all of them together: the runbook sends one request to the secretary, a worker does one small task with an acceptance test first, asks one question that the person answers on the card, has its diff reviewed by a second model through the gate, and finishes; a pull request exists at the end and passes the acceptance job. Its goal clause is G1 (ledger, 2026-11-12): a request alone (here sent by the runbook) gets a worker going, approvals on screen, and a PR, with today's `main`.
 
 Nothing in the product changes for this prototype. It adds this document, the host runbook [`scripts/probes/prototype-3.sh`](../../scripts/probes/prototype-3.sh), the fixture workflow [`scripts/probes/prototype-3-acceptance.yml`](../../scripts/probes/prototype-3-acceptance.yml) and the runbook's guard test. Every stop found by the run becomes an Issue.
 
@@ -209,3 +209,32 @@ Failed steps:
 | 8 | `8-review` FAIL: one round counted, no record of how it ended; the done report does not quote `CODEX_GATE: passed`. | The gate keeps no result record. | #253 |
 
 Run 1's four stops (#244 to #247) did not recur. Not seen by this run: a round that ends with findings, `CODEX_ROUND_DENIED`, and a review that ends `not-established`. The gate's `excludedCommands` calls worked: the review ran without a permission prompt.
+
+### Run 3
+
+Run 2026-11-12 on `main` at `31adf37` (after #255 to #262), a clean checkout, with the same throwaway repository. **The owner stopped it during setup, before the request was sent.** No step from 2 on ran, so there is no evidence folder from `watch` or `collect`; this record is the operator's observations on the host. G1 is not met: the loop did not get as far as a worker. The times below are the host's local clock; the run ids are UTC (`prepare` names them), which is why `p3-202611120352` and the 12:50 holder start are the same hour.
+
+| Step | What happened |
+| --- | --- |
+| 0 | First `prepare` (`p3-202611120352`): `notes-off` FAIL (the core's config folder did not exist) and `worker-token` FAIL. The person wrote the core's config by hand, created and saved a read-only token, and ran `prepare` again (`p3-202611120404`): all PASS. |
+| 1 | `org-start` started the secretary's terminals (three tried) and each ended at once with `sh: 1: exec: claude: not found`, exit 127. The setup had to be restarted from outside herdr (stop 2 below). |
+| 1 | The screen: `layout.switch` failed (stop 4). |
+| 2 to 10 | Not reached. |
+
+Not exercised by this run: everything the runbook checks from step 2 on. Run 2's result for those steps stands for `63c8e54`; #253's fix (#256) and the changes since (#257, #261, #262) were not run together.
+
+Touches and stops (all before the request; each is a person acting by hand, which the pass line forbids):
+
+| # | Step | What happened | Cause | Issue |
+| --- | --- | --- | --- | --- |
+| 1 | 0 | `notes-off` FAIL: the person wrote the core's `config.toml` by hand. | `prepare` only reports it; nothing sets `notes = false`. | #264 (in progress; not repeated here) |
+| 2 | 0 | `worker-token` FAIL: the person created and saved a read-only token by hand. | Setup has no step that makes the worker's token. | Proposed: "Preparing a prototype host takes manual steps" (below) |
+| 3 | 1 | The secretary's terminals exit 127: `claude: not found`. The template runs `sh -c 'exec claude --settings ...'`, and the terminal's `PATH` is the one the core's holder process had when it started. That holder (started 12:50) had `PATH` without `~/.local/bin`, where `claude` lives, because the core itself had been started at 12:24 as a systemd transient unit with a short `PATH`. `hc server restart` replaces only the server, not the holder, so it did not help; `hc server stop` then `hc server start` from a WSL shell outside herdr replaced the holder and fixed `PATH`. | A terminal inherits `PATH` from a process whose environment the person does not see and cannot change from inside herdr. | Proposed: "A secretary started by `org-start` needs `claude` on its `PATH`, whatever started the core" |
+| 4 | 1 | `org-start` does not say why: the terminal ended with 127, and `org-start` waited 15 s and printed only "secretary has no status". | `org-start` reads the status and not the terminal's exit. | Proposed: "`org-start` says why the secretary did not start" |
+| 5 | 1 | `herdr-app do layout.switch` failed: "no Herdr window at `~/.config/herdr-app/herdr-app.sock`". The window is open in the Windows herdr and is not reachable from WSL. | Same split as #246 and #247 (herdr-app on Windows, the core in WSL), now for the socket path the command looks for. | Proposed: "`layout.switch` finds the window when herdr-app runs on Windows and the core in WSL" |
+| 6 | Runbook | `prepare` and the Run it section (and the Expected findings, around line 84) assume a login shell outside herdr. The pass line wants nobody touching a terminal (G1) and everything running from herdr alone (G5); a login shell outside herdr is a terminal. The owner judged this a defect in the runbook's design. | The runbook's host steps were written for an operator at a shell. | Proposed: "The Prototype 3 runbook needs a shell outside herdr" |
+| 7 | 0 | Hand preparation before `prepare`: a clone of the throwaway repository, a clean clone of paddock at `origin/main`, the folder-trust check for the workers folder (the folder did not exist yet; the Q13 note), the config and the token (stops 1 and 2). | No setup step covers them. | Proposed: "Preparing a prototype host takes manual steps" |
+
+Proposed new Issues (titles; bodies are in the completion report for the secretary to file): "Preparing a prototype host takes manual steps" (stops 2 and 7); "A secretary started by `org-start` needs `claude` on its `PATH`, whatever started the core" (3); "`org-start` says why the secretary did not start" (4); "`layout.switch` finds the window when herdr-app runs on Windows and the core in WSL" (5); "The Prototype 3 runbook needs a shell outside herdr" (6). Stop 1 is #264.
+
+The run is to be repeated once these are fixed. #243 stays open.
