@@ -13,7 +13,7 @@ cat > "$tmp/bin/hc" <<'S'
 #!/bin/sh
 echo "$*" >> "$STUB/calls"
 case $1 in
-  read) cat "$STUB/screen" ;;
+  read) ! grep -qx UNREADABLE "$STUB/screen" || exit 1; cat "$STUB/screen" ;;
   keys) if [ "$3" = down ]; then
           n=$(( $(cat "$STUB/n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STUB/n"
           if [ -f "$STUB/screen.$n" ]; then cp "$STUB/screen.$n" "$STUB/screen"
@@ -140,6 +140,17 @@ rm -f "$STUB"/screen.* "$STUB/n"; setup_dlg 1 > "$STUB/screen"; setup_dlg 2 > "$
 : > "$STUB/calls"
 PATH="$tmp/bin:$PATH" bash "$script" prompt --task t1 >/dev/null 2>&1; rc=$?
 [ $rc -eq 10 ] && ! grep -q '^keys w-t1 enter' "$STUB/calls"; check "auto-mode-setup: the cursor never reaches Don't show again: exit 10, no enter ($rc)" $?
+rm -f "$STUB"/screen.* "$STUB/n"; setup_dlg 1 > "$STUB/screen"; echo UNREADABLE > "$STUB/screen.1"   # the read after down fails
+: > "$STUB/calls"
+PATH="$tmp/bin:$PATH" bash "$script" prompt --task t1 >/dev/null 2>&1; rc=$?
+[ $rc -eq 10 ] && [ "$(grep '^keys' "$STUB/calls" | tr '\n' ';')" = "keys w-t1 down;" ]
+check "a failed read after a move: exit 10, no further key ($rc)" $?
+rm -f "$STUB"/screen.* "$STUB/n"; setup_dlg 1 > "$STUB/screen"   # after down, another dialog with the cursor on a same-named line
+printf '%s\n' '────────' ' Some other dialog' " ❯ 3. Don't show again" '   4. Not now' > "$STUB/screen.1"
+: > "$STUB/calls"
+PATH="$tmp/bin:$PATH" bash "$script" prompt --task t1 >/dev/null 2>&1; rc=$?
+[ $rc -eq 10 ] && ! grep -q '^keys w-t1 enter' "$STUB/calls" && [ "$(grep -c '^keys w-t1 down' "$STUB/calls")" = 1 ]
+check "the dialog changes after a move: exit 10, no enter, no further down ($rc)" $?
 rm -f "$STUB"/screen.* "$STUB/n"
 run blocked " Bash command
    echo 'Teach auto mode about your environment?'

@@ -270,35 +270,44 @@ case $cmd in
     # The policy list (L-N3): the only prompts answered without the person, each by its whole option
     # lines, never with a "Do you want" question on the screen. Keys as org-start (#254): read, down,
     # read again, enter only with the cursor on the expected line.
-    # pick <target line ERE> <max downs>: down until a fresh read shows the cursor on the target line.
-    pick() {
-      local n=0
-      until hc read "$w" 2>/dev/null | grep -Eq "^ *❯ *([0-9]\\. *)?$1 *\$"; do
-        [ "$n" -lt "$2" ] || return 1
-        hc keys "$w" down >/dev/null 2>&1; sleep 1; n=$((n + 1))
-      done
-      hc keys "$w" enter >/dev/null 2>&1 || die 8 "hc keys enter failed on $w"
-    }
-    opt() { printf '%s\n' "$scr" | grep -Eq "^ *(❯ *)?([0-9]\\. *)?$1 *\$"; }
-    policy=
-    if ! printf '%s\n' "$scr" | grep -q 'Do you want'; then
+    # opt <screen> <line ERE>: the line is an option line of its own (cursor or not, numbered or not).
+    opt() { printf '%s\n' "$1" | grep -Eq "^ *(❯ *)?([0-9]\\. *)?$2 *\$"; }
+    # policy_of <screen>: the policy entry the screen shows, or nothing. Never with a "Do you want" question.
+    policy_of() {
+      ! printf '%s\n' "$1" | grep -q 'Do you want' || return 0
       # folder-trust: comes before Claude Code reports any status, so a terminal with a status (a tool
       # prompt is blocked) never matches. No status = hc get answered for the terminal and its status is
       # null or absent; a failed lookup is not "no status".
+      local j nostatus=
       j=$(hc get --json "$w" 2>/dev/null) || j=
-      nostatus=; case $j in *'"name"'*) printf '%s' "$j" | tr -d '\n' | grep -Eq '"status": *\{' || nostatus=1 ;; esac
-      if [ -n "$nostatus" ] && opt 'No, exit' && opt 'Yes, I trust this folder'; then policy=folder-trust
+      case $j in *'"name"'*) printf '%s' "$j" | tr -d '\n' | grep -Eq '"status": *\{' || nostatus=1 ;; esac
+      if [ -n "$nostatus" ] && opt "$1" 'No, exit' && opt "$1" 'Yes, I trust this folder'; then echo folder-trust
       # auto-mode-setup: Claude Code's "Teach auto mode about your environment?" (Yes / Not now /
       # Don't show again), shown once to an auto-mode worker; answered "Don't show again" (owner, #260).
-      elif printf '%s\n' "$scr" | grep -Eq '^ *Teach auto mode about your environment\? *$' \
-           && opt 'Not now' && opt "Don't show again"; then policy=auto-mode-setup
+      elif printf '%s\n' "$1" | grep -Eq '^ *Teach auto mode about your environment\? *$' \
+           && opt "$1" 'Not now' && opt "$1" "Don't show again"; then echo auto-mode-setup
       fi
-    fi
+    }
+    # pick <target line ERE> <max downs>: before every key, a fresh read must succeed and still show the
+    # same policy entry; enter only with the cursor on the target line. Anything else: return 1, no key.
+    pick() {
+      local n=0 s
+      while :; do
+        s=$(hc read "$w" 2>/dev/null) || return 1
+        [ "$(policy_of "$s")" = "$policy" ] || return 1
+        if printf '%s\n' "$s" | grep -Eq "^ *❯ *([0-9]\\. *)?$1 *\$"; then
+          hc keys "$w" enter >/dev/null 2>&1 || die 8 "hc keys enter failed on $w"; return 0
+        fi
+        [ "$n" -lt "$2" ] || return 1
+        hc keys "$w" down >/dev/null 2>&1; sleep 1; n=$((n + 1))
+      done
+    }
+    policy=$(policy_of "$scr")
     case $policy in
       folder-trust) pick 'Yes, I trust this folder' 1 \
-        || die 10 "$w shows the folder-trust dialog and the cursor did not reach 'Yes, I trust this folder'; nothing confirmed. Read it with hc read $w" ;;
+        || die 10 "$w: the folder-trust dialog did not stay on a fresh read with the cursor reaching 'Yes, I trust this folder'; nothing confirmed. Read it with hc read $w" ;;
       auto-mode-setup) pick "Don't show again" 2 \
-        || die 10 "$w shows the auto mode setup dialog and the cursor did not reach \"Don't show again\"; nothing confirmed. Read it with hc read $w" ;;
+        || die 10 "$w: the auto mode setup dialog did not stay on a fresh read with the cursor reaching \"Don't show again\"; nothing confirmed. Read it with hc read $w" ;;
     esac
     if [ -n "$policy" ]; then
       echo "POLICY $policy $w"
