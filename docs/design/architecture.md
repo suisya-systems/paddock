@@ -112,17 +112,19 @@ The screen is not an admin console. It is drawn by herdr-app mods ([decision 000
 
 ### 7.1 Approvals
 
-An approval is one of two kinds, and its `answer_in` field says which, so the card offers only the way that works. Nobody types the answer for the person into a blocked terminal ([L-N3](predecessor-inventory.md)):
+Every approval is answered through the secretary: Yes / No on the card, or in words in the secretary's pane (the card's link focuses it). The card never opens a worker's terminal. A worker's own permission prompt or dialog is one more kind of question ([L-N3](predecessor-inventory.md), Issue #260):
 
-- `answer_in: "secretary"`: a question the secretary cannot decide (a worker's question, or its own). The person answers the secretary: Yes / No on the card, or in words in the secretary's pane (the card's link focuses it). The card never opens the worker's terminal for it. An entry without `answer_in` is read as this kind.
-- `answer_in: "worker"`: a worker blocked on its own permission prompt or dialog. Only the person, in the worker's own terminal (`hc attach`, or the terminal in herdr-app), can unblock it: an answer from the card would reach the worker's mailbox, not its prompt. The card offers no Yes / No; its one button opens that terminal.
+- Workers run in Claude Code's auto permission mode, so most prompts never appear: what its classifier judges safe runs, what it judges risky is refused and the worker reports `blocked`.
+- A prompt that still appears is read before it is answered, never blind. The secretary runs `org-escalation prompt`: a prompt in the policy list (the folder-trust dialog, and the auto mode setup dialog answered "Don't show again") is answered by the script after a fresh screen read; any other prompt is recorded as an approval that also keeps the prompt text and its checksum (`prompt`, `prompt_sum`).
+- On the person's Yes or No, `org-escalation answer` reads the screen again and presses one key (the one-time Yes, or esc) only while the same prompt is on a blocked terminal.
+- The old `answer_in` field is no longer written; an entry that still has `answer_in: "worker"` is shown as an ordinary question.
 
-1. The worker asks the secretary through the mailbox, or its terminal reports `blocked`; the secretary adds an `org-state.approvals` entry (`task_id`, `question`, `asked_at`, `answer_in`, and the context: `background`, `if_yes`, `if_no`, `recommend`, `why`).
+1. The worker asks the secretary through the mailbox, or its terminal reports `blocked`; the secretary adds an `org-state.approvals` entry (`task_id`, `question`, `asked_at`, for a prompt `prompt` and `prompt_sum`, and the context: `background`, `if_yes`, `if_no`, `recommend`, `why`).
 2. The mod shows the entry as a card, and the tile as "Needs you" when the terminal is blocked. The card shows the task's title (from `work`), the question, then the context the secretary wrote (background, what Yes and No each lead to, its recommendation and why; Issue #258), all readable on the card (its middle scrolls), never cut. A missing context field is named on the card ("Not written: ..."). An entry without a `question` shows its id and task instead of a blank line.
-3. The person answers as its kind says. For `secretary`, the card's answer is one mailbox message, `org --as person send_message secretary "ANSWER <approval id> yes|no"`, run on the secretary's machine; the card never writes `org-state` ([L-N8](predecessor-inventory.md)). It sends one answer per approval, then shows it as a quiet line and the next approval as the card.
-4. For a question, the secretary passes the answer on to the worker's mailbox and removes the entry (`org-escalation answer`), or, when the question was its own, acts on it and runs `remove`. For a prompt it runs `remove` once the terminal is no longer blocked. The card disappears on the next refresh.
+3. The person answers on the card or in words. The card's answer is one mailbox message, `org --as person send_message secretary "ANSWER <approval id> yes|no"`, run on the secretary's machine; the card never writes `org-state` ([L-N8](predecessor-inventory.md)). It sends one answer per approval, then shows it as a quiet line and the next approval as the card.
+4. For a question, the secretary passes the answer on to the worker's mailbox and removes the entry (`org-escalation answer`), or, when the question was its own, acts on it and runs `remove`. For a prompt, `org-escalation answer` presses the key and removes the entry; `sweep` removes a prompt entry once the terminal is no longer blocked. The card disappears on the next refresh.
 
-`hc send` refuses a blocked terminal unless `--force`; `hc keys` has no such refusal, so for it the rule is the secretary's template only.
+`hc send` refuses a blocked terminal unless `--force`; `hc keys` has no such refusal. The secretary's settings hold a `PreToolUse` hook that refuses either typed by hand, so keys reach a worker only from `org-escalation` (the hook matches command text: a disguised call is not caught, and the template's rule is the second line).
 
 ## 8. Facts this design relies on
 

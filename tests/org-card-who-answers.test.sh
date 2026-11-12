@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# Acceptance test for Issue #127: an org-state.approvals entry says who answers it.
-#   answer_in "worker":    a worker blocked on its own permission prompt or dialog. The card sends
-#                          the person to that worker's terminal and offers no Yes / No.
-#   answer_in "secretary": the secretary's own question. The card offers Yes / No, and never opens
-#                          the worker's terminal; answering in words goes to the secretary's pane.
-#   no answer_in:          read as "secretary".
-#   no question:           the card still shows the approval id and the task.
+# Acceptance test for Issues #127 and #260: every approval is answered through the secretary.
+#   Any entry, a worker's prompt included: the card offers Yes / No and never opens the worker's
+#   terminal; answering in words goes to the secretary's pane. An old entry with
+#   answer_in "worker" (written before #260) is shown the same way.
+#   no question: the card still shows the approval id and the task.
 # The mod runs under node with stub "gpui-kit", "gpui-base" and "herdr" modules (as in
-# org-card-answer.test.sh); org-escalation's `ask` writes the field (hc is a documents-only stub).
+# org-card-answer.test.sh); org-escalation's `ask` no longer takes --answer-in (hc is a documents-only stub).
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
@@ -103,9 +101,10 @@ has() { printf '%s\n' "$1" | grep -q -- "$2"; }
 command -v node >/dev/null 2>&1; check "node is available" $?
 
 out=$(card '{"id":"task-a-1","task_id":"task-a","question":"Allow npm install?","asked_at":"2026-11-10T09:00:00Z","answer_in":"worker"}')
-has "$out" '^yesno 0$'; check "worker: the card offers no Yes / No" $?
-has "$out" '^run terminal.peek t1$'; check "worker: the card opens the worker's terminal" $?
-has "$out" 'Allow npm install?'; check "worker: the card shows the question" $?
+has "$out" '^yesno 2$'; check "old answer_in worker: the card offers Yes and No" $?
+! has "$out" '^run terminal.peek t1$'; check "old answer_in worker: the card never opens the worker's terminal" $?
+has "$out" 'Allow npm install?'; check "old answer_in worker: the card shows the question" $?
+! has "$out" 'NEEDS YOU'; check "old answer_in worker: the card does not send the person to the worker" $?
 [ "$fail" -eq 0 ] || printf '%s\n' "$out" | sed 's/^/     | /'
 
 out=$(card '{"id":"task-a-2","task_id":"task-a","question":"Merge PR 12?","asked_at":"2026-11-10T09:00:00Z","answer_in":"secretary"}')
@@ -155,22 +154,10 @@ esc() {
 }
 
 setdoc '{"approvals":[]}'
-esc ask --task t1 --question "Allow the prompt?" --answer-in worker; check "ask --answer-in worker succeeds" $?
-case $(doc) in *'"task_id":"t1"'*'"answer_in":"worker"'*) r=0 ;; *) r=1 ;; esac; check "ask writes answer_in worker" $r
-setdoc '{"approvals":[]}'
-esc ask --task t2 --question "Merge?" --answer-in secretary; check "ask --answer-in secretary succeeds" $?
-case $(doc) in *'"answer_in":"secretary"'*) r=0 ;; *) r=1 ;; esac; check "ask writes answer_in secretary" $r
-setdoc '{"approvals":[]}'
-esc ask --task t3 --question "Merge?"
-case $(doc) in *'"answer_in":"secretary"'*) r=0 ;; *) r=1 ;; esac; check "ask without --answer-in writes secretary" $r
-setdoc '{"approvals":[]}'
-esc ask --task t4 --question "Merge?" --answer-in person; [ $? -eq 2 ]; check "ask rejects another answer_in (exit 2)" $?
+esc ask --task t1 --question "Allow the prompt?" --answer-in worker; [ $? -eq 2 ]; check "ask --answer-in worker is refused (exit 2)" $?
+esc ask --task t2 --question "Merge?" --answer-in secretary; [ $? -eq 2 ]; check "ask --answer-in secretary is refused too (exit 2)" $?
 [ "$(doc)" = '{"approvals":[]}' ]; check "and writes nothing" $?
-
-# ---- the two kinds are named where the schema and the flow live ---------------
-
-for f in docs/decisions/0004-records-documents-and-jsonl.md docs/design/prototype-1.md docs/design/architecture.md templates/secretary.md skills/org-escalation/SKILL.md; do
-  grep -q 'answer_in' "$here/$f"; check "$f names answer_in" $?
-done
+esc ask --task t3 --question "Merge?"; check "ask without --answer-in succeeds" $?
+case $(doc) in *'"answer_in"'*) r=1 ;; *'"task_id":"t3"'*) r=0 ;; *) r=1 ;; esac; check "ask writes no answer_in field" $r
 
 [ "$fail" -eq 0 ] && echo "all passed" || { echo "FAILED"; exit 1; }

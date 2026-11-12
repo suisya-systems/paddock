@@ -33,7 +33,12 @@ case "$cmd" in
   ls) [ -z "${STUB_LS_FAIL:-}" ] || { echo 'hc: cannot reach the core' >&2; exit 1; }; echo '[]'; exit 0 ;;
   get) name=; for a in "$@"; do case "$a" in --*) ;; *) name=$a ;; esac; done
        [ -f "$STUB/term-$name" ] || { echo '{"error":{"kind":"not_found"}}'; exit 1; }
-       echo "{\"name\":\"$name\",\"state\":\"live\"}"; exit 0 ;;
+       if [ -n "${STUB_TRUST:-}" ] && [ -f "$STUB/entered" ]; then echo "{\"name\":\"$name\",\"state\":\"live\",\"status\":{\"state\":\"idle\"}}"
+       else echo "{\"name\":\"$name\",\"state\":\"live\"}"; fi; exit 0 ;;
+  keys) [ "$2" != enter ] || : > "$STUB/entered"; [ "$2" != down ] || : > "$STUB/down"; exit 0 ;;
+  read) [ -n "${STUB_TRUST:-}" ] || exit 0
+        if [ -f "$STUB/down" ]; then printf ' Quick safety check\n   1. No, exit\n \342\235\257 2. Yes, I trust this folder\n'
+        else printf ' Quick safety check\n \342\235\257 1. No, exit\n   2. Yes, I trust this folder\n'; fi; exit 0 ;;
   file) [ "$1" = write ] || exit 2; shift
         [ -z "${STUB_WRITE_FAIL:-}" ] || { echo 'hc: write refused' >&2; exit 1; }
         path=; for a in "$@"; do case "$a" in --*) ;; *) path=$a ;; esac; done
@@ -244,6 +249,14 @@ grep -q 'sent' <<<"$out" && grep -qi 'trust' <<<"$out"; check "exit 10 prints th
 blocked_t1; check "exit 10 leaves a blocked record" $?
 out=$(run -- "${good[@]}"); rc=$?
 [ "$rc" -eq 7 ]; check "rerun after exit 10 with the same id is refused (terminal still there)" $?
+
+# Issue #260: the folder-trust dialog (the policy list) is answered after a screen read, and the
+# brief is sent again; nothing else is typed.
+reset; out=$(run STUB_FIRST_SENT=false STUB_TRUST=1 -- "${good[@]}"); rc=$?
+[ "$rc" -eq 0 ] && grep -q '^keys w-t1 down' "$calls" && grep -q '^keys w-t1 enter' "$calls" \
+  && grep -q '^send w-t1 You are a worker of a paddock organization' "$calls" && grep -q '^Your org id is w-t1' "$calls" \
+  && ! grep -Eq '^(kill|rm) ' "$calls"
+check "folder-trust at launch: down, enter, the template body and the brief sent again, exit 0" $?
 
 # The start record cannot be written: nothing is started, the worktree is removed (exit 12).
 if [ "$(id -u)" -eq 0 ]; then echo "skip record failure (running as root)"; else

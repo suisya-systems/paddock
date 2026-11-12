@@ -33,6 +33,12 @@ grep -q "grep -E" "$hook" 2>/dev/null && ! grep -qw jq "$hook"; check "the hook 
 
 # The secretary's settings carry the hook; the template passes them to claude.
 node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const h=s.hooks.UserPromptSubmit[0].hooks[0];process.exit(h.type==="command"&&/premise-reminder\.sh/.test(h.command)?0:1)' "$settings" 2>/dev/null; check "secretary-settings.json parses and runs the hook on UserPromptSubmit" $?
+# Issue #260: its PreToolUse hook refuses keys and a forced send in any flag position.
+pre=$(node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(s.hooks.PreToolUse[0].hooks[0].command)' "$settings" 2>/dev/null)
+for c in 'hc send -f w-t1 yes' 'hc send --force w-t1 yes' 'hc send w-t1 -f yes' 'hc send w-t1 yes --force'; do
+  printf '{"tool_input":{"command":"%s"}}' "$c" | sh -c "$pre" >/dev/null 2>&1; [ $? -eq 2 ]; check "the PreToolUse hook refuses: $c" $?
+done
+printf '{"tool_input":{"command":"%s"}}' 'hc send w-t1 -fine' | sh -c "$pre" >/dev/null 2>&1; check "the PreToolUse hook lets a word starting with -f through" $?
 grep -q -- '--settings .*secretary-settings\.json' "$sec"; check "the secretary template passes --settings secretary-settings.json" $?
 
 # org-start places both in the bin folder.

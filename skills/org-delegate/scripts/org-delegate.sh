@@ -249,13 +249,22 @@ if ! out=$(hc run --bg --outlive-parent --name "$name" --cwd "$wt" --label "task
   fi
   die 5 "hc run failed: ${out:0:300}. $name may exist or its state is unknown, so nothing was removed: terminal $name, worktree $wt, branch $branch (project $project). Check 'hc get $name'."
 fi
-if ! printf '%s' "$out" | tr -d '\n' | grep -Eq '"sent": *true'; then
-  # Q13: a worker with no first message is at a dialog or never started. Never press keys here.
+if ! printf '%s' "$out" | tr -d '\n' | grep -Eq '"sent": *true' \
+  && ! po=$(bash "$root/skills/org-escalation/scripts/org-escalation.sh" prompt --task "$id" \
+       --then-send "$(awk 'n >= 2 { print; next } /^---$/ { n++ }' "$root/templates/worker.md")
+
+$brief" 2>&1); then
+  # Q13, L-N3 (Issue #260): a worker with no first message is at a dialog or never started. Only the
+  # folder-trust dialog (the policy list) is answered, after a screen read, and the first message
+  # sent again as hc would have sent it (the template body, a blank line, the brief; as org-start
+  # does for the secretary). Anything else is left as it is.
+  [ -z "${po:-}" ] || echo "$po" >&2
   mark_blocked "Delegation stalled: $name did not get its first message. Terminal, worktree $wt and branch $branch were left."
   echo "$out" >&2
   die 10 "$name started but first_message.sent is not true. Read it with 'hc read $name'. If it shows the folder-trust dialog, $workers is not the trusted workers folder yet (Q13: a person accepts it once). If the template refused, check the read-only token file. Left as they are, nothing typed: terminal $name, worktree $wt, branch $branch."
 fi
 
+[ -z "${po:-}" ] || echo "org-delegate: $name was at the folder-trust dialog; answered it and sent the task again (${po//$'\n'/ })"
 echo "org-delegate: worker=$name worktree=$wt branch=$branch"
 
 # 6. Issue #182: with --title, the work entry goes into org-state after the launch (a failed
