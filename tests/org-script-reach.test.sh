@@ -34,6 +34,7 @@ chmod +x "$bin/claude" "$bin/hc"
 
 home=$tmp/home; mkdir -p "$home/.config/paddock"
 printf 'tok\n' > "$home/.config/paddock/worker-gh-token"
+mkdir -p "$home/.config/herdr-core"; printf 'notes = false\n' > "$home/.config/herdr-core/config.toml"
 clean() { # clean <cmd...>: scratch HOME, none of the folder overrides, no agent variables
   env -u APPDATA -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME \
       -u PADDOCK_CORE_TEMPLATES_DIR -u PADDOCK_APP_MODS_DIR -u PADDOCK_BIN_DIR \

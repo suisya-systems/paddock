@@ -49,7 +49,7 @@ run() {
       -u APPDATA -u PADDOCK_APP_MODS_DIR -u PADDOCK_APP_LAYOUTS_DIR -u PADDOCK_APP_MACHINE \
       -u PADDOCK_SECRETARY_NAME \
       WSL_DISTRO_NAME=Test STUB="$tmp/stub" WIN="$win" PATH="$stubdir:/usr/bin:/bin" \
-      XDG_CONFIG_HOME="$tmp/wslcfg" PADDOCK_CORE_TEMPLATES_DIR="$tmp/core/templates" \
+      XDG_CONFIG_HOME="$tmp/wslcfg" PADDOCK_CORE_CONFIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fixtures/core-notes-off" PADDOCK_CORE_TEMPLATES_DIR="$tmp/core/templates" \
       PADDOCK_BIN_DIR="$tmp/bin-org" PADDOCK_READY_TRIES=2 "$@" bash "$script" 2>&1
 }
 blocks=$(grep -c '"mod": "org-cockpit"' "$here/layouts/paddock.json")

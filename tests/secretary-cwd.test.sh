@@ -31,7 +31,7 @@ go() { # go <script> : run from another folder
   ( cd "$tmp/elsewhere" && env -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID \
       -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN \
       STUB="$tmp/stub" PATH="$stubdir:$PATH" \
-      PADDOCK_CORE_TEMPLATES_DIR="$tmp/core/templates" PADDOCK_APP_MODS_DIR="$tmp/app/mods" \
+      PADDOCK_CORE_CONFIG_DIR="$here/tests/fixtures/core-notes-off" PADDOCK_CORE_TEMPLATES_DIR="$tmp/core/templates" PADDOCK_APP_MODS_DIR="$tmp/app/mods" \
       PADDOCK_BIN_DIR="$tmp/orgbin" PADDOCK_READY_TRIES=2 bash "$1" >/dev/null 2>&1 )
 }
 
