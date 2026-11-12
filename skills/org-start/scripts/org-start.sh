@@ -18,6 +18,7 @@ Environment overrides:
   PADDOCK_CORE_CONFIG_DIR     herdr-core config folder checked for notes = false (default $cfg/herdr-core)
   PADDOCK_APP_MODS_DIR        herdr-app mods folder
   PADDOCK_APP_LAYOUTS_DIR     herdr-app layouts folder
+  HERDR_APP_HOME              the Linux herdr-app's home (socket looked for there; default ~/.config/herdr-app)
   PADDOCK_APP_MACHINE         machine name the app gives this core; the layout's secretary prop
                               becomes <machine>/<name> (default wsl when the app is herdr-app for
                               Windows and this is WSL)
@@ -70,15 +71,23 @@ awk '/^[[:space:]]*\[/{exit} /^[[:space:]]*notes[[:space:]]*=[[:space:]]*false([
 app=$(command -v herdr-app 2>/dev/null); appcfg=$cfg/herdr-app; appmachine=
 # readlink only on a found app: some readlink builds answer "" with the current folder.
 case "${app:+$(readlink -f "$app" 2>/dev/null)}" in ""|*.exe) winapp=1 ;; *) winapp= ;; esac
-if [ -n "${WSL_DISTRO_NAME:-}" ] && [ -n "$winapp" ] && [ -z "${PADDOCK_APP_MODS_DIR:-}" ]; then
+# Issue #270: a Linux herdr-app on PATH looks for the window at its own socket (HERDR_APP_HOME or
+# ~/.config/herdr-app). The Windows window's socket is a file in the Windows user's folder, which WSL
+# cannot connect to but can see: when WSL has none and Windows has one, the Windows program is used.
+lsock=${HERDR_APP_HOME:-${HOME:-}/.config/herdr-app}/herdr-app.sock; wsock=
+if [ -n "${WSL_DISTRO_NAME:-}" ] && [ -z "${PADDOCK_APP_MODS_DIR:-}" ] && { [ -n "$winapp" ] || [ ! -e "$lsock" ]; }; then
   winhome=$(wslpath "$(cmd.exe /d /c echo %USERPROFILE% 2>/dev/null | tr -d '\r')" 2>/dev/null)
   if [ -n "$winhome" ] && [ -d "$winhome" ]; then
-    appcfg=$winhome/.config/herdr-app; appmachine=wsl
-    # ponytail: the installer's default folder; LOCALAPPDATA moved elsewhere needs herdr-app(.exe) on PATH.
-    exe=$winhome/AppData/Local/Programs/herdr-app/herdr-app.exe
-    # Bash adds no .exe, so herdr-app.exe on PATH is looked up by that name.
-    [ -n "$app" ] || app=$(command -v herdr-app.exe 2>/dev/null) || { [ ! -x "$exe" ] || app=$exe; }
-  else
+    wsock=$winhome/.config/herdr-app/herdr-app.sock
+    if [ -n "$winapp" ] || [ -e "$wsock" ]; then
+      appcfg=$winhome/.config/herdr-app; appmachine=wsl
+      # ponytail: the installer's default folder; LOCALAPPDATA moved elsewhere needs herdr-app(.exe) on PATH.
+      exe=$winhome/AppData/Local/Programs/herdr-app/herdr-app.exe
+      [ -n "$winapp" ] || app= # the Linux program has no window here
+      # Bash adds no .exe, so herdr-app.exe on PATH is looked up by that name.
+      [ -n "$app" ] || app=$(command -v herdr-app.exe 2>/dev/null) || { [ ! -x "$exe" ] || app=$exe; }
+    fi
+  elif [ -n "$winapp" ]; then
     echo "org-start: warning: WSL, but the Windows user folder was not found (cmd.exe, wslpath); placing the mods under $cfg/herdr-app" >&2
   fi
 fi
@@ -154,6 +163,13 @@ if [ -n "$app" ]; then
   "$app" check "$(apppath "$mods/org-cockpit")" >/dev/null 2>&1 \
     || echo "org-start: warning: herdr-app check failed for $mods/org-cockpit (run it by hand to see why)" >&2
   echo "org-start: to open the screen: $(printf '%q' "$app") do layout.switch '{\"name\":\"paddock\"}'"
+  # Issue #270: switch now, and say which window sockets were looked for. A failure only warns.
+  sw=$("$app" do layout.switch '{"name":"paddock"}' 2>&1) \
+    && echo "org-start: switched the screen to the paddock layout with $app" \
+    || echo "org-start: warning: layout.switch failed: $sw" >&2
+fi
+if [ -n "${WSL_DISTRO_NAME:-}" ] && [ -n "$wsock" ]; then
+  echo "org-start: herdr-app window sockets looked for: $lsock (WSL), $wsock (Windows)"
 fi
 
 # 3. Start the secretary unless one exists. Never stops or restarts the core.
