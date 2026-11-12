@@ -141,6 +141,7 @@ esac
 exit 0
 EOF3
 chmod +x "$hcstub/hc"; mkdir -p "$tmp/stubstate"
+printf '#!/bin/sh\n' > "$hcstub/herdr-app"; chmod +x "$hcstub/herdr-app" # Issue #270: org-start runs layout.switch; not the real app
 printf '#!/bin/sh\n' > "$hcstub/claude"; chmod +x "$hcstub/claude" # Issue #268: org-start needs claude on PATH
 xdg=$tmp/xdg; mkdir -p "$xdg"
 startrun() { # startrun [extra env...]
