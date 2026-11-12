@@ -4,7 +4,10 @@
 # the card, an acceptance test first and a review by a second model through the gate. What the run
 # is, its steps and pass criteria: docs/design/prototype-3.md. Run from the paddock repository root (the
 # script itself may sit in another checkout; it reads its fixture from its own folder),
-# on the host where hc, herdr-app, claude, codex and gh run. Phases, in order:
+# on the host where hc, herdr-app, claude, codex and gh run. Every step runs inside herdr: prepare,
+# org-start and layout.switch from a plain shell terminal in herdr (an agent already in herdr makes it
+# with hc and types into it; making it is set-up, not a touch), watch from there or from an agent.
+# herdr's own terminals are the only shells the run needs. Phases, in order:
 #
 #   sh scripts/probes/prototype-3.sh prepare --project <git repo> --repo OWNER/NAME [--base main] [--task-id T]
 #   sh scripts/probes/prototype-3.sh watch   --task-id T [--timeout 5400]
@@ -12,9 +15,10 @@
 #   sh scripts/probes/prototype-3.sh collect --task-id T
 #   sh scripts/probes/prototype-3.sh cleanup --task-id T
 #
-# prepare: from a plain login shell (no agent above it; its first hc call may start the core,
-#   which inherits this shell's environment). Checks the paddock checkout, the fixture and the
-#   host, saves the run and the request, prints the setup commands. It starts nothing.
+# prepare: from a terminal in herdr. The core must already be running (hc server status): prepare
+#   never starts it, so the core's environment is never this shell's or an agent's. Checks the
+#   paddock checkout, the fixture and the host, saves the run and the request, prints the setup
+#   commands. It starts nothing.
 # watch: start it and keep it running. Polls every 5 s and prints one RESULT line per step as it
 #   holds, and "NOW:" lines when the person must act. It sends the request itself (hc send to the
 #   secretary) once the secretary reports a status, and records that in the notes. Re-runnable;
@@ -29,11 +33,11 @@
 # must be the project's origin for both fetch and push, and whose base holds the acceptance job
 # (scripts/probes/prototype-3-acceptance.yml) and scripts/acceptance-check.sh. Never suisya-systems/paddock.
 # Run folder: ${XDG_STATE_HOME:-~/.local/state}/paddock-proto3/<T>. Exit: 0 ok, 1 a FAIL or timeout,
-# 2 bad argument, 3 a tool is missing, 4 prepare run inside an agent, 6 a precondition failed.
+# 2 bad argument, 3 a tool is missing, 6 a precondition failed (the core not running is one).
 set -u
 
 die() { c=$1; shift; echo "prototype-3: $*" >&2; exit "$c"; }
-usage() { sed -n '2,32p' "$0"; }
+usage() { sed -n '2,36p' "$0"; }
 
 phase=${1:-}; [ $# -gt 0 ] && shift
 case "$phase" in
@@ -79,10 +83,6 @@ lc() { tr 'A-Z' 'a-z'; }
 gh_name() { printf '%s' "$1" | sed -n 's#^\(https://github\.com/\|git@github\.com:\|ssh://git@github\.com/\)\([^/]*/[^/]*\)$#\2#p' | sed 's#\.git$##; s#/$##' | lc; }
 
 if [ "$phase" = prepare ]; then
-  # Before any hc call (org-start's rule, Q17): the first hc command may start the core.
-  for v in CLAUDECODE CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_SESSION_ID CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN; do
-    [ -z "$(printenv "$v" 2>/dev/null)" ] || die 4 "$v is set: run prepare from a plain login shell, not inside an agent"
-  done
   [ -n "$project" ] && [ -n "$repo" ] || die 2 "prepare needs --project and --repo"
   case "$project${PADDOCK_WORKERS_DIR:-}" in *"'"*) die 2 "a path with an apostrophe is not supported (the run file quotes paths with it)" ;; esac
   [ -n "$T" ] || T=p3-$(date -u +%Y%m%d%H%M)
@@ -125,6 +125,9 @@ state_of() { hcj "$1" | grep -Eo '"status": *\{[^{}]*"state": *"[a-z]*"' | grep 
 orgstate() { bash "$ORG" --as secretary doc get org-state 2>/dev/null | one_line; }
 
 if [ "$phase" = prepare ]; then
+  # Host rule (org-start's Q17): the first hc command starts a core that inherits the caller's
+  # environment. `hc server status` does not start one, and a run never does.
+  hc server status >/dev/null 2>&1 || die 6 "the core is not running: start herdr first (this runbook never starts the core, so it never gets this shell's environment)"
   # The paddock checkout: main, clean, at origin/main (the loop is run on today's main).
   pb=$(git -C "$ROOT" symbolic-ref --short HEAD 2>/dev/null)
   [ "$pb" = main ] || die 6 "the paddock checkout is on '${pb:-detached}', not main"
@@ -199,13 +202,13 @@ EOF
 
 == Run $T prepared ($RUN). Do these in order:
 
-1. In this login shell (not inside an agent): start the organization. org-start places the
+1. In this terminal in herdr: start the organization. org-start places the
    templates, the bin files, the cockpit mod and the layout itself.
      bash skills/org-start/scripts/org-start.sh            # expect: "org-start: ready", exit 0
      "$HERDR_APP" do layout.switch '{"name":"paddock"}'
    Then look at the window: the secretary is in the centre. Record it:
      sh $HERE/prototype-3.sh note --task-id $T "layout open, secretary in the centre"
-2. Start the watcher and keep it running (another shell is fine; an agent may run it). It sends
+2. Start the watcher and keep it running (another terminal in herdr is fine; an agent may run it). It sends
    the request itself to the secretary (hc send), once the secretary reports a status, and notes
    that it did; nobody types it. The request is saved in $RUN/request.txt:
      sh $HERE/prototype-3.sh watch --task-id $T
