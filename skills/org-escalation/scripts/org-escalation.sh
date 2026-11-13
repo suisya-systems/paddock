@@ -66,7 +66,7 @@ if [ "${1:-}" = _edit ]; then
   if [ "$mode" = setlang ]; then # $id is the code: set the top-level conversation_lang (Issue #284)
     v=$(cat | tr -d '\n'); case $v in ''|null|[[:space:]]null*) printf '{"conversation_lang":"%s"}\n' "$id"; exit 0 ;; esac
     case $v in [[:space:]]*|'{'*) ;; *) exit 3 ;; esac
-    case $v in *'"conversation_lang"'*) printf '%s\n' "$v" | sed -E "s/\"conversation_lang\" *: *\"[^\"]*\"/\"conversation_lang\":\"$id\"/" ;;
+    case $v in *'"conversation_lang"'[[:space:]]:*|*'"conversation_lang":'*) printf '%s\n' "$v" | sed -E "s/\"conversation_lang\" *: *(null|\"[^\"]*\")/\"conversation_lang\":\"$id\"/" ;;
       *) printf '%s\n' "$v" | sed -E "s/^ *\{ *\}/{\"conversation_lang\":\"$id\"}/; t; s/^ *\{/{\"conversation_lang\":\"$id\",/" ;; esac
     exit 0
   fi
