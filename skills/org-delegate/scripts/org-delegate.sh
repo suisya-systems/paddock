@@ -173,12 +173,12 @@ wt_lock() {
 wt_unlock() { rm -f "$wtlk/pid"; rmdir "$wtlk" 2>/dev/null; }
 # Issue #320: a live worker's sandbox leaves a 0-byte read-only <git-common-dir>/config.lock while its command runs
 # (Claude Code's placeholder). It blocks every git config write in the shared .git, and worktree add with an upstream.
-# It goes away when the command ends, so wait for it, bounded by PADDOCK_GIT_LOCK_WAIT seconds (default 30).
+# It goes away when the command ends, so wait for it, bounded by PADDOCK_GIT_LOCK_WAIT seconds (default 300: a worker running its tests or a review gate holds the placeholder for minutes).
 # One that outlasts the bound is a worker command still running or a stranded placeholder; which one cannot be told
 # from the file alone, so it is reported, never removed.
 cfglk=$(dirname "$wtlk")/config.lock
 cfg_wait() {
-  local end=$((SECONDS + ${PADDOCK_GIT_LOCK_WAIT:-30}))
+  local end=$((SECONDS + ${PADDOCK_GIT_LOCK_WAIT:-300}))
   while [ -e "$cfglk" ] || [ -L "$cfglk" ]; do
     [ "$SECONDS" -lt "$end" ] || return 1
     sleep 0.1 2>/dev/null || sleep 1
@@ -187,16 +187,18 @@ cfg_wait() {
 cfg_stuck() {
   local kind="a git config lock"
   [ -s "$cfglk" ] || [ -w "$cfglk" ] || kind="a 0-byte read-only file, the shape of a worker sandbox placeholder"
-  die 6 "$cfglk is held ($kind) for over ${PADDOCK_GIT_LOCK_WAIT:-30}s. It is either a worker command still running or a placeholder left by a killed worker; remove it only when no worker command is running"
+  die 6 "$cfglk is held ($kind) for over ${PADDOCK_GIT_LOCK_WAIT:-300}s. It is either a worker command still running or a placeholder left by a killed worker; remove it only when no worker command is running"
 }
 # git config write that waits out the lock instead of failing on it (a failed attempt is retried until the bound).
 cfg_set() {
-  local end=$((SECONDS + ${PADDOCK_GIT_LOCK_WAIT:-30}))
+  local end=$((SECONDS + ${PADDOCK_GIT_LOCK_WAIT:-300}))
   until git -C "$project" config "$@" >/dev/null 2>&1; do
     [ "$SECONDS" -lt "$end" ] || return 1
     sleep 0.1 2>/dev/null || sleep 1
   done
 }
+# Wait before taking wt_lock: other delegates queue on it for about a minute, far less than the bound.
+cfg_wait || cfg_stuck
 wt_lock
 newbranch=; git -C "$project" rev-parse --verify -q "refs/heads/$branch" >/dev/null 2>&1 || newbranch=1
 if cfg_wait; then
