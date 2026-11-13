@@ -28,7 +28,7 @@ A GitHub App is registered once with read permissions only and installed on the 
 
 **Against Q20.** Better than the PAT on the write side: the ceiling is the app's permission set, not a token the person must remember to scope. Open points:
 
-- **The 1-hour expiry is shorter than a worker's life.** A token minted at launch dies mid-task. The fix is a minter the worker's git and `gh` call again (a credential helper), which means the worker can reach the minter and so the private key. That is acceptable only because the app has read permissions only (the *needs probe* ceiling row above); it must be probed before relying on it. Without a helper, a worker would need a relaunch each hour.
+- **The 1-hour expiry is shorter than a worker's life.** A token minted at launch dies mid-task. The fix is a minter the worker calls again. Git can call a credential helper, but `gh` API commands read the inherited `GH_TOKEN` and do not consult it, so `gh` needs its own path (for example a wrapper that mints a fresh token per call); this part is not designed here. Either way the worker can reach the minter, which means the worker can reach the minter and so the private key. That is acceptable only because the app has read permissions only (the *needs probe* ceiling row above); it must be probed before relying on it. Without a helper, a worker would need a relaunch each hour.
 - **The private key is a new long-lived secret**, stored outside the repository like `worker-gh-token` today. Its blast radius is read access to the installed repositories, until the owner widens the app's permissions, which then widens what a leaked key can do. The app's permissions must be treated as part of Q20's line.
 - The Q20 known limit (a started program can unset `GH_TOKEN` and `GH_CONFIG_DIR` and fall back to the person's login) is unchanged.
 - New code: a JWT signer (RS256 with `openssl`, or a small script) and the helper. The token file and the template's launch check change to a key file.
@@ -58,7 +58,7 @@ A second GitHub account, added to the repositories with the Read role, with its 
 | Machine accounts are allowed, one free one per person, to run a machine. | Verified by doc | [GitHub Terms of Service](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service), B.3 |
 | It removes the hand-made, repository-scoped token. | **No**: the account still needs a token or key, made by hand and renewed by hand. | |
 
-**Against Q20.** Holds the line through the role, not the token, which is a good ceiling, but it keeps the manual-token problem and adds an account to keep alive. Rejected as the answer to #277; only a fallback if the repositories belong to a personal account that cannot restrict roles (the repository-role page above covers organizations).
+**Against Q20.** Holds the line through the role, not the token, which is a good ceiling, but it keeps the manual-token problem and adds an account to keep alive. Rejected as the answer to #277. It is not a fallback for repositories of a personal account either: a personal repository has no Read role (a collaborator gets write), and the deploy-keys page says "Only organizations can restrict machine users to read-only access." There the account would need a read-only credential and gain no role-based ceiling.
 
 ### D. No GitHub credential in the worker (local mirror)
 
@@ -89,7 +89,7 @@ Choose **A, GitHub App**, but keep the manual token until three probes pass, so 
 
 1. A token minted with `contents: write` from a read-only app is refused (the ceiling).
 2. A worker terminal and a Claude child fetch a private repository with the minted token through git's credential helper, and a push fails; `gh run watch` succeeds with Actions read.
-3. A worker running longer than one hour keeps fetching through the helper without a relaunch.
+3. A worker running longer than one hour keeps fetching through the helper, and an API read (a pull request view, a run watch) made after the first token's expiry still succeeds, without a relaunch.
 
 If probe 3 fails, or the owner will not keep a private key beside the token file, **the manual token stays**: it is the only option measured as not cutting the worker's tools, and its cost is the person's time. B is the fallback if probe 1 or 2 fails and workers do not need the API.
 
