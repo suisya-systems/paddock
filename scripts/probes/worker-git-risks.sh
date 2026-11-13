@@ -18,18 +18,18 @@
 # What it touches (all of it is made by this run and removed by its exit trap, except where noted):
 #   all four : one temp folder $workers/.probe277d.XXXXXX holding bare "upstream" repositories and throw-away clones that
 #              play the secretary's project clone (NOT $TMPDIR: the worker sandbox may write there, which would hide a
-#              read-only shared .git); worktrees $workers/p277d-<pid>-<time>[-x] and branches in those clones; terminals
-#              w-p277d-<pid>-<time>[-x] (hc kill + hc rm); the host's ~/.local/bin/claude link is restored if claude moved it.
+#              read-only shared .git); worktrees $workers/p7d-<pid>-<time>[-x] and branches in those clones; terminals
+#              w-p7d-<pid>-<time>[-x] (hc kill + hc rm); the host's ~/.local/bin/claude link is restored if claude moved it.
 #   mounts, race, shapes : also one temporary template p277d-worker in the core's templates folder (removed), made from
 #              templates/worker.md with the read-only token check and GH_TOKEN cut out and --settings pointing at a copy of
 #              templates/worker-settings.json whose allowWrite holds only the probe's result folder (as worker-mirror.sh).
 #   delegate : runs skills/org-delegate/scripts/org-delegate.sh itself with the real `worker` template and the real token
 #              file (it must exist), as org-script-reach.sh does. So it also writes, in the real state folder
-#              (${PADDOCK_STATE_DIR:-~/.local/state/paddock}): a start record per task p277d-<pid>-<time>-<x> in the mailbox,
+#              (${PADDOCK_STATE_DIR:-~/.local/state/paddock}): a start record per task p7d-<pid>-<time>-<x> in the mailbox,
 #              the worker's own files, and settings/<task>.json (the last is removed on exit; the records stay and are
 #              harmless: those tasks are not in org-state). No --title is passed, so org-state is not touched.
 # Never written: ~/.claude.json, any real project's .git, the real project registry. Stranded locks are made only inside
-# the throw-away clone. The probe reads (never writes) ~/.claude/projects/*p277d*/ transcripts of its own workers (race, shapes).
+# the throw-away clone. The probe reads (never writes) ~/.claude/projects/*p7d*/ transcripts of its own workers (race, shapes).
 #
 # Reading the output. "RESULT <name>: <PASS|FAIL|INCONCLUSIVE|NO DATA|DATA> (detail)". DATA means a measurement with no
 # pass line (mounts, delegate): paste the lines back. Everything printed is paths, modes, exit codes and error text; no credential.
@@ -93,7 +93,8 @@ esac
 
 [ -f "$ROOT/templates/worker.md" ] || { echo "RESULT precondition-failed: run from the repo root"; exit 1; }
 for c in git hc claude; do command -v $c >/dev/null 2>&1 || { echo "RESULT precondition-failed: $c not on PATH"; exit 1; }; done
-ID=p277d-$$-$(date +%s); TPL=p277d-worker
+ID=p7d-$$-$(date +%s | tail -c 6);  # short: a terminal name (w-<id>-<suffix>) is at most 32 characters
+ TPL=p277d-worker
 WAIT=${PADDOCK_PROBE_WAIT:-240}
 cfg=${APPDATA:-${XDG_CONFIG_HOME:-$HOME/.config}}
 TPL_DIR=${PADDOCK_CORE_TEMPLATES_DIR:-$cfg/herdr-core/templates}
@@ -114,7 +115,7 @@ cleanup() {
   [ -z "$CHURN" ] || kill "$CHURN" 2>/dev/null   # the race probe's background churn loop, also when the run is kept for a person
   if [ -n "$KEEP" ]; then echo "kept for a person: terminals$TERMS, temp folder $WORK, worktrees $workers/$ID*, template $TPL_DIR/$TPL.md"; return; fi
   for n in $TERMS; do hc kill "$n" >/dev/null 2>&1; hc rm "$n" >/dev/null 2>&1; done
-  pkill -f "sleep $SA\$" 2>/dev/null; pkill -f "sleep $SD\$" 2>/dev/null   # leftovers of this probe's own delegate workers (the pid in the number makes them unique)
+  pkill -f "sleep $SA" 2>/dev/null; pkill -f "sleep $SD" 2>/dev/null   # leftovers of this probe's own delegate workers (the pid in the number makes them unique)
   [ -z "$OWNTPL" ] || rm -f "$TPL_DIR/$TPL.md"
   # the worktrees are linked to clones inside $WORK, so removing both leaves nothing behind in any real repository
   for w in "$workers/$ID"*; do [ -e "$w" ] && rm -rf "$w"; done
@@ -218,7 +219,9 @@ facts() { # SUFFIX: what the delegate left
   echo "  worktree=$([ -d "$workers/$tid" ] && echo created || echo absent) branch=$(git -C "$PJ" rev-parse --verify -q "work/$tid" >/dev/null && echo yes || echo no) paddockBase=$(git -C "$PJ" config --get "branch.work/$tid.paddockBase" 2>&1 | head -n 1 | cut -c1-60) upstream-merge=$(git -C "$PJ" config --get "branch.work/$tid.merge" 2>&1 | head -n 1 | cut -c1-60) terminal=$(hc get "w-$tid" >/dev/null 2>&1 && echo exists || echo absent)"
 }
 # wait_lock SLEEP: the lock is on the host AND the worker's own uniquely numbered sleep runs (the worker's startup commands make a placeholder too)
-wait_lock() { t=0; while [ "$t" -lt "$WAIT" ]; do case "$(hostlock "$PJ/.git")" in present*) [ "$(pgrep -f "sleep $1\$" | wc -l)" -gt 0 ] && return 0 ;; esac; t=$((t + 1)); sleep 1; done; return 1; }
+# on a timeout, diag NAME prints what is on the host and the worker's screen, so the cause is visible
+diag() { echo "  diag: config.lock $(hostlock "$PJ/.git"); processes matching the sleep: $(pgrep -af "sleep $2" | head -n 3 | tr '\n' '|' | cut -c1-200); screen: $(hc read "$1" 2>&1 | tail -n 8 | tr '\n' '|' | cut -c1-500)"; }
+wait_lock() { t=0; while [ "$t" -lt "$WAIT" ]; do case "$(hostlock "$PJ/.git")" in present*) [ "$(pgrep -f "sleep $1" | wc -l)" -gt 0 ] && return 0 ;; esac; t=$((t + 1)); sleep 1; done; return 1; }
 sub_delegate() {
   tf=${PADDOCK_WORKER_GH_TOKEN_FILE:-$cfg/paddock/worker-gh-token}
   [ -s "$tf" ] && [ -f "$TPL_DIR/worker.md" ] && [ -f "$bd/worker-rules.md" ] || { echo "RESULT precondition-failed: needs the real worker template ($TPL_DIR/worker.md), $bd/worker-rules.md and a non-empty token file ($tf); the production path starts with them"; exit 1; }
@@ -236,13 +239,13 @@ sub_delegate() {
   if [ "$drc" -ne 0 ]; then
     [ "$drc" -eq 10 ] && dialog_on "w-$ID-a" && need_person "w-$ID-a"
     echo "RESULT 2a-delegate-live-worker: NO DATA (worker A did not start, exit $drc)"
-  elif ! wait_lock $SA; then echo "RESULT 2a-delegate-live-worker: NO DATA (config.lock and A's sleep never ran together within ${WAIT}s: A's command did not run, or no placeholder is made in this version)"
+  elif ! wait_lock $SA; then echo "RESULT 2a-delegate-live-worker: NO DATA (config.lock and A's sleep never ran together within ${WAIT}s)"; diag "w-$ID-a" "$SA"
   else
-    echo "  host while A's command runs: config.lock $(hostlock "$PJ/.git"), A's sleep running: $(pgrep -f "sleep $SA\$" | wc -l)"
+    echo "  host while A's command runs: config.lock $(hostlock "$PJ/.git"), A's sleep running: $(pgrep -f "sleep $SA" | wc -l)"
     echo "  direct 'git config' from this shell now: $(cfgw p277.live 1)"; git -C "$PJ" config --unset p277.live >/dev/null 2>&1
     dele b none; echo "  B (default base: fetch, origin/main) $(facts b)"
     dele c none --no-fetch --base main; echo "  C (--no-fetch --base main, local base: no upstream write) $(facts c)"
-    echo "  host after B and C: config.lock $(hostlock "$PJ/.git"), A's sleep still running: $(pgrep -f "sleep $SA\$" | wc -l) (0 = B and C ran after A's command ended: discard the 2a result)"
+    echo "  host after B and C: config.lock $(hostlock "$PJ/.git"), A's sleep still running: $(pgrep -f "sleep $SA" | wc -l) (0 = B and C ran after A's command ended: discard the 2a result)"
     echo "RESULT 2a-delegate-live-worker: DATA (B exit/facts and C exit/facts above; exit 6 + worktree absent = the delegate fails; worktree created + paddockBase empty = line 177 hid a failed write)"
     t=0; while [ "$t" -lt "$WAIT" ]; do case "$(hostlock "$PJ/.git")" in absent) break ;; esac; t=$((t + 3)); sleep 3; done
     echo "RESULT 2a-placeholder-after-clean-exit: DATA (A's sleep and its command ended; B/C may still hold one; after waiting $t s: config.lock $(hostlock "$PJ/.git"))"
@@ -253,15 +256,15 @@ sub_delegate() {
   echo "== 2b stranded config.lock: kill the worker's pane in the middle of its command (hc kill + hc rm, the org-resume / org-down path)"
   dele d $SD || true
   if [ "$drc" -ne 0 ]; then echo "RESULT 2b-stranded-lock: NO DATA (worker D did not start, exit $drc)"
-  elif ! wait_lock $SD; then echo "RESULT 2b-stranded-lock: NO DATA (config.lock never appeared within ${WAIT}s)"
+  elif ! wait_lock $SD; then echo "RESULT 2b-stranded-lock: NO DATA (config.lock and D's sleep never ran together within ${WAIT}s)"; diag "w-$ID-d" "$SD"
   else
-    echo "  before the kill: config.lock $(hostlock "$PJ/.git"); sleep processes: $(pgrep -f "sleep $SD\$" | wc -l)"
+    echo "  before the kill: config.lock $(hostlock "$PJ/.git"); sleep processes: $(pgrep -f "sleep $SD" | wc -l)"
     hc kill "w-$ID-d" >/dev/null 2>&1; hc rm "w-$ID-d" >/dev/null 2>&1; sleep 3
-    echo "  after the kill: config.lock $(hostlock "$PJ/.git"); sleep processes still alive: $(pgrep -f "sleep $SD\$" | wc -l)"
+    echo "  after the kill: config.lock $(hostlock "$PJ/.git"); sleep processes still alive: $(pgrep -f "sleep $SD" | wc -l)"
     echo "  'git config' write now: $(cfgw p277.strand 1)"; git -C "$PJ" config --unset p277.strand >/dev/null 2>&1
     dele e none; echo "  E, a new delegate against the stranded lock $(facts e)"
     endterm "w-$ID-e"
-    pkill -f "sleep $SD\$" 2>/dev/null; sleep 3
+    pkill -f "sleep $SD" 2>/dev/null; sleep 3
     echo "  after the leftover sleep ended too: config.lock $(hostlock "$PJ/.git")"
     if command -v timeout >/dev/null 2>&1; then dd_out=$(cd "$PJ" && timeout 60 claude doctor </dev/null 2>&1); dd_rc=$?; else dd_out=$(cd "$PJ" && claude doctor </dev/null 2>&1); dd_rc=$?; fi
     echo "  claude doctor: exit=$dd_rc, $(printf '%s\n' "$dd_out" | wc -l) lines; lines naming a lock, placeholder or sandbox: $(printf '%s\n' "$dd_out" | grep -iE 'lock|placeholder|sandbox' | head -n 6 | tr '\n' '|' | cut -c1-400)"
@@ -323,16 +326,16 @@ shape_one() {
   k=$1; tid=$ID-$k; wt=$workers/$tid; P=$WORK/$k
   build "$P" || { echo "RESULT 4-$k: NO DATA (could not build)"; return; }
   case $k in
-    submodule) mkdir -p "$P/subsrc" && git -C "$P/subsrc" init -q -b main && echo s > "$P/subsrc/s.txt" && git -C "$P/subsrc" add s.txt && git -C "$P/subsrc" commit -q -m s \
+    subm) mkdir -p "$P/subsrc" && git -C "$P/subsrc" init -q -b main && echo s > "$P/subsrc/s.txt" && git -C "$P/subsrc" add s.txt && git -C "$P/subsrc" commit -q -m s \
       && git -C "$P/seed" -c protocol.file.allow=always submodule add -q "$P/subsrc" vendor >/dev/null 2>&1 && git -C "$P/seed" commit -q -m "add submodule" ;;
   esac
   publish "$P" || { echo "RESULT 4-$k: NO DATA (could not publish)"; return; }
   case $k in
-    hooks-symlink) mkdir -p "$P/hooks-elsewhere" && mv "$P/proj/.git/hooks" "$P/hooks-elsewhere/h" && ln -s "$P/hooks-elsewhere/h" "$P/proj/.git/hooks" ;;
-    worktree-config-sparse) git -C "$P/proj" config extensions.worktreeConfig true ;;
+    hook) mkdir -p "$P/hooks-elsewhere" && mv "$P/proj/.git/hooks" "$P/hooks-elsewhere/h" && ln -s "$P/hooks-elsewhere/h" "$P/proj/.git/hooks" ;;
+    wtcfg) git -C "$P/proj" config extensions.worktreeConfig true ;;
   esac
   mkwt "$P/proj" "$wt" "$tid" || { echo "RESULT 4-$k: NO DATA (git worktree add failed)"; return; }
-  case $k in worktree-config-sparse) git -C "$wt" sparse-checkout set --no-cone sub base.txt >/dev/null 2>&1 ;; esac
+  case $k in wtcfg) git -C "$wt" sparse-checkout set --no-cone sub base.txt >/dev/null 2>&1 ;; esac
   echo "== shape $k: host .git/hooks=$([ -L "$P/proj/.git/hooks" ] && echo symlink || echo dir) config.worktree on host=$([ -e "$P/proj/.git/config.worktree" ] && echo yes || echo no) worktree config.worktree=$([ -e "$P/proj/.git/worktrees/$tid/config.worktree" ] && echo yes || echo no) .gitmodules tracked=$(git -C "$wt" ls-files .gitmodules | wc -l)"
   rm -f "$OUT/shape.rc" "$OUT/shape.txt"
   TASK="Probe for paddock Issue #277. This is a measurement the secretary asks for and permits; do not decline or report blocked. Work only in this worktree plus the folder $OUT. Run this ONE command as ONE Bash call, with the sandbox ON (never skip it), and do nothing else: sh $OUT/w.sh shape
@@ -352,7 +355,7 @@ If it fails or prints an error, do not retry it another way. Then reply with the
 }
 sub_shapes() {
   mk_template
-  for k in control hooks-symlink worktree-config-sparse submodule; do shape_one $k; done
+  for k in ctl hook wtcfg subm; do shape_one $k; done
 }
 
 case $SUB in mounts) sub_mounts ;; delegate) sub_delegate ;; race) sub_race ;; shapes) sub_shapes ;; esac
