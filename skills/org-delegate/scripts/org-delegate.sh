@@ -145,19 +145,42 @@ fi
 git -C "$project" rev-parse --verify -q "$base^{commit}" >/dev/null || die 6 "base $base is not a commit in $project"
 [ ! -e "$wt" ] && [ ! -L "$wt" ] || die 6 "$wt already exists; remove it (git worktree remove) or pick another task id"
 mkdir -p "$workers" || die 6 "cannot create $workers"
-git -C "$project" worktree add -q -b "$branch" "$wt" "$base" >/dev/null 2>&1 \
-  || die 6 "git worktree add failed for branch $branch at $base (does the branch exist already?)"
+# Issue #263: git fails ("failed to read .git/worktrees/<n>/commondir") when worktree add, remove or config
+# runs in one repository while another does, so delegates started together take turns here. The lock is
+# the folder <git-common-dir>/paddock-worktree.lock holding the file pid, which the holder creates itself
+# (set -C is O_EXCL; mkdir alone is not trusted, see lock_take in scripts/org). A lock whose pid is dead
+# is broken. ponytail: two waiters can break one dead lock at once; add a guard file if that is seen.
+wtlk=$(git -C "$project" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/paddock-worktree.lock
+wt_lock() {
+  local n=0 o
+  until mkdir "$wtlk" 2>/dev/null && ( set -C; echo $$ > "$wtlk/pid" ) 2>/dev/null; do
+    n=$((n + 1))
+    if [ $((n % 20)) -eq 0 ]; then
+      o=$(cat "$wtlk/pid" 2>/dev/null)
+      case "$o" in ''|*[!0-9]*) ;; *) kill -0 "$o" 2>/dev/null || { rm -f "$wtlk/pid"; rmdir "$wtlk" 2>/dev/null; } ;; esac
+      [ "$n" -lt 1200 ] || die 6 "$wtlk is held (pid ${o:-not recorded}); if no org-delegate is running, remove it"
+    fi
+    sleep 0.05 2>/dev/null || sleep 1
+  done
+}
+wt_unlock() { rm -f "$wtlk/pid"; rmdir "$wtlk" 2>/dev/null; }
+wt_lock
+git -C "$project" worktree add -q -b "$branch" "$wt" "$base" >/dev/null 2>&1; added=$?
 # Issue #177: the review gate reads the base back, so a worker on a non-main base is reviewed against it.
-git -C "$project" config "branch.$branch.paddockBase" "$base" >/dev/null 2>&1 || true
+[ "$added" -ne 0 ] || git -C "$project" config "branch.$branch.paddockBase" "$base" >/dev/null 2>&1 || true
+wt_unlock
+[ "$added" -eq 0 ] || die 6 "git worktree add failed for branch $branch at $base (does the branch exist already?)"
 
 # undo removes the worktree and branch, which are new and ours, and says so if it cannot. Used only
 # where no worker can exist: before the launch, or after the core answered that the terminal is not there.
 undo() {
+  wt_lock
   git -C "$project" worktree remove --force "$wt" >/dev/null 2>&1 \
     || echo "org-delegate: could not remove the worktree $wt; it is left behind (git worktree remove --force -f $wt)" >&2
   # -d only: a branch with work on it, or whose base is not merged into the project's HEAD, is kept and named.
   git -C "$project" branch -q -d "$branch" >/dev/null 2>&1 \
     || echo "org-delegate: the branch $branch in $project was not deleted (git refuses -d); it is left behind" >&2
+  wt_unlock
 }
 fail_undone() { code=$1; shift; undo; die "$code" "$*"; }
 
