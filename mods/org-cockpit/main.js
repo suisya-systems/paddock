@@ -451,7 +451,7 @@ export default class Cockpit extends View {
     return v_flex().id("consult").w(300).px(16).py(14).gap(8).cursor_pointer()
       .on_click(() => run("pane.focus", { terminal: sec.address }))
       .child(this.label(t, "THE SECRETARY IS ASKING YOU", t.blocked))
-      .child(div().text_size(14).font_medium().line_height(1.35).text_color(t.foreground).whitespace_normal().max_h(58).overflow_hidden()
+      .child(div().text_size(14).font_medium().line_height(1.35).text_color(t.foreground).whitespace_normal()
         .child(sec.report?.msg || "It is waiting for your answer."))
       .child(div().text_size(11).text_color(t.dim).child("Answer in the secretary's terminal"));
   }
