@@ -76,7 +76,7 @@ shape)
   t log git log --oneline -3
   t diff git diff --stat
   echo shape >> base.txt; t add-u git add -u
-  echo n > new.txt; t add-new git add new.txt
+  echo n > sub/new.txt; t add-new git add sub/new.txt   # inside the sparse selection of the sparse shape
   t commit git -c user.name=p277 -c user.email=p277@example.invalid commit -q -m "p277 shape commit"
   echo "head $(git log -1 --format=%s 2>&1 | head -n 1)"
   } > "$d/shape.txt" 2>&1
@@ -106,13 +106,14 @@ WORK=$(mktemp -d "$workers/.probe277d.XXXXXX") || exit 1
 case "$WORK$bd" in *[[:space:]]*) echo "RESULT precondition-failed: paths must not contain whitespace ($WORK $bd)"; exit 1 ;; esac
 OUT=$WORK/out; mkdir -p "$OUT" || exit 1
 KEEP= TERMS= OWNTPL=
+SA=151.$$ SD=317.$$   # the sleeps of the delegate probe's workers A and D
 . "$(dirname "$0")/claude-link.sh"
 claude_link_save
 cleanup() {
   claude_link_restore
   if [ -n "$KEEP" ]; then echo "kept for a person: terminals$TERMS, temp folder $WORK, worktrees $workers/$ID*, template $TPL_DIR/$TPL.md"; return; fi
   for n in $TERMS; do hc kill "$n" >/dev/null 2>&1; hc rm "$n" >/dev/null 2>&1; done
-  pkill -f "sleep 15[1-3]$" 2>/dev/null; pkill -f "sleep 317$" 2>/dev/null   # leftovers of this probe's own delegate workers
+  pkill -f "sleep $SA\$" 2>/dev/null; pkill -f "sleep $SD\$" 2>/dev/null   # leftovers of this probe's own delegate workers (the pid in the number makes them unique)
   [ -z "$OWNTPL" ] || rm -f "$TPL_DIR/$TPL.md"
   # the worktrees are linked to clones inside $WORK, so removing both leaves nothing behind in any real repository
   for w in "$workers/$ID"*; do [ -e "$w" ] && rm -rf "$w"; done
@@ -229,7 +230,7 @@ sub_delegate() {
   echo "RESULT 2c-secretary-sandbox: DATA (see the three lines above; no error text there = this shell can write the clone's config)"
 
   echo "== 2a org-delegate while a worker's sandboxed command runs"
-  dele a 151 || true; echo "  A $(facts a)"
+  dele a $SA || true; echo "  A $(facts a)"
   if [ "$drc" -ne 0 ]; then
     [ "$drc" -eq 10 ] && dialog_on "w-$ID-a" && need_person "w-$ID-a"
     echo "RESULT 2a-delegate-live-worker: NO DATA (worker A did not start, exit $drc)"
@@ -248,17 +249,17 @@ sub_delegate() {
   case "$(hostlock "$PJ/.git")" in present*) echo "== a lock is still on the host before phase 2 ($(hostlock "$PJ/.git")); removing it so phase 2 starts clean"; rm -f "$PJ/.git/config.lock" ;; esac
 
   echo "== 2b stranded config.lock: kill the worker's pane in the middle of its command (hc kill + hc rm, the org-resume / org-down path)"
-  dele d 317 || true
+  dele d $SD || true
   if [ "$drc" -ne 0 ]; then echo "RESULT 2b-stranded-lock: NO DATA (worker D did not start, exit $drc)"
   elif ! wait_lock; then echo "RESULT 2b-stranded-lock: NO DATA (config.lock never appeared within ${WAIT}s)"
   else
-    echo "  before the kill: config.lock $(hostlock "$PJ/.git"); sleep 317 processes: $(pgrep -f 'sleep 317$' | wc -l)"
+    echo "  before the kill: config.lock $(hostlock "$PJ/.git"); sleep processes: $(pgrep -f "sleep $SD\$" | wc -l)"
     hc kill "w-$ID-d" >/dev/null 2>&1; hc rm "w-$ID-d" >/dev/null 2>&1; sleep 3
-    echo "  after the kill: config.lock $(hostlock "$PJ/.git"); sleep 317 processes still alive: $(pgrep -f 'sleep 317$' | wc -l)"
+    echo "  after the kill: config.lock $(hostlock "$PJ/.git"); sleep processes still alive: $(pgrep -f "sleep $SD\$" | wc -l)"
     echo "  'git config' write now: $(cfgw p277.strand 1)"; git -C "$PJ" config --unset p277.strand >/dev/null 2>&1
     dele e none; echo "  E, a new delegate against the stranded lock $(facts e)"
     endterm "w-$ID-e"
-    pkill -f 'sleep 317$' 2>/dev/null; sleep 3
+    pkill -f "sleep $SD\$" 2>/dev/null; sleep 3
     echo "  after the leftover sleep ended too: config.lock $(hostlock "$PJ/.git")"
     if command -v timeout >/dev/null 2>&1; then dd_out=$(cd "$PJ" && timeout 60 claude doctor </dev/null 2>&1); dd_rc=$?; else dd_out=$(cd "$PJ" && claude doctor </dev/null 2>&1); dd_rc=$?; fi
     echo "  claude doctor: exit=$dd_rc, $(printf '%s\n' "$dd_out" | wc -l) lines; lines naming a lock, placeholder or sandbox: $(printf '%s\n' "$dd_out" | grep -iE 'lock|placeholder|sandbox' | head -n 6 | tr '\n' '|' | cut -c1-400)"
@@ -297,7 +298,7 @@ If a call fails or prints an error, do NOT retry it: go straight on to the next 
   : > "$OUT/churn.stop"; sleep 1; wait
   ran=$(ls "$OUT"/n[0-9]*.txt 2>/dev/null | wc -l); tj=$(transcripts "$ID"); att=; errs=; bw=
   if [ -n "$tj" ]; then
-    att=$(cat $tj | grep -o 'w\.sh n [0-9]*' | sort -u | wc -l)
+    att=$(cat $tj | grep -E '"type": ?"tool_use"' | grep -E '"name": ?"Bash"' | grep -o 'w\.sh n [0-9]*' | sort -u | wc -l)   # Bash tool calls only: the prompt text lists all of them
     errs=$(cat $tj | grep -c '"is_error":true')
     bw=$(cat $tj | grep -o "bwrap: [^\"\\\\]*\|Can't get type of source[^\"\\\\]*" | sort | uniq -c | sort -rn | head -n 5 | tr '\n' '|')
   fi
