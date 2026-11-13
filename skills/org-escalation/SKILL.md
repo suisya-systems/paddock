@@ -11,7 +11,7 @@ Implements inventory row [SK-5](../../docs/design/predecessor-inventory.md) and 
 bash skills/org-escalation/scripts/org-escalation.sh prompt --task <task_id> [--then-send "<text>"]
 bash skills/org-escalation/scripts/org-escalation.sh ask    --task <task_id> --question "<one sentence>" [--prompt "<PROMPT= text>"] \
          --background "<why it is asked>" --if-yes "<what Yes does>" --if-no "<what No does>" \
-         --recommend yes|no --why "<reason>"
+         --recommend yes|no --why "<reason>" --lang <code>
 bash skills/org-escalation/scripts/org-escalation.sh answer --id <approval_id> --text "<answer>"
 bash skills/org-escalation/scripts/org-escalation.sh remove --id <approval_id>
 bash skills/org-escalation/scripts/org-escalation.sh list
@@ -34,6 +34,7 @@ A worker runs in auto mode, so few prompts appear. A prompt or dialog that does 
   - `folder-trust`: Claude Code's folder-trust dialog, only on a terminal that reports no status yet (the dialog comes before any status; a tool prompt is `blocked`), with "No, exit" and "Yes, I trust this folder" as option lines (numbered or not; the host shows them unnumbered). Answer: "Yes, I trust this folder" (the default is "No, exit"), as org-start does for the secretary (#254).
   - `auto-mode-setup` (owner, 2026-11-12): Claude Code's "Teach auto mode about your environment?" dialog (options Yes / Not now / Don't show again; text from Claude Code 2.1.322, not yet seen on a host). Answer: "Don't show again".
   The script prints `POLICY <entry> w-<t>` and exits 0. With `--then-send <text>` it waits for the terminal to report a status and sends the text with `hc send` (org-delegate passes the brief, which the dialog stopped). Any other screen: `PROMPT=<the dialog's non-empty lines, on one line>`, exit 3, nothing pressed.
+- `ask ... --lang <code>`: the person reads the card, so its text is in the conversation language and `--lang` (`ja`, `en`) sets the language of the card's fixed words; without it the card is English.
 - `ask ... --prompt "<that text>"` records it as an ordinary question; the entry keeps `prompt` and `prompt_sum` (a checksum of the text). The card offers Yes / No as for any question.
 - `answer --id <id> --text yes|no` on such an entry presses one key, only while `w-<t>` is `blocked` and the checksum of its dialog (from the last rule line `───` to the end of the screen; the whole screen when there is none) equals `prompt_sum` (a change in the dialog refuses; the transcript above it may change, as the host check showed; a request taller than the screen is compared only where it shows): yes = `enter` with the cursor on "1. Yes" (the one-time Yes, never "don't ask again"), no = `esc`. Anything else presses nothing and exits 10 (entry kept; run `prompt` again). Free text exits 2.
 - `sweep` (on each return from the wait) removes every prompt entry whose terminal `w-<task_id>` shows `working`, `idle` or `done` in `hc get --json` (someone answered it, or it moved on), and prints `SWEPT <id>`. No status, a missing terminal or a failed lookup keeps it. Other entries are never touched; an old `answer_in: worker` entry has no `prompt` and is an ordinary question.

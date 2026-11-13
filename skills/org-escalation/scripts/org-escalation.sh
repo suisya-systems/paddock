@@ -12,7 +12,7 @@ usage() {
 Usage: org-escalation.sh prompt --task TASK_ID [--then-send TEXT]
        org-escalation.sh ask --task TASK_ID --question TEXT [--prompt TEXT]
                            [--background TEXT] [--if-yes TEXT] [--if-no TEXT]
-                           [--recommend yes|no --why TEXT]
+                           [--recommend yes|no --why TEXT] [--lang CODE]
        org-escalation.sh answer --id APPROVAL_ID --text TEXT
        org-escalation.sh remove --id APPROVAL_ID
        org-escalation.sh list
@@ -32,6 +32,7 @@ Usage: org-escalation.sh prompt --task TASK_ID [--then-send TEXT]
           --background  why this is asked, one or two sentences (at most 600 bytes)
           --if-yes      what happens on Yes (at most 300 bytes); --if-no likewise
           --recommend   your recommendation, yes or no, with --why (at most 400 bytes)
+          --lang        the language code of the conversation (ja, en); the card's own words follow it
           A field left out is shown on the card as not written.
   answer  send "Answer to your question (<id>): <text>" to w-<task_id> through the mailbox,
           then remove the entry. A prompt entry takes yes or no: only while w-<task_id> is
@@ -174,13 +175,13 @@ ctx() {
 cmd=${1:-}; [ $# -eq 0 ] || shift
 case $cmd in -h|--help|help) usage; exit 0 ;; esac
 task=; question=; text=; id=
-unset background if_yes if_no recommend why prompt then_send
+unset background if_yes if_no recommend why lang prompt then_send
 while [ $# -gt 0 ]; do
   case $1 in
-    --task|--question|--text|--id|--prompt|--then-send|--background|--if-yes|--if-no|--recommend|--why)
+    --task|--question|--text|--id|--prompt|--then-send|--background|--if-yes|--if-no|--recommend|--why|--lang)
       [ $# -ge 2 ] || die 2 "$1 needs a value"
       case $1 in --task) task=$2 ;; --question) question=$2 ;; --text) text=$2 ;; --id) id=$2 ;; --prompt) prompt=$2 ;; --then-send) then_send=$2 ;;
-        --background) background=$2 ;; --if-yes) if_yes=$2 ;; --if-no) if_no=$2 ;; --recommend) recommend=$2 ;; --why) why=$2 ;; esac
+        --background) background=$2 ;; --if-yes) if_yes=$2 ;; --if-no) if_no=$2 ;; --recommend) recommend=$2 ;; --why) why=$2 ;; --lang) lang=$2 ;; esac
       shift 2 ;;
     *) echo "org-escalation: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -222,6 +223,8 @@ case $cmd in
     ctx if_no --if-no 300 ${if_no+"$if_no"}
     ctx recommend --recommend 3 ${recommend+"$recommend"}
     ctx why --why 400 ${why+"$why"}
+    case ${lang-ok} in ok|[a-z][a-z]|[a-z][a-z]-[A-Za-z][A-Za-z]) ;; *) die 2 "--lang is a language code such as en or ja" ;; esac
+    ctx lang --lang 8 ${lang+"$lang"}
     ctx prompt --prompt 16000 ${prompt+"$prompt"}
     [ -z "${prompt+set}" ] || ctx="$ctx,\"prompt_sum\":\"$(psum "$(clean "$prompt")")\""
     ESC_ENTRY="{\"id\":\"$id\",\"task_id\":\"$task\",\"question\":\"$(jstr "$q")\",\"asked_at\":\"$now\"$ctx}"
