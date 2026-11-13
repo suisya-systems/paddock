@@ -130,6 +130,14 @@ if [ "$phase" = prepare ]; then
   # environment. Every hc command can start one (even `hc server status`, hc 0.1.20 on Unix), so the
   # check calls no hc: the core is the process `herdr-core serve`.
   pgrep -f '(^|/)herdr-core serve' >/dev/null 2>&1 || die 6 "the core is not running: start herdr first (this runbook never starts the core, so it never gets this shell's environment)"
+  # Issue #305: every terminal takes the core's PATH. Without hc's folder on it the hooks exit 127 and no
+  # approval card appears. Read it from the process (no hc call); where /proc is not readable, skip.
+  corepid=$(pgrep -f '(^|/)herdr-core serve' 2>/dev/null | head -n 1)
+  corepath=$(tr '\0' '\n' < "/proc/${corepid:-0}/environ" 2>/dev/null | sed -n 's/^PATH=//p')
+  if [ -n "$corepath" ] && ! PATH=$corepath command -v hc >/dev/null 2>&1; then
+    hcdir=$(dirname "$(command -v hc)")
+    die 6 "hc is not on the core's PATH: its terminals cannot run hc, so no approval card appears. Stop herdr-core, then start herdr again from a login shell that has $hcdir (where hc is) on PATH"
+  fi
   # Terminal names first (Issue #287): a stale terminal is named with its program and how to remove it.
   hc ls >/dev/null 2>&1 || die 6 "hc ls failed: the core is not reachable"
   if sj=$(hc get --json secretary 2>/dev/null); then
