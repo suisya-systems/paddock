@@ -10,13 +10,12 @@
 # and by the worker as the "must fail" case. Needs: hc, git, claude, POSIX sh, cksum; the workers folder
 # (PADDOCK_WORKERS_DIR, default ~/paddock-workers) already trusted by Claude Code. Takes 3-6 minutes
 # (PADDOCK_PROBE_WAIT, default 240 s, per wait). Claude Code asks the folder-trust question again for every new
-# worktree; PADDOCK_PROBE_ANSWER_TRUST=1 lets the probe answer it (Enter on 'Yes, I trust this folder', only after
-# reading the screen); without it the probe stops with NEEDS-PERSON.
+# worktree; the probe passes it the way org-delegate does (see the launch step).
 #
 # What it touches. Everything lives in one private temp folder (mktemp under $TMPDIR): a bare "upstream"
 # repository, a clone of it that plays the secretary's project clone, and a seed clone. It adds one
 # worktree + branch p277-<pid>-<time> in that throw-away clone, under the workers folder, one terminal
-# p277-w and one temporary template p277-worker (in the core's templates folder). It writes no mailbox
+# w-<id> and one temporary template p277-worker (in the core's templates folder). It writes no mailbox
 # or org-state record. No real repository is changed; the github URL is only read. The exit trap removes
 # the terminal, template, worktree and temp folder (kept, and named, when a person must answer a dialog).
 #
@@ -66,7 +65,7 @@ NOW=${PADDOCK_PROBE_NO_WORKER:-}
 for c in git cksum; do command -v $c >/dev/null 2>&1 || { echo "RESULT precondition-failed: $c not on PATH"; exit 1; }; done
 [ -n "$NOW" ] || for c in hc claude; do command -v $c >/dev/null 2>&1 || { echo "RESULT precondition-failed: $c not on PATH"; exit 1; }; done
 
-ID=p277-$$-$(date +%s); NAME=p277-w; TPL=p277-worker
+ID=p277-$$-$(date +%s); NAME=w-$ID; TPL=p277-worker
 WAIT=${PADDOCK_PROBE_WAIT:-240}
 cfg=${APPDATA:-${XDG_CONFIG_HOME:-$HOME/.config}}
 TPL_DIR=${PADDOCK_CORE_TEMPLATES_DIR:-$cfg/herdr-core/templates}
@@ -79,7 +78,7 @@ WORK=$(mktemp -d "${TMPDIR:-/tmp}/probe277.XXXXXX") || exit 1
 case "$WORK$WT$bd" in *[[:space:]]*) echo "RESULT precondition-failed: paths must not contain whitespace ($WORK $WT $bd)"; exit 1 ;; esac
 OUT=$WORK/out; UP=$WORK/up.git; SEED=$WORK/seed; PROJ=$WORK/proj
 mkdir -p "$OUT" || exit 1
-KEEP= OWNTERM= OWNTPL= ANSWERED=
+KEEP= OWNTERM= OWNTPL=
 . "$(dirname "$0")/claude-link.sh"
 claude_link_save
 cleanup() {
@@ -185,45 +184,21 @@ if [ -z "$NOW" ]; then
 3. sh $OUT/w.sh rebase
 If a command fails or prints an error, do not retry it another way; just go on to the next. Then reply with the single word done."
   OWNTERM=1
-  hc run --bg --outlive-parent --name $NAME --cwd "$WT" --label task_id=p277 $TPL "$TASK" >/dev/null 2>&1 || { echo "RESULT precondition-failed: hc run failed"; exit 1; }
+  # Launch, as org-delegate does (steps 5): hc run with the task; when hc did not send the first message (a folder-trust
+  # dialog stopped it), org-escalation prompt answers the dialog from the policy list and sends the task (--then-send).
+  ESC=$ROOT/skills/org-escalation/scripts/org-escalation.sh
+  out=$(hc run --bg --outlive-parent --name $NAME --cwd "$WT" --label task_id=$ID $TPL "$TASK" 2>&1) || { echo "RESULT precondition-failed: hc run failed: $(printf %s "$out" | cut -c1-200)"; exit 1; }
+  if printf '%s' "$out" | tr -d '\n' | grep -Eq '"sent": *true'; then ESCINFO="not needed (hc sent the first message)"
+  else
+    po=$(bash "$ESC" prompt --task "$ID" --then-send "$TASK" 2>&1); erc=$?
+    ESCINFO="exit=$erc $(printf '%s' "$po" | grep -E '^(POLICY|PROMPT=)' | tr '\n' ' ' | cut -c1-200)"
+    if [ "$erc" -ne 0 ]; then echo "RESULT launch: org-escalation prompt $ESCINFO"; echo "NEEDS-PERSON: org-escalation prompt did not finish (exit $erc: 12 = answered but the task was not sent; 3 = a prompt outside the policy list); look at: hc read $NAME"; KEEP=1; exit 1; fi
+  fi
+  echo "RESULT launch: org-escalation prompt $ESCINFO"
 else
   (run_phases_local >/dev/null 2>&1 &)  # dry run: the phases run in the background; "go2" is touched below like in the real run
 fi
 
-# trust_answer: with PADDOCK_PROBE_ANSWER_TRUST=1, answer Claude Code's folder-trust dialog (it asks again for each new
-# worktree, a trusted parent folder does not carry over). Keys follow the screen: only a read showing the "No, exit" and
-# "Yes, I trust this folder" options, and Enter only with the cursor on the "Yes" line (one Down at most). 0 = answered.
-trust_answer() {
-  [ "${PADDOCK_PROBE_ANSWER_TRUST:-}" = 1 ] || return 1
-  n=0
-  while :; do
-    s=$(hc read $NAME 2>/dev/null) || return 1
-    printf '%s\n' "$s" | grep -Eq '^ *(❯ *)?([0-9]\. *)?No, exit *$' && printf '%s\n' "$s" | grep -Eq '^ *(❯ *)?([0-9]\. *)?Yes, I trust this folder *$' || return 1
-    if printf '%s\n' "$s" | grep -Eq '^ *❯ *([0-9]\. *)?Yes, I trust this folder *$'; then hc keys $NAME enter >/dev/null 2>&1 && echo "-- answered the folder-trust dialog in $NAME: Enter on 'Yes, I trust this folder'" && return 0; return 1; fi
-    [ "$n" -lt 1 ] || return 1
-    hc keys $NAME down >/dev/null 2>&1; sleep 1; n=$((n + 1))
-  done
-}
-# resend_task: the first message given to hc run is lost behind the trust dialog (measured). After the answer, wait for an
-# empty input box (a "❯" line with nothing after it, no dialog on screen), send $TASK with hc send --if idle (hc pastes
-# the text and presses Enter), and see on screen that the text arrived or work started. 0 = sent and seen.
-resend_task() {
-  i=0
-  while [ $i -lt 30 ]; do
-    s=$(hc read $NAME 2>/dev/null)
-    case "$s" in *"trust this folder"*|*"Quick safety check"*) ;; *) printf '%s\n' "$s" | grep -Eq '^ *❯ *$' && break ;; esac
-    i=$((i + 1)); sleep 2
-  done
-  [ $i -lt 30 ] || return 1
-  hc send --if idle $NAME "$TASK" >/dev/null 2>&1 || return 1
-  i=0
-  while [ $i -lt 15 ]; do
-    sleep 2; i=$((i + 1))
-    s=$(hc read $NAME 2>/dev/null)
-    case "$s" in *"Probe for paddock Issue #277"*|*"w.sh read"*) echo "-- sent the task to $NAME with: hc send --if idle $NAME <task text>"; return 0 ;; esac
-  done
-  return 1
-}
 # poll helper: wait for $OUT/$1 up to WAIT s; stops on a dialog the probe cannot answer.
 waitfor() {
   t=0
@@ -231,9 +206,7 @@ waitfor() {
     [ -f "$OUT/$1" ] && return 0
     if [ -z "$NOW" ]; then
       case "$(hc read $NAME 2>/dev/null)" in *"Quick safety check"*|*"trust this folder"*)
-        if [ -z "$ANSWERED" ] && trust_answer; then ANSWERED=1
-          resend_task || { echo "NEEDS-PERSON: answered the trust dialog in $NAME but could not see an empty input box or the task arrive; send the task by hand (hc send $NAME ...), or rerun"; KEEP=1; exit 1; }
-        elif [ -z "$ANSWERED" ]; then echo "NEEDS-PERSON: folder-trust dialog in $NAME; answer it (or set PADDOCK_PROBE_ANSWER_TRUST=1), and rerun"; KEEP=1; exit 1; fi ;; esac
+        echo "NEEDS-PERSON: a dialog is still on screen in $NAME after org-escalation; answer it in the terminal and rerun"; KEEP=1; exit 1 ;; esac
     fi
     t=$((t + 3)); sleep 3
   done
@@ -286,5 +259,6 @@ if [ -f "$OUT/read.rc" ]; then
   else case "$(g read fetch-error)" in "other"*) res 4 no-github-credential INCONCLUSIVE "$d; the fetch failed, but not with an auth error (network allowlist?)" ;; *) res 4 no-github-credential PASS "$d" ;; esac; fi
   echo "   GitHub fetch error (first lines): $(head -n 2 "$OUT/ghfetch.out" 2>/dev/null | tr '\n' ' ' | cut -c1-240)"
 else res 4 no-github-credential "NO DATA" "the worker never wrote read results"; fi
+echo "launch: org-escalation prompt ${ESCINFO:-n/a (dry run)}"
 echo "SUMMARY $PASS/4 PASS"
 [ "$PASS" = 4 ]
