@@ -228,6 +228,14 @@ printf '%s\n' "$json" | hc file write "$sf" >/dev/null 2>&1 \
   || fail_undone 5 "hc file write failed for $sf; the worktree and branch were removed"
 { [ -f "$sf" ] && [ ! -L "$sf" ] && [ "$(cd "$wt/.claude" && pwd -P)" = "$(cd "$wt" && pwd -P)/.claude" ]; } \
   || fail_undone 6 "$sf is not a plain file inside the worktree after the write"
+# Issue #299: what is placed on purpose is ignored by version control, so staging everything does not commit it.
+# A .gitignore inside .claude/ (the shared info/exclude is not the worktree's to write) naming the settings file and itself.
+# A base that tracks its own .claude/.gitignore keeps it.
+gi=$wt/.claude/.gitignore
+if [ ! -e "$gi" ] && [ ! -L "$gi" ]; then
+  printf 'settings.local.json\n.gitignore\n' | hc file write "$gi" >/dev/null 2>&1 \
+    || fail_undone 5 "hc file write failed for $gi; the worktree and branch were removed"
+fi
 
 # 4. Record before the launch, so a later report from the worker (done, blocked) is the latest
 # record in list_runs and is not overwritten by this one. A failure that leaves no worker is recorded as blocked.
