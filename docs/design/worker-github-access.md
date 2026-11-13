@@ -2,6 +2,8 @@
 
 Status: comparison, 2026-11-13 (Issue #277, Refs #267). Nothing here is built and nothing is decided: the owner decides. The rule being met is [Q20](open-questions.md#q20-how-is-a-workers-github-access-held-to-read-only): a worker can fetch and pull, and holds nothing it can use to write; GitHub, not a rule the agent could bypass, refuses the write.
 
+**Premise check (2026-11-13).** Options are judged on what a Paddock worker does with GitHub: it fetches the base and commits; the secretary pushes, opens the PR and watches CI ([open-questions.md](open-questions.md) line 324). Weigh API reads only for a worker that would make them.
+
 **Today (Q20 (d)).** The person creates a fine-grained personal access token (PAT) with `contents:read` by hand on GitHub and saves it as `worker-gh-token`; the [worker template](../../templates/worker.md) sets `GH_TOKEN` from it and `GH_CONFIG_DIR` to an empty folder. Costs the owner named: the token is made by hand (GitHub has no API to create a fine-grained PAT; the docs only describe pre-filling the creation page), it expires and must be renewed by hand, and the repository list is chosen by hand on a web page. ([managing PATs](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens), read 2026-11-13.)
 
 **Feasibility marks.** *Verified by doc*: the quoted page says it. *Needs probe*: the page is silent or only summarized when read, or the claim is about how Paddock's pieces behave together. No probe was run for this document.
@@ -62,10 +64,25 @@ A second GitHub account, added to the repositories with the Read role, with its 
 
 ### D. No GitHub credential in the worker (local mirror)
 
-The secretary keeps a bare mirror per repository fetched on a schedule; a worker's `origin` points at the local path. Nothing in the worker authenticates to GitHub.
+Nothing in the worker authenticates to GitHub. The worker reads from a local copy of the repository that the secretary keeps fresh; the secretary alone talks to GitHub.
 
-- Strongest on Q20: there is no credential to misuse, and the person's login stays out of reach if the mirror folder is the only thing a worker mounts. *Needs probe* (not a documented GitHub feature: a Paddock design).
-- Cost: the worker cannot reach the API (CI watching, PR reads), mirror freshness is the secretary's job, and Q20 already rejected "secretary fetching on behalf of workers" as toil. An automated mirror removes the toil but is new software. Not pursued unless A and B both fail their probes.
+**Why the old cost does not apply (corrected 2026-11-13, owner review).** An earlier version of this section rated D down because "the worker cannot reach the API (CI watching, PR reads)". In Paddock the worker never does either: the [worker template](../../templates/worker.md) (line 11) says "Do not push and do not open a pull request; the secretary does both", and [org-pull-request](../../skills/org-pull-request/SKILL.md) ("Run it from the secretary") pushes, opens the PR and starts the CI watcher with the secretary's credential ([open-questions.md](open-questions.md) line 324, "Waking on CI completion"). The premise came from Q20's open scope question ([open-questions.md](open-questions.md) line 790, "The worker would use it to watch its own CI"), which assumed a design Paddock does not have. What the worker needs from GitHub is only a base to branch from and to compare against: git objects, not the API. The same corrected premise lowers the cost of A and B too (they no longer buy API reads the worker does not use), but they still carry a credential; D does not.
+
+**How it works.** No new software is needed for the first version, because the mirror is the project clone the secretary already has:
+
+- **Who fetches, and when.** The secretary, at delegate time. [org-delegate.sh](../../skills/org-delegate/scripts/org-delegate.sh) lines 139-143 already run `git fetch origin` in the project before `git worktree add` and branch from `origin/<base>` (a failed fetch stops with exit 6 before anything is created; `--no-fetch` skips it). So the worktree is current at creation with no new step. On demand, the secretary runs the same `git fetch origin` in the project clone (for example when a worker reports that its base is stale); it is one command and happens only when asked, not on a schedule.
+- **How a worker's `origin` points at it.** It does not need to be repointed. A worktree shares its repository's object store, remote-tracking refs (`refs/remotes/origin/*`) and `origin` URL with the project clone, so `git log origin/main`, `git diff origin/main...HEAD` and `git rebase origin/main` in the worker read what the secretary last fetched, with no network and no credential. (A separate bare mirror would only be needed for a worker that has no worktree of the project clone; Paddock has none.)
+- **What a worker does when it needs a newer base.** It does not fetch (it has no credential, so its own `git fetch origin` of a private repository fails, which is the intended line). It reports "base is stale, need origin/<branch> at or after <sha>" in its message to the secretary; the secretary fetches in the project clone and replies; the worker then sees the new `origin/*` and rebases itself. This is the "secretary fetching on behalf of workers" that Q20 rejected as toil, narrowed: it is not per fetch or pull, only the rare stale-base case, because delegate time already fetches.
+- **What stays out of reach.** The worker has no `GH_TOKEN`, so the Q20 line holds without a token; the known limit (a started program falling back to the person's login) still applies to whatever the secretary's home holds, and is unchanged.
+
+**Needs probe** (not a documented GitHub feature; these are claims about how Paddock's pieces behave together, none measured):
+
+1. A worker terminal started without `GH_TOKEN` (and with the empty `GH_CONFIG_DIR`) can `git log`, `git diff` and `git rebase` against `origin/<base>` as fetched by the secretary, and its own `git fetch origin` of a private repository fails without leaving the refs half-updated.
+2. After the secretary fetches in the project clone, the new `origin/*` is visible in a running worker's worktree without a restart.
+3. The worker's sandbox lets git read the shared object store and refs of the project clone (the worktree's admin folder is writable, the common folder may be read-only); record what a `git rebase` needs to write there.
+4. The stale-base round trip (worker message, secretary fetch, worker rebase) works in the mailbox as the mailbox is used today.
+
+Cost left: the worker has no API reads (a pull request's comments, a run's logs), which Paddock's workers do not use today; if a worker role ever needs them, that is the case for A. The secretary's fetch at delegate time stays a dependency: a stale project clone gives a stale base, which `--no-fetch` makes silent.
 
 ### E. Considered and set aside
 
@@ -79,8 +96,8 @@ The secretary keeps a bare mirror per repository fetched on a schedule; a worker
 | Made by hand per repository set | Yes | Once (two clicks) | Per repository, by API | Account once, token by hand | No |
 | Expires and must be renewed by hand | Yes | No (1 hour, minted) | Never, so never rotated | Token yes | No |
 | Write line held by | Token scope | App ceiling | Per-key flag | Role | No credential |
-| Worker keeps `gh` and API reads | Yes | Yes (needs probe: scopes) | Needs probe | Yes | No |
-| New code | None | Minter and helper | Key generation | None | Mirror sync |
+| Worker keeps `gh` and API reads (Paddock's worker does not use them: the secretary pushes and watches CI) | Yes | Yes (needs probe: scopes) | Needs probe | Yes | No, and not needed today |
+| New code | None | Minter and helper | Key generation | None | None for the first version (delegate-time fetch exists); a stale-base message rule |
 | Long-lived secret to guard | Token | Private key | Private key per repository | Token | None |
 | Developer finishes it alone in a default company organization (new axis, see below) | No: an owner approves by default | Only if admin on the repository and installs are not owner-only | Only if deploy keys are allowed (off by default for new organizations) | No | Yes |
 
@@ -94,7 +111,7 @@ Review point (owner): a developer in a company organization often cannot grant t
 | **A. GitHub App** | Register the app: "You can register a GitHub App under your personal account or under any organization you own." ([registering](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app)). Install it on a repository the developer administers, when the app asks for no organization permission and no Repository administration permission. | Installing on the organization; a member who is not an owner can only send the owner a request ([installing a GitHub App](https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party)). | An organization can limit installation to owners and turn the requests off ([limiting access requests and installations](https://docs.github.com/en/organizations/managing-programmatic-access-to-your-organization/limiting-oauth-app-and-github-app-access-requests-and-installations)). An enterprise policy for GitHub Apps: **unchecked**; the enterprise-level policy page was not found (the page tried returned 404), so the answer is Needs probe: ask an enterprise owner or try an install under a restricting policy. | Verified by doc for the three rows above; enterprise: unchecked |
 | **B. Deploy key** | Add a read-only key to a repository, no approval step exists in the docs read. The role needed is not stated on the deploy-keys pages; a summary of the roles table reads "Manage webhooks and deploy keys: Admin only" (not read verbatim: Needs probe). | Not stated. | **Most exposed.** "Organization owners can disable deploy keys entirely across the organization, which disables all existing deploy keys"; "By default, new organizations are configured to disallow the creation of deploy keys in repositories"; "Enterprise owners can enforce a policy to disable deploy keys across all repositories." ([credential types](https://docs.github.com/en/organizations/managing-programmatic-access-to-your-organization/github-credential-types), [restricting deploy keys](https://docs.github.com/en/organizations/managing-organization-settings/restricting-deploy-keys-in-your-organization)). Also, a PAT restriction does not stop SSH ("SSH keys created by personal access tokens will continue to work"). | Verified by doc (role: Needs probe) |
 | **C. Machine account** | A second personal account (allowed: one free machine account per person, [terms of service](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service) B.3). | Putting it on repositories: "By default, anyone with admin access to a repository can invite outside collaborators", but an organization can restrict that to owners only (Enterprise Cloud) ([outside collaborators](https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-outside-collaborators/adding-outside-collaborators-to-repositories-in-your-organization)). Read-only through a role works only in an organization, and the account's own fine-grained token falls under the same approval policy as the PAT row. | The owners-only invitation setting, and the PAT policy above for its token. A company is also likely to refuse a machine account on a corporate organization; that is a policy matter the docs do not state. | Verified by doc; company policy: unchecked |
-| **D. Mirror** | Everything: it uses the credential the person's own secretary already holds; nothing is registered, installed or approved on GitHub. | Nothing. | Nothing on GitHub's side (an organization can still audit or restrict the person's own login, which Paddock already uses). | By design; the mirror itself Needs probe |
+| **D. Mirror** | Everything: it uses the credential the person's own secretary already holds; nothing is registered, installed or approved on GitHub. | Nothing. | Nothing on GitHub's side (an organization can still audit or restrict the person's own login, which Paddock already uses). | By design; the worker-side reads Need probe (D section) |
 
 **What this changes.**
 
@@ -102,25 +119,24 @@ Review point (owner): a developer in a company organization often cannot grant t
 - **A** is discretionary in one useful case: a developer who administers the repository, in an organization that has not limited installation to owners, with a read-only app that needs no organization permission. It is not discretionary when the organization limits installs to owners (a request goes to an owner) or when an enterprise policy forbids it (unchecked). Registering the app is always the developer's own.
 - **B** needs the fewest people when it is allowed, and it is blocked by default in new organizations, with an off switch for owners and the enterprise: it only works where an owner already allowed deploy keys.
 - **C** is no better than the PAT (a token from the second account needs the same approval) and adds an invitation that an organization may restrict.
-- **D** is the only option that no organization setting can stop, at the cost of API reads (CI watching, pull request views).
+- **D** is the only option that no organization setting can stop. Its earlier cost, API reads (CI watching, pull request views), is not a cost in Paddock: the secretary does both (see D).
 
 ## Recommendation
 
-Revised 2026-11-13 after the axis above. The first recommendation (A, with the manual token as fallback) stands for **technical** fit; for **developer discretion** it needs a floor that no organization can remove. So:
+Revised 2026-11-13 after the owner review of D's cost (see D). With the corrected premise, D has no cost that Paddock pays today, and it is the only option with no credential in the worker, no expiry, no key to guard and nothing for an organization to approve or switch off. So:
 
-1. **Primary: A, GitHub App**, built behind the probes below. The worker template reads the app key when it is there and the token file otherwise (so today's setup keeps working).
-2. **Floor: D, mirror**, for a developer whose organization limits installs to owners or has an enterprise policy against them (or if A's probes fail). It gives up API reads, but nothing outside the developer's own account is needed.
-3. **The manual PAT stays only where an owner already approves it** (the owner's own organization, a personal repository). It is no longer the default answer for a company organization.
-4. **B only** when the organization already allows deploy keys and workers do not need the API.
+1. **Primary: D, mirror (the secretary's project clone, fetched at delegate time and on demand)**, if its probes hold. It needs no setup on GitHub, so every developer can finish it alone. It is also the smallest change: the delegate-time fetch exists, and the worker template already leaves push and PR to the secretary.
+2. **Alternative: A, GitHub App**, when a worker role needs API reads (PR comments, run logs) or fetches from GitHub itself. Built behind the probes below. The worker template reads the app key when it is there and the token file otherwise.
+3. **Alternative: B, deploy key**, only when the organization already allows deploy keys and a worker fetches directly.
+4. **The manual PAT stays only where an owner already approves it** (the owner's own organization, a personal repository). It is not the default answer for a company organization.
 
-Probes for A, so the worker template does not change first:
+Probes for D are listed in its section. Probes for A, run only if A is pursued, so the worker template does not change first:
 
 1. A token minted with `contents: write` from a read-only app is refused (the ceiling).
 2. A worker terminal and a Claude child fetch a private repository with the minted token through git's credential helper, and a push fails; `gh run watch` succeeds with Actions read.
 3. A worker running longer than one hour keeps fetching through the helper, and an API read (a pull request view, a run watch) made after the first token's expiry still succeeds, without a relaunch.
+4. In an organization that limits installs to owners, the developer's install request reaches an owner and, until it is approved, the worker keeps its previous credential (record what the person sees). Also ask an enterprise owner, or test under an enterprise policy, whether one can forbid the install (unchecked above).
 
-4. Add for the new axis: in an organization that limits installs to owners, the developer's install request reaches an owner and, until it is approved, the worker keeps its previous credential (record what the person sees). Also ask an enterprise owner, or test under an enterprise policy, whether one can forbid the install (unchecked above).
+If a D probe fails (for example the worker cannot read the shared refs under its sandbox), fall back to A where installs are allowed, or to the manual token where an owner approves it; its cost is the person's time.
 
-If probe 3 fails, or the owner will not keep a private key beside the token file, fall back to the floor (D) or, where an owner approves it, the manual token: its cost is the person's time, and it does not cut the worker's tools.
-
-**Not decided here.** Whether the app's private key may be reachable by the worker (this is what makes the 1-hour expiry workable); the owner decides, together with the Q20 known limit.
+**Not decided here.** The owner decides between D and A. If A is chosen, whether the app's private key may be reachable by the worker (this is what makes the 1-hour expiry workable), together with the Q20 known limit.
