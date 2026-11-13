@@ -134,9 +134,9 @@ if [ "$phase" = prepare ]; then
   # approval card appears. Read it from the process (no hc call); where /proc is not readable, skip.
   corepid=$(pgrep -f '(^|/)herdr-core serve' 2>/dev/null | head -n 1)
   corepath=$(tr '\0' '\n' < "/proc/${corepid:-0}/environ" 2>/dev/null | sed -n 's/^PATH=//p')
-  hcdir=$(dirname "$(command -v hc)")
-  if [ -n "$corepath" ]; then
-    case ":$corepath:" in *":$hcdir:"*) ;; *) die 6 "the core's PATH has no $hcdir, where hc is: its terminals cannot run hc, so no approval card appears. Stop herdr-core, then start herdr again from a login shell that has $hcdir on PATH" ;; esac
+  if [ -n "$corepath" ] && ! PATH=$corepath command -v hc >/dev/null 2>&1; then
+    hcdir=$(dirname "$(command -v hc)")
+    die 6 "hc is not on the core's PATH: its terminals cannot run hc, so no approval card appears. Stop herdr-core, then start herdr again from a login shell that has $hcdir (where hc is) on PATH"
   fi
   # Terminal names first (Issue #287): a stale terminal is named with its program and how to remove it.
   hc ls >/dev/null 2>&1 || die 6 "hc ls failed: the core is not reachable"
