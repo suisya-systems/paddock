@@ -82,6 +82,8 @@ Nothing in the worker authenticates to GitHub. The worker reads from a local cop
 3. The worker's sandbox lets git read the shared object store and refs of the project clone (the worktree's admin folder is writable, the common folder may be read-only); record what a `git rebase` needs to write there.
 4. The stale-base round trip (worker message, secretary fetch, worker rebase) works in the mailbox as the mailbox is used today.
 
+**Probe.** [scripts/probes/worker-mirror.sh](../../scripts/probes/worker-mirror.sh) measures items 1-4 above from a worker started with the worker template's command (token removed, `GH_TOKEN` unset, empty `GH_CONFIG_DIR`) and the worker settings sandbox, against a throw-away project clone. It prints one PASS/FAIL line per item. Not yet run on the host; its stale-base message is a file, not the org mailbox.
+
 Cost left: the worker has no API reads (a pull request's comments, a run's logs), which Paddock's workers do not use today; if a worker role ever needs them, that is the case for A. The secretary's fetch at delegate time stays a dependency: a stale project clone gives a stale base, which `--no-fetch` makes silent.
 
 ### E. Considered and set aside
