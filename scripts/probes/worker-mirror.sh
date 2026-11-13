@@ -135,7 +135,8 @@ read)
   b=$(git for-each-ref refs/remotes | cksum)
   GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git fetch "$(cat "$d/ghurl")" '+refs/heads/*:refs/remotes/p277gh/*' > "$d/ghfetch.out" 2>&1; echo "ghfetch-rc $?"
   [ "$b" = "$(git for-each-ref refs/remotes | cksum)" ] && echo "refs unchanged" || echo "refs CHANGED"
-  if grep -Eqi 'authentication failed|could not read (username|password)|terminal prompts disabled|repository .*not found|invalid (username|credentials)|\b40[134]\b|access denied' "$d/ghfetch.out"; then echo "fetch-error auth"; else echo "fetch-error other: $(head -n 1 "$d/ghfetch.out" | cut -c1-160)"; fi
+  if grep -Eqi 'tunnel failed|proxy|could not resolve|connection (refused|timed out)' "$d/ghfetch.out"; then echo "fetch-error other: network or proxy, not an auth answer: $(head -n 1 "$d/ghfetch.out" | cut -c1-120)"
+  elif grep -Eqi 'authentication failed|could not read (username|password)|terminal prompts disabled|repository .*not found|invalid (username|credentials)|requested URL returned error: 40[134]|access denied' "$d/ghfetch.out"; then echo "fetch-error auth"; else echo "fetch-error other: $(head -n 1 "$d/ghfetch.out" | cut -c1-160)"; fi
   echo "base is stale, need origin/main at or after $E2" > "$d/stale.msg"
   } > "$o" 2>&1
   echo done > "$d/read.rc" ;;
