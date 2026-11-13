@@ -149,7 +149,7 @@ mkdir -p "$workers" || die 6 "cannot create $workers"
 # runs in one repository while another does, so delegates started together take turns here. The lock is
 # the folder <git-common-dir>/paddock-worktree.lock holding the file pid, which the holder creates itself
 # (set -C is O_EXCL; mkdir alone is not trusted, see lock_take in scripts/org). A lock whose pid is dead
-# is broken. ponytail: two waiters can break one dead lock at once; add a guard file if that is seen.
+# is broken under a guard file.
 wtlk=$(git -C "$project" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/paddock-worktree.lock
 wt_lock() {
   local n=0 o
@@ -157,7 +157,14 @@ wt_lock() {
     n=$((n + 1))
     if [ $((n % 20)) -eq 0 ]; then
       o=$(cat "$wtlk/pid" 2>/dev/null)
-      case "$o" in ''|*[!0-9]*) ;; *) kill -0 "$o" 2>/dev/null || { rm -f "$wtlk/pid"; rmdir "$wtlk" 2>/dev/null; } ;; esac
+      case "$o" in ''|*[!0-9]*) ;; *)
+        # Only under the guard file, and only if the pid read there is still the dead one (as lock_take does).
+        if ! kill -0 "$o" 2>/dev/null && ( set -C; echo $$ > "$wtlk.break" ) 2>/dev/null; then
+          [ "$(cat "$wtlk/pid" 2>/dev/null)" = "$o" ] && ! kill -0 "$o" 2>/dev/null \
+            && rm -f "$wtlk/pid" && rmdir "$wtlk" 2>/dev/null
+          rm -f "$wtlk.break"
+        fi ;;
+      esac
       [ "$n" -lt 1200 ] || die 6 "$wtlk is held (pid ${o:-not recorded}); if no org-delegate is running, remove it"
     fi
     sleep 0.05 2>/dev/null || sleep 1
