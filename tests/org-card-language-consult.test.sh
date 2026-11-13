@@ -157,6 +157,8 @@ setdoc '{"approvals":[]}'
 esc lang --lang ja; check "lang --lang ja succeeds" $?
 [ "$(top)" = 'ja []' ]; check "it records conversation_lang and keeps the approvals" $?
 esc lang --lang en; [ "$(top)" = 'en []' ]; check "a second call replaces it" $?
+setdoc 'null'
+esc lang --lang ja; [ "$(top)" = 'ja null' ]; check "it works on a fresh, unwritten org-state (null)" $?
 setdoc '{}'
 esc lang --lang ja; [ "$(top)" = 'ja null' ]; check "it works on an empty object" $?
 setdoc '{"approvals":[{"id":"a-1","task_id":"a","question":"q","lang":"en"}]}'
