@@ -58,7 +58,9 @@ export STUB=$tmp/stub PADDOCK_STATE_DIR=$tmp/state PADDOCK_HC_HOLD=0 PADDOCK_WOR
        PADDOCK_CORE_SOCKET_DIR=$tmp/sock PATH="$stubdir:$PATH"
 unset PADDOCK_ORG_ID PADDOCK_SECRETARY_NAME
 mkdir -p "$STUB"
-add() { bash "$delegate" --project "$proj" --task-id "$1" --title "T $1" --task "do $1" >/dev/null 2>&1; }
+# A failed delegate prints its own message into $tmp/add-<id>.err, so a flaky run says why (Issue #263).
+add() { bash "$delegate" --project "$proj" --task-id "$1" --title "T $1" --task "do $1" >/dev/null 2>"$tmp/add-$1.err" \
+  || echo "delegate $1 failed ($?): $(cat "$tmp/add-$1.err")"; }
 
 # Four tasks that are done; then close them while four new ones are delegated, in two rounds.
 for r in a b; do
@@ -69,8 +71,10 @@ for r in a b; do
   wait $pids
 done
 live=$(cat "$STUB/docval")
-for i in 1 2 3 4; do echo "$live" | grep -q "\"task_id\":\"na$i\"" && echo "$live" | grep -q "\"task_id\":\"nb$i\""; done
-check "the live document holds the eight delegated tasks" $?
+# Every task is checked on its own: a for loop alone keeps only the status of its last iteration (Issue #263).
+for t in na1 na2 na3 na4 nb1 nb2 nb3 nb4; do
+  echo "$live" | grep -q "\"task_id\":\"$t\""; check "the live document holds $t" $?
+done
 ! echo "$live" | grep -q '"task_id":"[ab][1-4]"'; check "the live document holds none of the closed tasks" $?
 
 out=$(bash "$org" --as secretary rebuild --print 2>&1)
