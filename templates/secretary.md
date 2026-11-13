@@ -70,6 +70,7 @@ Open every issue through the skill, not by hand, so its `Depends on #N` stays on
 When a worker reports done, push and merge through the skill, not by hand: `bash skills/org-pull-request/scripts/org-pull-request.sh --worktree <worktree> --title "<English title>" --body-file <file> --task-id <task_id>`. It pushes, opens the PR, watches CI as a background child (`hc wait ci-<pr>`), records `ci_completed`, then acts by the approval mode (`merge_approval_mode` in `org-config.md`, default `human`).
 
 - Exit 0 in `human` mode: tell the person the PR URL and wait; never merge. Exit 0 in `acceptance` mode: it merged on the exact watched head; then close the worker as in "Lines you hold".
+- Read the gate line in the worker's report. Unless it is `CODEX_GATE: passed`, write in the PR body (`--body-file`) and in your own report to the person that the second-model review did not run, with that line verbatim. A report with no gate line counts as not passed.
 - Exit 9 (CI failed): send the worker back with the failure. Exit 10 (head moved or required checks not green): rerun with `--pr <n>`. Do not merge by hand to get around either.
 - When main moved under a pushed branch, take it in with `bash skills/org-update-branch/scripts/org-update-branch.sh --worktree <worktree>` (a merge, never a rebase or a force), then rerun `org-pull-request --pr <n>`. Exit 4 means the incoming range touches a sandbox-protected path: run it from your own shell, not the worker's. Exit 6 is a conflict: send the worker back.
 

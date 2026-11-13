@@ -82,6 +82,23 @@ sha=$(git -C "$wt" rev-parse HEAD) || die 2 "$wt is not a git worktree"
 # 1. push (from the worktree)
 git -C "$wt" push origin "$branch" >&2 || die 5 "git push origin $branch failed"
 
+# 1b. Issue #300: the task's last diff-review record in the codex-gate history. Unless it is
+# codex_round_passed (or there is none), the body itself says the review did not run, so a body
+# file written without that still carries it. Needs --task-id; a design review is not this review.
+if [ -z "$pr" ] && [ -n "$task" ]; then
+  gl=$(cat "${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}"/events/*/codex-gate.jsonl 2>/dev/null \
+    | grep "\"task_id\":\"$task\",\"text\":\"diff round " | grep -E '"kind":"codex_round_(passed|failed)"' | tail -1)
+  case $gl in
+    *'"kind":"codex_round_passed"'*) ;;
+    *)
+      note="Second-model review did not run: no passed diff review is recorded for task $task."
+      [ -z "$gl" ] || note="Second-model review did not run. Gate record: $(printf '%s' "$gl" | sed 's/.*"kind":"\([^"]*\)".*"text":"\(.*\)"}$/\1: \2/')"
+      bf=$(mktemp) || die 6 "cannot make a temporary body file"
+      { if [ -n "$bodyfile" ]; then cat "$bodyfile"; else printf '%s\n' "$body"; fi; printf '\n%s\n' "$note"; } > "$bf"
+      bodyfile=$bf; body= ;;
+  esac
+fi
+
 # 2. PR
 if [ -z "$pr" ]; then
   args=(--repo "$repo" --head "$branch" --base "$base" --title "$title")
