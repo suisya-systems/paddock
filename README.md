@@ -41,6 +41,7 @@ Start with:
 - [Architecture](docs/design/architecture.md): where each part lives, and the rules that hold it together.
 - [Open questions](docs/design/open-questions.md): Q1 to Q20, each with what we know and, for most, the owner's dated decision. Still open: Q15 (which optional predecessor features carry over), and parts of Q3 (who runs the incident check) and Q11 (the predecessor tools other than the merge gate).
 - [Decisions](docs/decisions/): short records of what is settled.
+- [Worker GitHub access](docs/design/worker-github-access.md): options for a read-only worker token without a hand-made PAT, compared against Q20 (not decided).
 - [Predecessor inventory](docs/design/predecessor-inventory.md): each part of claude-org-ja, whether paddock keeps, rewrites or retires it, and what was measured.
 
 ## The screen
