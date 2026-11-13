@@ -12,7 +12,7 @@
 # (PADDOCK_PROBE_WAIT, default 240 s, per wait). Claude Code asks the folder-trust question again for every new
 # worktree; the probe passes it the way org-delegate does (see the launch step).
 #
-# What it touches. Everything lives in one private temp folder (mktemp under $TMPDIR): a bare "upstream"
+# What it touches. Everything lives in one private temp folder (mktemp inside the workers folder, not under $TMPDIR, which the worker sandbox may write): a bare "upstream"
 # repository, a clone of it that plays the secretary's project clone, and a seed clone. It adds one
 # worktree + branch p277-<pid>-<time> in that throw-away clone, under the workers folder, one terminal
 # w-<id> and one temporary template p277-worker (in the core's templates folder). It writes no mailbox
@@ -74,7 +74,9 @@ workers=${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}
 WT=$workers/$ID
 has() { hc ls 2>&1 | grep -Eq "(^|[^A-Za-z0-9_-])$1([^A-Za-z0-9_-]|\$)"; }
 
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/probe277.XXXXXX") || exit 1
+mkdir -p "$workers" || exit 1
+# not under $TMPDIR: the worker sandbox may write there, which would hide a read-only shared .git
+WORK=$(mktemp -d "$workers/.probe277.XXXXXX") || exit 1
 case "$WORK$WT$bd" in *[[:space:]]*) echo "RESULT precondition-failed: paths must not contain whitespace ($WORK $WT $bd)"; exit 1 ;; esac
 OUT=$WORK/out; UP=$WORK/up.git; SEED=$WORK/seed; PROJ=$WORK/proj
 mkdir -p "$OUT" || exit 1
@@ -253,8 +255,9 @@ else res 3 stale-base-round-trip "NO DATA" "no stale message or no rebase result
 if [ -f "$OUT/read.rc" ]; then
   d="tokens=$(g read tokens) ghdir=$(g read ghdir) gh-auth-status-rc=$(g read gh-rc) git-credential=$(g read cred) fetch-rc=$(g read ghfetch-rc) refs=$(g read refs) $(g read fetch-error)"
   ok=
-  [ "$(g read tokens)" = absent ] && [ "$(g read ghdir)" = empty ] && [ "$(g read gh-rc)" != 0 ] && [ "$(g read cred)" = absent ] && [ "$(g read refs)" = unchanged ] && [ "$(g read ghfetch-rc)" != 0 ] && ok=1
-  if [ -z "$ok" ]; then res 4 no-github-credential FAIL "$d"
+  [ "$(g read tokens)" = absent ] && [ "$(g read ghdir)" = empty ] && [ "$(g read gh-rc)" != 0 ] && [ "$(g read gh-rc)" != 127 ] && [ "$(g read cred)" = absent ] && [ "$(g read refs)" = unchanged ] && [ "$(g read ghfetch-rc)" != 0 ] && ok=1
+  if [ "$(g read gh-rc)" = 127 ]; then res 4 no-github-credential INCONCLUSIVE "$d; the CLI is not installed in the worker, so its auth status shows nothing"
+  elif [ -z "$ok" ]; then res 4 no-github-credential FAIL "$d"
   elif [ "$CONTROL" != ok ]; then res 4 no-github-credential INCONCLUSIVE "$d; the runner's own ls-remote of the URL failed, so the URL is not proven readable"
   else case "$(g read fetch-error)" in "other"*) res 4 no-github-credential INCONCLUSIVE "$d; the fetch failed, but not with an auth error (network allowlist?)" ;; *) res 4 no-github-credential PASS "$d" ;; esac; fi
   echo "   GitHub fetch error (first lines): $(head -n 2 "$OUT/ghfetch.out" 2>/dev/null | tr '\n' ' ' | cut -c1-240)"
