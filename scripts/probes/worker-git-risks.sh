@@ -107,7 +107,7 @@ WORK=$(mktemp -d "$workers/.probe277d.XXXXXX") || exit 1
 case "$WORK$bd" in *[[:space:]]*) echo "RESULT precondition-failed: paths must not contain whitespace ($WORK $bd)"; exit 1 ;; esac
 OUT=$WORK/out; mkdir -p "$OUT" || exit 1
 KEEP= TERMS= OWNTPL= CHURN=
-SA=151.$$ SD=317.$$   # the sleeps of the delegate probe's workers A and D
+SA=hold-a SD=hold-d   # delegate probe: worker A and D each run `until [ -f $OUT/hold-x.release ]` (a bare `sleep N` is blocked by the harness)
 . "$(dirname "$0")/claude-link.sh"
 claude_link_save
 cleanup() {
@@ -115,7 +115,7 @@ cleanup() {
   [ -z "$CHURN" ] || kill "$CHURN" 2>/dev/null   # the race probe's background churn loop, also when the run is kept for a person
   if [ -n "$KEEP" ]; then echo "kept for a person: terminals$TERMS, temp folder $WORK, worktrees $workers/$ID*, template $TPL_DIR/$TPL.md"; return; fi
   for n in $TERMS; do hc kill "$n" >/dev/null 2>&1; hc rm "$n" >/dev/null 2>&1; done
-  pkill -f "sleep $SA" 2>/dev/null; pkill -f "sleep $SD" 2>/dev/null   # leftovers of this probe's own delegate workers (the pid in the number makes them unique)
+  : > "$OUT/$SA.release"; : > "$OUT/$SD.release"   # ends the hold loops of this probe's own delegate workers (they poll every 2 s)
   [ -z "$OWNTPL" ] || rm -f "$TPL_DIR/$TPL.md"
   # the worktrees are linked to clones inside $WORK, so removing both leaves nothing behind in any real repository
   for w in "$workers/$ID"*; do [ -e "$w" ] && rm -rf "$w"; done
@@ -203,13 +203,13 @@ If it fails or prints an error, do not retry it another way. Then reply with the
 
 # =========================================================== 2 delegate
 DELE=$ROOT/skills/org-delegate/scripts/org-delegate.sh
-# dele SUFFIX SECONDS-OF-SLEEP|none [org-delegate options...]: runs org-delegate, prints exit and time.
+# dele SUFFIX HOLD-NAME|none [org-delegate options...]: runs org-delegate, prints exit and time.
 cfgw() { e=$(git -C "$PJ" config "$@" 2>&1); r=$?; echo "rc=$r $(printf '%s' "$e" | head -n 1 | cut -c1-140)"; }
 dele() {
   sfx=$1; sl=$2; shift 2; tid=$ID-$sfx; TERMS="$TERMS w-$tid"
   if [ "$sl" = none ]; then task="Probe for paddock Issue #277. A measurement the secretary permits. Run no command at all and change nothing; reply with the single word done."
-  else task="Probe for paddock Issue #277. A measurement the secretary permits; do not decline, do not report. Run exactly ONE Bash call, its timeout set to 600000 ms, with the sandbox ON: sleep $sl
-Do nothing else, then reply with the single word done."; fi
+  else task="Probe for paddock Issue #277. A measurement the secretary permits; do not decline, do not report. Run exactly ONE Bash call, its timeout set to 600000 ms, with the sandbox ON: until [ -f $OUT/$sl.release ]; do sleep 2; done
+Run it exactly as written (a bare sleep is blocked, this loop is not). Do nothing else, then reply with the single word done."; fi
   s0=$(date +%s)
   dout=$(bash "$DELE" --project "$PJ" --task-id "$tid" --task "$task" "$@" 2>&1); drc=$?
   echo "delegate $sfx: exit=$drc after $(( $(date +%s) - s0 )) s; output: $(printf '%s' "$dout" | tr '\n' ' ' | cut -c1-420)"
@@ -218,10 +218,10 @@ facts() { # SUFFIX: what the delegate left
   tid=$ID-$1
   echo "  worktree=$([ -d "$workers/$tid" ] && echo created || echo absent) branch=$(git -C "$PJ" rev-parse --verify -q "work/$tid" >/dev/null && echo yes || echo no) paddockBase=$(git -C "$PJ" config --get "branch.work/$tid.paddockBase" 2>&1 | head -n 1 | cut -c1-60) upstream-merge=$(git -C "$PJ" config --get "branch.work/$tid.merge" 2>&1 | head -n 1 | cut -c1-60) terminal=$(hc get "w-$tid" >/dev/null 2>&1 && echo exists || echo absent)"
 }
-# wait_lock SLEEP: the lock is on the host AND the worker's own uniquely numbered sleep runs (the worker's startup commands make a placeholder too)
+# wait_lock HOLD: the lock is on the host AND the worker's own hold loop (until [ -f ...release ]) runs (the worker's startup commands make a placeholder too)
 # on a timeout, diag NAME prints what is on the host and the worker's screen, so the cause is visible
-diag() { echo "  diag: config.lock $(hostlock "$PJ/.git"); processes matching the sleep: $(pgrep -af "sleep $2" | head -n 3 | tr '\n' '|' | cut -c1-200); screen: $(hc read "$1" 2>&1 | tail -n 8 | tr '\n' '|' | cut -c1-500)"; }
-wait_lock() { t=0; while [ "$t" -lt "$WAIT" ]; do case "$(hostlock "$PJ/.git")" in present*) [ "$(pgrep -f "sleep $1" | wc -l)" -gt 0 ] && return 0 ;; esac; t=$((t + 1)); sleep 1; done; return 1; }
+diag() { echo "  diag: config.lock $(hostlock "$PJ/.git"); processes matching the sleep: $(pgrep -af "$OUT/$2.release" | head -n 3 | tr '\n' '|' | cut -c1-200); screen: $(hc read "$1" 2>&1 | tail -n 8 | tr '\n' '|' | cut -c1-500)"; }
+wait_lock() { t=0; while [ "$t" -lt "$WAIT" ]; do case "$(hostlock "$PJ/.git")" in present*) [ "$(pgrep -f "$OUT/$1.release" | wc -l)" -gt 0 ] && return 0 ;; esac; t=$((t + 1)); sleep 1; done; return 1; }
 sub_delegate() {
   tf=${PADDOCK_WORKER_GH_TOKEN_FILE:-$cfg/paddock/worker-gh-token}
   [ -s "$tf" ] && [ -f "$TPL_DIR/worker.md" ] && [ -f "$bd/worker-rules.md" ] || { echo "RESULT precondition-failed: needs the real worker template ($TPL_DIR/worker.md), $bd/worker-rules.md and a non-empty token file ($tf); the production path starts with them"; exit 1; }
@@ -239,16 +239,17 @@ sub_delegate() {
   if [ "$drc" -ne 0 ]; then
     [ "$drc" -eq 10 ] && dialog_on "w-$ID-a" && need_person "w-$ID-a"
     echo "RESULT 2a-delegate-live-worker: NO DATA (worker A did not start, exit $drc)"
-  elif ! wait_lock $SA; then echo "RESULT 2a-delegate-live-worker: NO DATA (config.lock and A's sleep never ran together within ${WAIT}s)"; diag "w-$ID-a" "$SA"
+  elif ! wait_lock $SA; then echo "RESULT 2a-delegate-live-worker: NO DATA (config.lock and A's hold loop never ran together within ${WAIT}s)"; diag "w-$ID-a" "$SA"
   else
-    echo "  host while A's command runs: config.lock $(hostlock "$PJ/.git"), A's sleep running: $(pgrep -f "sleep $SA" | wc -l)"
+    echo "  host while A's command runs: config.lock $(hostlock "$PJ/.git"), A's hold loop running: $(pgrep -f "$OUT/$SA.release" | wc -l)"
     echo "  direct 'git config' from this shell now: $(cfgw p277.live 1)"; git -C "$PJ" config --unset p277.live >/dev/null 2>&1
     dele b none; echo "  B (default base: fetch, origin/main) $(facts b)"
     dele c none --no-fetch --base main; echo "  C (--no-fetch --base main, local base: no upstream write) $(facts c)"
-    echo "  host after B and C: config.lock $(hostlock "$PJ/.git"), A's sleep still running: $(pgrep -f "sleep $SA" | wc -l) (0 = B and C ran after A's command ended: discard the 2a result)"
+    echo "  host after B and C: config.lock $(hostlock "$PJ/.git"), A's hold loop still running: $(pgrep -f "$OUT/$SA.release" | wc -l) (0 = B and C ran after A's command ended: discard the 2a result)"
     echo "RESULT 2a-delegate-live-worker: DATA (B exit/facts and C exit/facts above; exit 6 + worktree absent = the delegate fails; worktree created + paddockBase empty = line 177 hid a failed write)"
+    : > "$OUT/$SA.release"   # A's command ends now: does its placeholder go away?
     t=0; while [ "$t" -lt "$WAIT" ]; do case "$(hostlock "$PJ/.git")" in absent) break ;; esac; t=$((t + 3)); sleep 3; done
-    echo "RESULT 2a-placeholder-after-clean-exit: DATA (A's sleep and its command ended; B/C may still hold one; after waiting $t s: config.lock $(hostlock "$PJ/.git"))"
+    echo "RESULT 2a-placeholder-after-clean-exit: DATA (A's hold loop and its command ended; B/C may still hold one; after waiting $t s: config.lock $(hostlock "$PJ/.git"))"
   fi
   endterm "w-$ID-b"; endterm "w-$ID-c"; endterm "w-$ID-a"; sleep 3
   case "$(hostlock "$PJ/.git")" in present*) echo "== a lock is still on the host before phase 2 ($(hostlock "$PJ/.git")); removing it so phase 2 starts clean"; rm -f "$PJ/.git/config.lock" ;; esac
@@ -256,15 +257,15 @@ sub_delegate() {
   echo "== 2b stranded config.lock: kill the worker's pane in the middle of its command (hc kill + hc rm, the org-resume / org-down path)"
   dele d $SD || true
   if [ "$drc" -ne 0 ]; then echo "RESULT 2b-stranded-lock: NO DATA (worker D did not start, exit $drc)"
-  elif ! wait_lock $SD; then echo "RESULT 2b-stranded-lock: NO DATA (config.lock and D's sleep never ran together within ${WAIT}s)"; diag "w-$ID-d" "$SD"
+  elif ! wait_lock $SD; then echo "RESULT 2b-stranded-lock: NO DATA (config.lock and D's hold loop never ran together within ${WAIT}s)"; diag "w-$ID-d" "$SD"
   else
-    echo "  before the kill: config.lock $(hostlock "$PJ/.git"); sleep processes: $(pgrep -f "sleep $SD" | wc -l)"
+    echo "  before the kill: config.lock $(hostlock "$PJ/.git"); hold loops: $(pgrep -f "$OUT/$SD.release" | wc -l)"
     hc kill "w-$ID-d" >/dev/null 2>&1; hc rm "w-$ID-d" >/dev/null 2>&1; sleep 3
-    echo "  after the kill: config.lock $(hostlock "$PJ/.git"); sleep processes still alive: $(pgrep -f "sleep $SD" | wc -l)"
+    echo "  after the kill: config.lock $(hostlock "$PJ/.git"); hold loops still alive: $(pgrep -f "$OUT/$SD.release" | wc -l)"
     echo "  'git config' write now: $(cfgw p277.strand 1)"; git -C "$PJ" config --unset p277.strand >/dev/null 2>&1
     dele e none; echo "  E, a new delegate against the stranded lock $(facts e)"
     endterm "w-$ID-e"
-    pkill -f "sleep $SD" 2>/dev/null; sleep 3
+    : > "$OUT/$SD.release"; sleep 4   # the orphaned hold loop (if the kill left it) ends now
     echo "  after the leftover sleep ended too: config.lock $(hostlock "$PJ/.git")"
     if command -v timeout >/dev/null 2>&1; then dd_out=$(cd "$PJ" && timeout 60 claude doctor </dev/null 2>&1); dd_rc=$?; else dd_out=$(cd "$PJ" && claude doctor </dev/null 2>&1); dd_rc=$?; fi
     echo "  claude doctor: exit=$dd_rc, $(printf '%s\n' "$dd_out" | wc -l) lines; lines naming a lock, placeholder or sandbox: $(printf '%s\n' "$dd_out" | grep -iE 'lock|placeholder|sandbox' | head -n 6 | tr '\n' '|' | cut -c1-400)"
