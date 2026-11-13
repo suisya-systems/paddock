@@ -407,9 +407,9 @@ Touches, failed steps and other things noted (none is a `RESULT` FAIL):
 | 3 | 1, 6 | The assistant ran `org-start` and `layout.switch` in a herdr terminal; the owner then looked at the screen and clicked Yes. | Host steps are still run by hand. | none |
 | 4 | 6 | The card's question was cut off: "May the worker add paddock-proto3.txt at the repository root of" ends before the repository's name. The owner first said the card showed without its details. | The card does not show the whole question. | #306 |
 | 5 | 6 | The card was in English (`THE SECRETARY IS ASKING YOU`, `waiting 4m`, `Open the secretary to answer in words`). | Not a defect of this run. | #284 (existing) |
-| 6 | 8 | After the review the worker's first done report was refused: the gate's last line contains the reviewer's name, and a hook refuses that word in Bash commands. The worker sent `run_blocked` (03:28:22) asking whether to spell it differently; the secretary answered without the person (03:28:56) to leave the line out and say so in words, and the worker sent `run_completed` with the gate's result in words. | The hook checks the word in every Bash command, including the report. | proposed: The worker cannot put the gate's last line in its done report, because a hook refuses the reviewer's name in Bash commands |
+| 6 | 8 | After the review the worker's first done report was refused: the gate's last line contains the reviewer's name, and a hook refuses that word in Bash commands. The worker sent `run_blocked` (03:28:22) asking whether to spell it differently; the secretary answered without the person (03:28:56) to leave the line out and say so in words, and the worker sent `run_completed` with the gate's result in words. | The hook checks the word in every Bash command, including the report. | #307 |
 | 7 | 8 | The worker did not run `scripts/acceptance-check.sh`: the sandbox blocks `git worktree add`. The acceptance job ran it in CI. | The script needs a second worktree. | none (the CI job is the gate) |
 
-Proposed new Issue for the secretary to file: row 6.
+Issue for row 6: #307.
 
 Not exercised by this run: a review finding handled by the worker; the gate's rounds beyond round 1; a second approval answered on the screen. G1 (a request alone gets a worker going, approvals on screen, and a PR, with today's main) was met once, in this run.
