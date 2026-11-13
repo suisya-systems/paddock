@@ -65,12 +65,51 @@ async function sendAnswer(on, id, word) {
   if (r.code !== 0) throw new Error(r.stderr.trim() || `org exited with ${r.code}`);
 }
 
-function duration(ms) {
+// The card's own words, by the language code the secretary recorded with the question (Issue #284;
+// `ask --lang`). The secretary's text is already in the person's language; these are the fixed
+// words around it. A code with no table here (or none) shows English.
+const STR = {
+  en: {
+    asking: "THE SECRETARY IS ASKING YOU", background: "BACKGROUND", ifYouAnswer: "IF YOU ANSWER",
+    recommends: "SECRETARY RECOMMENDS", fromSecretary: "FROM THE SECRETARY",
+    yes: "Yes", no: "No", wordCol: 28, recommended: "Recommended",
+    waiting: (d) => `waiting ${d}`, more: (n) => `and ${n} more waiting`,
+    under1m: "<1m", min: (n) => `${n}m`, hour: (n) => `${n}h`, day: (n) => `${n}d`,
+    fields: { background: "background", if_yes: "what Yes does", if_no: "what No does", recommend: "recommendation" },
+    notWritten: (names) => `Not written: ${names.join(", ")}.`, askFirst: " Ask the secretary before answering.",
+    noQuestion: "No question was written. Ask the secretary what it needs.",
+    fallbackQuestion: (id, task) => `Approval ${id || "without an id"} for ${task}`, unnamedTask: "an unnamed task",
+    sending: "Sending…", notSent: "Not sent. Try again.",
+    openSecretary: "Open the secretary to answer in words", secretaryDown: "The secretary is not running",
+    nothingWaiting: "Nothing waiting for you.", nothingElse: "Nothing else waiting for you.",
+    nothingWritten: "The secretary has not written anything yet.", answered: (n) => `+${n} answered`,
+    sent: (word, task, late, d) => `${word} · ${task} · ${late ? `not passed on yet, ${d}` : "passing on"}`,
+  },
+  ja: {
+    asking: "秘書からの確認です", background: "背景", ifYouAnswer: "回答すると",
+    recommends: "秘書のおすすめ", fromSecretary: "秘書から",
+    yes: "はい", no: "いいえ", wordCol: 40, recommended: "おすすめ",
+    waiting: (d) => `${d}待ち`, more: (n) => `ほかに${n}件あります`,
+    under1m: "1分未満", min: (n) => `${n}分`, hour: (n) => `${n}時間`, day: (n) => `${n}日`,
+    fields: { background: "背景", if_yes: "「はい」の結果", if_no: "「いいえ」の結果", recommend: "おすすめ" },
+    notWritten: (names) => `未記入：${names.join("、")}`, askFirst: " 回答の前に秘書へ確認してください。",
+    noQuestion: "質問が書かれていません。内容を秘書に確認してください。",
+    fallbackQuestion: (id, task) => `${task}の承認依頼（${id || "IDなし"}）`, unnamedTask: "名前のないタスク",
+    sending: "送信中…", notSent: "送信できませんでした。もう一度お試しください。",
+    openSecretary: "言葉で答えるには秘書を開く", secretaryDown: "秘書は起動していません",
+    nothingWaiting: "確認待ちはありません。", nothingElse: "ほかに確認待ちはありません。",
+    nothingWritten: "秘書からの書き込みはまだありません。", answered: (n) => `ほか${n}件回答済み`,
+    sent: (word, task, late, d) => `${word} · ${task} · ${late ? `${d}経過、まだ伝わっていません` : "秘書に伝えています"}`,
+  },
+};
+const words = (lang) => STR[String(lang ?? "").slice(0, 2).toLowerCase()] ?? STR.en;
+
+function duration(ms, L = STR.en) {
   const m = Math.floor(ms / 60000);
-  if (!(m >= 1)) return "<1m";
-  if (m < 60) return `${m}m`;
+  if (!(m >= 1)) return L.under1m;
+  if (m < 60) return L.min(m);
   const h = Math.floor(m / 60);
-  return h < 48 ? `${h}h` : `${Math.floor(h / 24)}d`;
+  return h < 48 ? L.hour(h) : L.day(Math.floor(h / 24));
 }
 // Text on a filled state colour: black or white, whichever contrasts more with it (WCAG relative
 // luminance), so a label on the amber or red fill stays readable in light and dark themes alike.
@@ -84,7 +123,7 @@ function ink(hex) {
   const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
   return (l + 0.05) / 0.05 >= 1.05 / (l + 0.05) ? "#000000" : "#ffffff";
 }
-const since = (iso, now) => (iso ? duration(now - Date.parse(iso)) : "");
+const since = (iso, now, L) => (iso ? duration(now - Date.parse(iso), L) : "");
 
 // The last meaningful lines of a screen. Claude Code draws an input box and footer hints at the
 // bottom; they say nothing about the work, so lines of box drawing, the `>` prompt row and the
@@ -304,7 +343,7 @@ export default class Cockpit extends View {
   }
 
   // The amber fill follows the secretary's recommendation; with none, both answers are outlined.
-  choice(t, a, word, label, primary) {
+  choice(t, a, word, label, primary, L) {
     const s = this.sent.get(a.id);
     const busy = s?.state === "sending";
     const mine = busy && s.word === word;
@@ -316,19 +355,19 @@ export default class Cockpit extends View {
       .when(busy, (el) => el.opacity(mine ? 0.6 : 0.35))
       .when(!busy, (el) => el.cursor_pointer().hover((st) => st.bg(primary ? c + "d9" : t.hover)))
       .on_click(() => this.answer(a, word))
-      .child(mine ? "Sending…" : label)
-      .when(primary && !mine, (el) => el.child(div().text_size(12).font_medium().child("Recommended")));
+      .child(mine ? L.sending : label)
+      .when(primary && !mine, (el) => el.child(div().text_size(12).font_medium().child(L.recommended)));
   }
 
 
   // Answering in words goes to the secretary, never to a worker's terminal.
-  secretaryLink(t) {
+  secretaryLink(t, L) {
     const sec = this.secretary();
     return div().id("open-secretary").truncate().text_size(12)
       .when(Boolean(sec), (el) => el.text_color(t.muted).cursor_pointer().hover((s) => s.text_color(t.foreground))
         .on_click(() => run("pane.focus", { terminal: sec.address })))
       .when(!sec, (el) => el.text_color(t.muted))
-      .child(sec ? "Open the secretary to answer in words" : "The secretary is not running");
+      .child(sec ? L.openSecretary : L.secretaryDown);
   }
 
   // Every approval is answered through the secretary (architecture 7.1, Issue #260): Yes / No to
@@ -340,26 +379,28 @@ export default class Cockpit extends View {
     const failed = this.sent.get(a.id)?.state === "failed";
     // An approval without an id cannot be answered here (the secretary matches answers by id).
     const answerable = typeof a.id === "string" && a.id !== "";
-    const task = a.task_id || "an unnamed task";
+    const L = words(a.lang);
+    const task = a.task_id || L.unnamedTask;
     // A malformed entry still says which approval it is, so the person can ask about it.
-    const question = a.question || `Approval ${a.id || "without an id"} for ${task}`;
-    const note = !a.question ? "No question was written. Ask the secretary what it needs." : null;
-    const waited = since(a.asked_at, now);
+    const question = a.question || L.fallbackQuestion(a.id, task);
+    const note = !a.question ? L.noQuestion : null;
+    const waited = since(a.asked_at, now, L);
     // The secretary removes an answered approval; until it does, the card says it may be answered.
-    const meta = [title && title !== task && task, waited && `waiting ${waited}`]
+    const meta = [title && title !== task && task, waited && L.waiting(waited)]
       .filter(Boolean).join(" · ");
-    const label = "THE SECRETARY IS ASKING YOU";
+    const label = L.asking;
     const rec = a.recommend === "yes" || a.recommend === "no" ? a.recommend : null;
-    const missing = [!a.background && "background", !a.if_yes && "what Yes does", !a.if_no && "what No does", !rec && "recommendation"].filter(Boolean);
+    const missing = [!a.background && "background", !a.if_yes && "if_yes", !a.if_no && "if_no", !rec && "recommend"].filter(Boolean);
     // A field the secretary left out is named where it would be; with nothing written, one line.
     const none = missing.length === 4;
+    const en = L === STR.en;
     const gone = (names) => names.length > 0 && !none;
     const unwritten = (names) => div().text_size(12).line_height(1.4).text_color(t.foreground).whitespace_normal()
-      .child(`Not written: ${names.join(", ")}.` + (none && a.question ? " Ask the secretary before answering." : ""));
-    const outs = missing.filter((m) => m.startsWith("what"));
+      .child(L.notWritten(names.map((n) => L.fields[n])) + (en ? "." : "") + (none && a.question ? L.askFirst : ""));
+    const outs = missing.filter((m) => m.startsWith("if_"));
     const text = (s, color) => div().text_size(13).line_height(1.45).text_color(color).whitespace_normal().child(s);
     const outcome = (word, s) => h_flex().gap(8).items_start()
-      .child(div().w(28).flex_none().text_size(13).font_semibold().line_height(1.45).text_color(t.foreground).child(word))
+      .child(div().w(L.wordCol).flex_none().text_size(13).font_semibold().line_height(1.45).text_color(t.foreground).child(word))
       .child(text(s, t.foreground).flex_1().min_w(0));
     // Two parts of one card: the text (head), which renderApproval puts in the rail's scroll area,
     // and the controls (foot), pinned below it. A scroll area nested in auto-height columns is
@@ -378,48 +419,51 @@ export default class Cockpit extends View {
             .child(div().text_size(15).font_semibold().line_height(1.35).text_color(a.question ? t.foreground : t.muted).whitespace_normal().child(question))
             .when(Boolean(note), (el) => el.child(div().text_size(12).line_height(1.4).text_color(t.foreground).whitespace_normal().child(note))))
           .when(Boolean(a.background), (el) => el.child(v_flex().gap(4)
-            .child(this.label(t, "BACKGROUND", t.muted))
+            .child(this.label(t, L.background, t.muted))
             .child(text(a.background, t.foreground))))
           .when(gone(a.background ? [] : ["background"]), (el) => el.child(unwritten(["background"])))
           .when(Boolean(a.if_yes || a.if_no), (el) => el.child(v_flex().gap(6)
-            .child(this.label(t, "IF YOU ANSWER", t.muted))
-            .when(Boolean(a.if_yes), (e) => e.child(outcome("Yes", a.if_yes)))
-            .when(Boolean(a.if_no), (e) => e.child(outcome("No", a.if_no)))
+            .child(this.label(t, L.ifYouAnswer, t.muted))
+            .when(Boolean(a.if_yes), (e) => e.child(outcome(L.yes, a.if_yes)))
+            .when(Boolean(a.if_no), (e) => e.child(outcome(L.no, a.if_no)))
             .when(gone(outs), (e) => e.child(unwritten(outs)))))
           .when(!a.if_yes && !a.if_no && gone(outs), (el) => el.child(unwritten(outs)))
           .when(Boolean(rec || a.why), (el) => el.child(v_flex().rounded(8).bg(t.background).px(12).py(10).gap(6)
             .child(h_flex().gap(8).items_center()
-              .child(this.label(t, rec ? "SECRETARY RECOMMENDS" : "FROM THE SECRETARY", t.muted))
+              .child(this.label(t, rec ? L.recommends : L.fromSecretary, t.muted))
               .when(Boolean(rec), (e) => e.child(div().flex_none().px(6).h(18).rounded(5).bg(c).flex().items_center()
-                .text_size(12).font_semibold().text_color(ink(c)).child(rec === "yes" ? "Yes" : "No"))))
+                .text_size(12).font_semibold().text_color(ink(c)).child(rec === "yes" ? L.yes : L.no))))
             .when(Boolean(a.why), (e) => e.child(text(a.why, t.foreground)))))
-          .when(gone(rec ? [] : ["recommendation"]), (el) => el.child(unwritten(["recommendation"])))
+          .when(gone(rec ? [] : ["recommendation"]), (el) => el.child(unwritten(["recommend"])))
           .when(none, (el) => el.child(unwritten(missing))));
     const foot = v_flex().flex_none().gap(8)
       .child(v_flex().rounded_b(12).bg(t.raised).border_b(1).border_x(1).border_color(edge)
         .child(div().mx(16).h(1).bg(t.foreground + "14"))
         .child(v_flex().px(16).py(12).gap(10)
-          .when(failed, (el) => el.child(div().text_size(12).text_color(c).child("Not sent. Try again.")))
+          .when(failed, (el) => el.child(div().text_size(12).text_color(c).child(L.notSent)))
           .when(answerable, (el) => el.child(h_flex().gap(8)
-            .child(this.choice(t, a, "yes", "Yes", rec === "yes"))
-            .child(this.choice(t, a, "no", "No", rec === "no"))))
-          .child(this.secretaryLink(t))))
-      .when(more > 0, (el) => el.child(div().px(4).text_size(12).text_color(t.muted).child(`and ${more} more waiting`)));
+            .child(this.choice(t, a, "yes", L.yes, rec === "yes", L))
+            .child(this.choice(t, a, "no", L.no, rec === "no", L))))
+          .child(this.secretaryLink(t, L))))
+      .when(more > 0, (el) => el.child(div().px(4).text_size(12).text_color(t.muted).child(L.more(more))));
     return { head, foot };
   }
 
   // A sent answer, quiet, until the secretary removes the approval; loud again after 2 minutes.
   sentRow(t, a, s, now) {
     const late = now - s.at > 120000;
-    const text = `${s.word === "yes" ? "Yes" : "No"} · ${a.task_id} · ${late ? `not passed on yet, ${duration(now - s.at)}` : "passing on"}`;
+    const L = words(a.lang);
+    const text = L.sent(s.word === "yes" ? L.yes : L.no, a.task_id, late, duration(now - s.at, L));
     return div().px(4).truncate().text_size(11).text_color(late ? t.blocked : t.muted).child(text);
   }
 
   renderApproval(t) {
     let body;
+    // The quiet lines have no entry of their own: they speak the language of the oldest approval.
+    const L = words((this.value()?.approvals ?? [])[0]?.lang);
     if (this.error) body = this.problem(t);
     else if (!this.doc) body = div();
-    else if (!this.value()) body = this.quiet(t, "The secretary has not written anything yet.");
+    else if (!this.value()) body = this.quiet(t, L.nothingWritten);
     else {
       // Oldest first: the one that has waited longest is answered first. The loud card is the
       // oldest not yet answered here, so a queue can be answered one click after another.
@@ -436,8 +480,8 @@ export default class Cockpit extends View {
         .child(v_flex().id("approval-scroll").flex_1().min_h(0).gap(8).overflow_y_scrollbar()
           .child(div().flex_1())
           .children(sent.slice(0, 2).map((a) => this.sentRow(t, a, this.sent.get(a.id), now).flex_none()))
-          .when(sent.length > 2, (el) => el.child(div().flex_none().px(4).text_size(11).text_color(t.muted).child(`+${sent.length - 2} answered`)))
-          .child(card ? card.head : this.quiet(t, sent.length ? "Nothing else waiting for you." : "Nothing waiting for you.").flex_none()))
+          .when(sent.length > 2, (el) => el.child(div().flex_none().px(4).text_size(11).text_color(t.muted).child(L.answered(sent.length - 2))))
+          .child(card ? card.head : this.quiet(t, sent.length ? L.nothingElse : L.nothingWaiting).flex_none()))
         .when(Boolean(card), (el) => el.child(card.foot));
     }
     return v_flex().size_full().min_h(0).justify_end().pb(4).child(body);
