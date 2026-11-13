@@ -348,3 +348,68 @@ Touches, failed steps and other things the operator noted (rows 1 and 2 are touc
 Issues for these stops: #298 (the review gate says the CLI is not installed although the host has it) and #299 (untracked files in the worker's worktree); row 1 is #264. Row 9 is a proposed new Issue for the secretary to file.
 
 Not exercised by this run: a person's click on the card and a person looking at the layout (the pass line's own wording); the gate's rounds beyond round 1; a review finding handled by the worker. Run 5 is to be repeated with the owner present once #298 is fixed. #243 stays open.
+
+### Run 6
+
+Run 2026-11-13 (UTC) on `main` at `0128ae2` (after #298 to #304), task `p3-202611130306`, the same throwaway repository. Versions: hc 0.1.18, herdr-app 0.1.15, Claude Code 2.1.323, codex-cli 0.157.0, gh 2.96.0. The owner was present. **The owner stopped the run at 03:17:37 because no card appeared**: the WORKERS pane showed `hc unreachable`. G1 is not met by this run. The record comes from `evidence/summary.txt` and `notes.tsv` of the run folder.
+
+What held (every `RESULT` line up to step 5 is PASS): `preconditions`, `notes-off`, `worker-token`, `project-trust`, `codex-cli`, `1-secretary`, `1-placed-files` (8 files), `2-request`, `3-own-settings`, `3-worktree`, `4-work-entry`, `4-worker`, `4-worker-report`, `5-blocked`, `5-approval` (`p3-202611130306-20261113T030738Z`). Not reached: `6-*` to `10-no-touch`. No pull request.
+
+Times (UTC; the request was sent at 03:06:46):
+
+| What | When | Delay |
+| --- | --- | --- |
+| `run_started` by the secretary, `work_added` | 03:07:01, 03:07:03 | 15 s, 17 s |
+| `run_started` by the worker (`4-worker`) | 03:07:12 | 26 s |
+| `run_blocked` | 03:07:28 | 16 s after `run_started` |
+| `approval_asked` (the approval is in the org state) | 03:07:39 | 11 s after `run_blocked` |
+| Stopped by the owner, no card on screen | 03:17:37 | 9 min 58 s after `approval_asked` |
+
+**What stopped it.** The approval was asked and sits in the org state, but the cockpit did not show it: the WORKERS pane said `hc unreachable`. The secretary also had no `hc` on its `PATH` (it added `~/.local/bin` itself) and its `UserPromptSubmit` hook failed with exit 127. The core had been started without `~/.local/bin` on its `PATH`.
+
+| # | Step | What happened | Cause | Issue |
+| --- | --- | --- | --- | --- |
+| 1 | 0 | Touch: `notes = false` was written to the core's `config.toml` by the operator's assistant before `prepare` (removed at cleanup). | `prepare` only reports it; nothing sets it. | #264 (existing) |
+| 2 | 1, 6 | The assistant ran `org-start` and `layout.switch` in a herdr terminal; the owner was present and looked at the screen. | Host steps are still run by hand. | none |
+| 3 | 5, 6 | Stop: no card (`hc unreachable` in the WORKERS pane); the secretary had no `hc` on its `PATH` and its hook failed with exit 127. | The core ran without `~/.local/bin` on its `PATH`. | #305 |
+
+### Run 7
+
+Run 2026-11-13 (UTC) on `main` at `0128ae2`, task `p3-202611130320`, the same throwaway repository, started about 3 minutes after Run 6 was stopped. Versions: hc 0.1.18, herdr-app 0.1.15, Claude Code 2.1.323, codex-cli 0.157.0, gh 2.96.0. The owner was present and restarted the core from a login shell (`hc server restart`) after Run 6. **G1 is met**: a request alone got a worker going, the approval showed on the screen and the owner answered it with a click, the worker finished with an acceptance test and a second-model review through the gate that passed (after #298), and the pull request passed the acceptance job. Pull request: PR #5 in the throwaway repository (`acceptance`: the test fails at the test commit and passes at head; `ACCEPTANCE: pass`). The record comes from `evidence/summary.txt`, `notes.tsv` and `watch-summary.txt` of the run folder.
+
+`RESULT` lines: every step is PASS: `preconditions`, `notes-off`, `worker-token`, `project-trust`, `codex-cli`, `1-secretary`, `1-placed-files` (8 files), `2-request`, `3-own-settings`, `3-worktree`, `4-work-entry`, `4-worker`, `4-worker-report`, `5-blocked`, `5-approval`, `6-card-answer`, `7-secretary-read`, `7-forwarded`, `7-approval-removed`, `8-test-commit` (`6a98c70`, declares `tests/paddock-proto3.test.sh` and changes only it), `8-review` (`codex_round_passed`, diff round 1 of 3), `8-done`, `8-secretary-read`, `9-pull-request`, `9-ci-record` (run exit 0), `9-acceptance`, and `10-no-touch` (no touch noted, no prompt seen). The branch has two commits: the test alone (with the `Acceptance-Test` trailer) and then `paddock-proto3.txt`.
+
+Times (UTC; the request was sent at 03:20:51):
+
+| What | When | Delay |
+| --- | --- | --- |
+| `run_started` by the secretary, `work_added` | 03:20:59, 03:21:02 | 8 s, 11 s |
+| `run_started` by the worker (`4-worker`) | 03:21:09 | 18 s |
+| `run_blocked` | 03:21:18 | 9 s after `run_started` |
+| `approval_asked` (the card) | 03:21:31 | 13 s after `run_blocked` |
+| Card first noted by the owner | 03:25:13 | 3 min 42 s after the card |
+| `ANSWER yes` in the person's file (the click) | 03:27:31 | 6 min 0 s after the card |
+| Secretary's `ack`, answer forwarded, `approval_removed` | 03:27:37, 03:27:42, 03:27:42 | 6 s, 5 s |
+| Worker's `ack` of the answer | 03:27:46 | 4 s after the forward |
+| `codex_round_started`, `codex_round_passed` | 03:27:50, 03:28:10 | the review took 20 s |
+| `run_completed` by the worker | 03:29:04 | 1 min 22 s after the forward (the review's share is 20 s) |
+| Pull request created | 03:29:21 | 17 s after `run_completed` |
+| `ci_completed` (exit 0) | 03:29:36 | 15 s after the pull request |
+
+Request to pull request: 8 min 30 s, of which the 6 minutes between the card and the click are the owner's. Run 6's stop did not repeat once the core was restarted (#305); Run 5's stop did not repeat either: the gate found `codex` (#298) and the review ran.
+
+Touches, failed steps and other things noted (none is a `RESULT` FAIL):
+
+| # | Step | What happened | Cause | Issue |
+| --- | --- | --- | --- | --- |
+| 1 | 0 | `notes = false` was written to the core's `config.toml` by the operator's assistant before `prepare`. | `prepare` only reports it; nothing sets it. | #264 (existing) |
+| 2 | 0 | The owner restarted the core from a login shell (`hc server restart`). | Run 6's core had no `~/.local/bin` on its `PATH`. | #305 |
+| 3 | 1, 6 | The assistant ran `org-start` and `layout.switch` in a herdr terminal; the owner then looked at the screen and clicked Yes. | Host steps are still run by hand. | none |
+| 4 | 6 | The card's question was cut off: "May the worker add paddock-proto3.txt at the repository root of" ends before the repository's name. The owner first said the card showed without its details. | The card does not show the whole question. | #306 |
+| 5 | 6 | The card was in English (`THE SECRETARY IS ASKING YOU`, `waiting 4m`, `Open the secretary to answer in words`). | Not a defect of this run. | #284 (existing) |
+| 6 | 8 | After the review the worker's first done report was refused: the gate's last line contains the reviewer's name, and a hook refuses that word in Bash commands. The worker sent `run_blocked` (03:28:22) asking whether to spell it differently; the secretary answered without the person (03:28:56) to leave the line out and say so in words, and the worker sent `run_completed` with the gate's result in words. | The hook checks the word in every Bash command, including the report. | proposed: The worker cannot put the gate's last line in its done report, because a hook refuses the reviewer's name in Bash commands |
+| 7 | 8 | The worker did not run `scripts/acceptance-check.sh`: the sandbox blocks `git worktree add`. The acceptance job ran it in CI. | The script needs a second worktree. | none (the CI job is the gate) |
+
+Proposed new Issue for the secretary to file: row 6.
+
+Not exercised by this run: a review finding handled by the worker; the gate's rounds beyond round 1; a second approval answered on the screen. G1 (a request alone gets a worker going, approvals on screen, and a PR, with today's main) was met once, in this run.
