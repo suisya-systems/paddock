@@ -105,12 +105,13 @@ mkdir -p "$workers" || exit 1
 WORK=$(mktemp -d "$workers/.probe277d.XXXXXX") || exit 1
 case "$WORK$bd" in *[[:space:]]*) echo "RESULT precondition-failed: paths must not contain whitespace ($WORK $bd)"; exit 1 ;; esac
 OUT=$WORK/out; mkdir -p "$OUT" || exit 1
-KEEP= TERMS= OWNTPL=
+KEEP= TERMS= OWNTPL= CHURN=
 SA=151.$$ SD=317.$$   # the sleeps of the delegate probe's workers A and D
 . "$(dirname "$0")/claude-link.sh"
 claude_link_save
 cleanup() {
   claude_link_restore
+  [ -z "$CHURN" ] || kill "$CHURN" 2>/dev/null   # the race probe's background churn loop, also when the run is kept for a person
   if [ -n "$KEEP" ]; then echo "kept for a person: terminals$TERMS, temp folder $WORK, worktrees $workers/$ID*, template $TPL_DIR/$TPL.md"; return; fi
   for n in $TERMS; do hc kill "$n" >/dev/null 2>&1; hc rm "$n" >/dev/null 2>&1; done
   pkill -f "sleep $SA\$" 2>/dev/null; pkill -f "sleep $SD\$" 2>/dev/null   # leftovers of this probe's own delegate workers (the pid in the number makes them unique)
@@ -120,7 +121,7 @@ cleanup() {
   rm -f "$state/settings/$ID"*.json 2>/dev/null
   rm -rf "$WORK"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT; trap 'exit 130' INT TERM
 export GIT_AUTHOR_NAME=p277 GIT_AUTHOR_EMAIL=p277@example.invalid GIT_COMMITTER_NAME=p277 GIT_COMMITTER_EMAIL=p277@example.invalid
 echo "== versions"; git --version; hc --version 2>&1; claude --version 2>&1
 echo "== subcommand $SUB, id $ID"
@@ -286,6 +287,7 @@ If a call fails or prints an error, do NOT retry it: go straight on to the next 
       sleep 0.2
     done
     echo "churn cycles=$i config-writes-ok=$ok config-writes-failed=$bad fetch-failed=$ferr" > "$OUT/churn.res" ) &
+  CHURN=$!
   t=0; last=0; idle=0   # ends at number N, at RW s, or when no new number appears for 150 s after the first
   while [ "$t" -lt "$RW" ]; do
     [ -f "$OUT/n$N.txt" ] && break
@@ -295,7 +297,7 @@ If a call fails or prints an error, do NOT retry it: go straight on to the next 
     [ "$last" -gt 0 ] && [ "$idle" -ge 150 ] && break
     t=$((t + 3)); sleep 3
   done
-  : > "$OUT/churn.stop"; sleep 1; wait
+  : > "$OUT/churn.stop"; sleep 1; wait "$CHURN"; CHURN=
   ran=$(ls "$OUT"/n[0-9]*.txt 2>/dev/null | wc -l); tj=$(transcripts "$ID"); att=; errs=; bw=
   if [ -n "$tj" ]; then
     att=$(cat $tj | grep -E '"type": ?"tool_use"' | grep -E '"name": ?"Bash"' | grep -o 'w\.sh n [0-9]*' | sort -u | wc -l)   # Bash tool calls only: the prompt text lists all of them
