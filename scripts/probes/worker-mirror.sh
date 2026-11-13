@@ -9,7 +9,9 @@
 # https://github.com/OWNER/REPO.git. It is only fetched from (never pushed to), by the runner as a control
 # and by the worker as the "must fail" case. Needs: hc, git, claude, POSIX sh, cksum; the workers folder
 # (PADDOCK_WORKERS_DIR, default ~/paddock-workers) already trusted by Claude Code. Takes 3-6 minutes
-# (PADDOCK_PROBE_WAIT, default 240 s, per wait).
+# (PADDOCK_PROBE_WAIT, default 240 s, per wait). Claude Code asks the folder-trust question again for every new
+# worktree; PADDOCK_PROBE_ANSWER_TRUST=1 lets the probe answer it (Enter on 'Yes, I trust this folder', only after
+# reading the screen); without it the probe stops with NEEDS-PERSON.
 #
 # What it touches. Everything lives in one private temp folder (mktemp under $TMPDIR): a bare "upstream"
 # repository, a clone of it that plays the secretary's project clone, and a seed clone. It adds one
@@ -77,7 +79,7 @@ WORK=$(mktemp -d "${TMPDIR:-/tmp}/probe277.XXXXXX") || exit 1
 case "$WORK$WT$bd" in *[[:space:]]*) echo "RESULT precondition-failed: paths must not contain whitespace ($WORK $WT $bd)"; exit 1 ;; esac
 OUT=$WORK/out; UP=$WORK/up.git; SEED=$WORK/seed; PROJ=$WORK/proj
 mkdir -p "$OUT" || exit 1
-KEEP= OWNTERM= OWNTPL=
+KEEP= OWNTERM= OWNTPL= ANSWERED=
 . "$(dirname "$0")/claude-link.sh"
 claude_link_save
 cleanup() {
@@ -188,14 +190,29 @@ else
   (run_phases_local >/dev/null 2>&1 &)  # dry run: the phases run in the background; "go2" is touched below like in the real run
 fi
 
-# poll helper: wait for $OUT/$1 up to WAIT s; stops on a dialog the probe will not answer.
+# trust_answer: with PADDOCK_PROBE_ANSWER_TRUST=1, answer Claude Code's folder-trust dialog (it asks again for each new
+# worktree, a trusted parent folder does not carry over). Keys follow the screen: only a read showing the "No, exit" and
+# "Yes, I trust this folder" options, and Enter only with the cursor on the "Yes" line (one Down at most). 0 = answered.
+trust_answer() {
+  [ "${PADDOCK_PROBE_ANSWER_TRUST:-}" = 1 ] || return 1
+  n=0
+  while :; do
+    s=$(hc read $NAME 2>/dev/null) || return 1
+    printf '%s\n' "$s" | grep -Eq '^ *(❯ *)?([0-9]\. *)?No, exit *$' && printf '%s\n' "$s" | grep -Eq '^ *(❯ *)?([0-9]\. *)?Yes, I trust this folder *$' || return 1
+    if printf '%s\n' "$s" | grep -Eq '^ *❯ *([0-9]\. *)?Yes, I trust this folder *$'; then hc keys $NAME enter >/dev/null 2>&1 && echo "-- answered the folder-trust dialog in $NAME: Enter on 'Yes, I trust this folder'" && return 0; return 1; fi
+    [ "$n" -lt 1 ] || return 1
+    hc keys $NAME down >/dev/null 2>&1; sleep 1; n=$((n + 1))
+  done
+}
+# poll helper: wait for $OUT/$1 up to WAIT s; stops on a dialog the probe cannot answer.
 waitfor() {
   t=0
   while [ "$t" -lt "$WAIT" ]; do
     [ -f "$OUT/$1" ] && return 0
     if [ -z "$NOW" ]; then
       case "$(hc read $NAME 2>/dev/null)" in *"Quick safety check"*|*"trust this folder"*)
-        echo "NEEDS-PERSON: folder-trust dialog in $NAME; trust $workers, answer it, and rerun"; KEEP=1; exit 1 ;; esac
+        if [ -z "$ANSWERED" ] && trust_answer; then ANSWERED=1
+        elif [ -z "$ANSWERED" ]; then echo "NEEDS-PERSON: folder-trust dialog in $NAME; answer it (or set PADDOCK_PROBE_ANSWER_TRUST=1), and rerun"; KEEP=1; exit 1; fi ;; esac
     fi
     t=$((t + 3)); sleep 3
   done
