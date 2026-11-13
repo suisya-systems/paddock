@@ -413,3 +413,43 @@ Touches, failed steps and other things noted (none is a `RESULT` FAIL):
 Issue for row 6: #307.
 
 Not exercised by this run: a review finding handled by the worker; the gate's rounds beyond round 1; a second approval answered on the screen. G1 (a request alone gets a worker going, approvals on screen, and a PR, with today's main) was met once, in this run.
+
+### Run 8
+
+Run 2026-11-13 (UTC) on `main` at `835dd1c` (after #309 to #312), task `p3-202611130648`, the same throwaway repository. Versions: hc 0.1.18, herdr-app 0.1.15, Claude Code 2.1.323, codex-cli 0.157.0, gh 2.96.0. The owner was present and clicked. **G1 is met again, with no stop**: every `RESULT` line is PASS. The run was made to check #306 (the whole question on the card) and #284 (the card's language) on today's `main`. For it `conversation_language` was set to `ja` (it was `auto`) and put back to `auto` at cleanup; the runbook's request is in English, so this is how the card's language could be checked. Pull request: PR #6 in the throwaway repository (`acceptance`: `ACCEPTANCE: pass`). The record comes from `evidence/summary.txt`, `notes.tsv` and `watch-summary.txt` of the run folder.
+
+`RESULT` lines: every step is PASS: `preconditions`, `notes-off`, `worker-token`, `project-trust`, `codex-cli`, `1-secretary`, `1-placed-files` (8 files), `2-request`, `3-own-settings`, `3-worktree`, `4-work-entry`, `4-worker`, `4-worker-report`, `5-blocked`, `5-approval`, `6-card-answer`, `7-secretary-read`, `7-forwarded`, `7-approval-removed`, `8-test-commit` (`cf393fa`, declares `tests/paddock-proto3.test.sh` and changes only it), `8-review` (`codex_round_passed`, diff round 1 of 3), `8-done`, `8-secretary-read`, `9-pull-request`, `9-ci-record` (run exit 0), `9-acceptance`, and `10-no-touch` (no touch noted, no prompt seen). The branch has two commits: the test alone (with the `Acceptance-Test` trailer) and then `paddock-proto3.txt` (`191d0fe`).
+
+Times (UTC; the request was sent at 06:48:30):
+
+| What | When | Delay |
+| --- | --- | --- |
+| `run_started` by the secretary, `work_added` | 06:48:39, 06:48:42 | 9 s, 12 s |
+| `run_started` by the worker (`4-worker`) | 06:48:54 | 24 s |
+| `run_blocked` | 06:49:05 | 11 s after `run_started` |
+| `approval_asked` (the card) | 06:49:17 | 12 s after `run_blocked` |
+| Card first noted by the owner | 06:51:28 | 2 min 11 s after the card |
+| `ANSWER yes` in the person's file (the click) | 06:52:48 | 3 min 31 s after the card |
+| Secretary's `ack`, answer forwarded, `approval_removed` | 06:52:52, 06:52:57, 06:52:57 | 4 s, 9 s |
+| Worker's `ack` of the answer | 06:53:01 | 4 s after the forward |
+| `codex_round_started`, `codex_round_passed` | 06:53:07, 06:53:34 | the review took 27 s |
+| `run_completed` by the worker | 06:53:39 | 42 s after the forward (the review's share is 27 s) |
+| Pull request created | 06:53:55 | 16 s after `run_completed` |
+| `ci_completed` (exit 0) | 06:54:09 | 14 s after the pull request |
+
+Request to pull request: 5 min 25 s, of which the 3 min 31 s between the card and the click are the owner's.
+
+What the owner saw on the card: the question in Japanese and whole ("paddock-proto3.txt をリポジトリ直下に追加してよいですか？"), so #306 (the whole question) and #284 (the person's language, for the content) held. The card's own words stayed English (`THE SECRETARY IS ASKING YOU`, `waiting 1m`, `Yes` / `No`, `Open the secretary to answer in words`). The owner said the English title is acceptable and that what matters is that the content is in Japanese.
+
+Touches, failed steps and other things noted (none is a `RESULT` FAIL):
+
+| # | Step | What happened | Cause | Issue |
+| --- | --- | --- | --- | --- |
+| 1 | 0 | `notes = false` was written to the core's `config.toml`, and `conversation_language` was set to `ja`, by the operator's assistant before `prepare` (both put back at cleanup). | `prepare` only reports `notes`; nothing sets either. | #264 (existing) |
+| 2 | 1, 6 | The assistant ran `org-start` and `layout.switch` in a herdr terminal; the owner then looked at the screen and clicked Yes. | Host steps are still run by hand. | none |
+| 3 | 6 | The card's own words are English while the question is in Japanese. | The labels are not translated; the owner accepts this. | none (accepted) |
+| 4 | 8 | The worker did not run `scripts/acceptance-check.sh`: the sandbox blocks `git worktree add`, and the worker said so in its `run_completed` text. The acceptance job ran it in CI. | The script needs a second worktree. | none (the CI job is the gate) |
+
+Run 7's rows 4 and 6 (#306, #307) did not repeat: the question was whole, and the worker's done report was not refused (it quotes the gate's last line).
+
+Not exercised by this run: a review finding handled by the worker; the gate's rounds beyond round 1; a second approval answered on the screen. #243 was closed after Run 7.
