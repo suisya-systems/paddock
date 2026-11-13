@@ -217,7 +217,8 @@ facts() { # SUFFIX: what the delegate left
   tid=$ID-$1
   echo "  worktree=$([ -d "$workers/$tid" ] && echo created || echo absent) branch=$(git -C "$PJ" rev-parse --verify -q "work/$tid" >/dev/null && echo yes || echo no) paddockBase=$(git -C "$PJ" config --get "branch.work/$tid.paddockBase" 2>&1 | head -n 1 | cut -c1-60) upstream-merge=$(git -C "$PJ" config --get "branch.work/$tid.merge" 2>&1 | head -n 1 | cut -c1-60) terminal=$(hc get "w-$tid" >/dev/null 2>&1 && echo exists || echo absent)"
 }
-wait_lock() { t=0; while [ "$t" -lt "$WAIT" ]; do case "$(hostlock "$PJ/.git")" in present*) return 0 ;; esac; t=$((t + 1)); sleep 1; done; return 1; }
+# wait_lock SLEEP: the lock is on the host AND the worker's own uniquely numbered sleep runs (the worker's startup commands make a placeholder too)
+wait_lock() { t=0; while [ "$t" -lt "$WAIT" ]; do case "$(hostlock "$PJ/.git")" in present*) [ "$(pgrep -f "sleep $1\$" | wc -l)" -gt 0 ] && return 0 ;; esac; t=$((t + 1)); sleep 1; done; return 1; }
 sub_delegate() {
   tf=${PADDOCK_WORKER_GH_TOKEN_FILE:-$cfg/paddock/worker-gh-token}
   [ -s "$tf" ] && [ -f "$TPL_DIR/worker.md" ] && [ -f "$bd/worker-rules.md" ] || { echo "RESULT precondition-failed: needs the real worker template ($TPL_DIR/worker.md), $bd/worker-rules.md and a non-empty token file ($tf); the production path starts with them"; exit 1; }
@@ -235,13 +236,13 @@ sub_delegate() {
   if [ "$drc" -ne 0 ]; then
     [ "$drc" -eq 10 ] && dialog_on "w-$ID-a" && need_person "w-$ID-a"
     echo "RESULT 2a-delegate-live-worker: NO DATA (worker A did not start, exit $drc)"
-  elif ! wait_lock; then echo "RESULT 2a-delegate-live-worker: NO DATA (config.lock never appeared on the host within ${WAIT}s: A's command did not run, or no placeholder is made in this version)"
+  elif ! wait_lock $SA; then echo "RESULT 2a-delegate-live-worker: NO DATA (config.lock and A's sleep never ran together within ${WAIT}s: A's command did not run, or no placeholder is made in this version)"
   else
-    echo "  host while A's command runs: config.lock $(hostlock "$PJ/.git")"
+    echo "  host while A's command runs: config.lock $(hostlock "$PJ/.git"), A's sleep running: $(pgrep -f "sleep $SA\$" | wc -l)"
     echo "  direct 'git config' from this shell now: $(cfgw p277.live 1)"; git -C "$PJ" config --unset p277.live >/dev/null 2>&1
     dele b none; echo "  B (default base: fetch, origin/main) $(facts b)"
     dele c none --no-fetch --base main; echo "  C (--no-fetch --base main, local base: no upstream write) $(facts c)"
-    echo "  host after B and C: config.lock $(hostlock "$PJ/.git")"
+    echo "  host after B and C: config.lock $(hostlock "$PJ/.git"), A's sleep still running: $(pgrep -f "sleep $SA\$" | wc -l) (0 = B and C ran after A's command ended: discard the 2a result)"
     echo "RESULT 2a-delegate-live-worker: DATA (B exit/facts and C exit/facts above; exit 6 + worktree absent = the delegate fails; worktree created + paddockBase empty = line 177 hid a failed write)"
     t=0; while [ "$t" -lt "$WAIT" ]; do case "$(hostlock "$PJ/.git")" in absent) break ;; esac; t=$((t + 3)); sleep 3; done
     echo "RESULT 2a-placeholder-after-clean-exit: DATA (A's sleep and its command ended; B/C may still hold one; after waiting $t s: config.lock $(hostlock "$PJ/.git"))"
@@ -252,7 +253,7 @@ sub_delegate() {
   echo "== 2b stranded config.lock: kill the worker's pane in the middle of its command (hc kill + hc rm, the org-resume / org-down path)"
   dele d $SD || true
   if [ "$drc" -ne 0 ]; then echo "RESULT 2b-stranded-lock: NO DATA (worker D did not start, exit $drc)"
-  elif ! wait_lock; then echo "RESULT 2b-stranded-lock: NO DATA (config.lock never appeared within ${WAIT}s)"
+  elif ! wait_lock $SD; then echo "RESULT 2b-stranded-lock: NO DATA (config.lock never appeared within ${WAIT}s)"
   else
     echo "  before the kill: config.lock $(hostlock "$PJ/.git"); sleep processes: $(pgrep -f "sleep $SD\$" | wc -l)"
     hc kill "w-$ID-d" >/dev/null 2>&1; hc rm "w-$ID-d" >/dev/null 2>&1; sleep 3
@@ -309,7 +310,8 @@ If a call fails or prints an error, do NOT retry it: go straight on to the next 
   missing=; i=1; while [ "$i" -le "$N" ]; do [ -f "$OUT/n$i.txt" ] || missing="$missing $i"; i=$((i + 1)); done
   echo "== numbers whose command never ran:${missing:- none}"
   echo "== worker screen tail"; hc read "w-$ID" 2>&1 | tail -n 8
-  if [ "$ran" -eq "$N" ] && [ -z "$bw" ]; then echo "RESULT 3-launch-race: PASS (all $N commands ran, no bwrap failure text in the transcript; churn: $(cat "$OUT/churn.res" 2>/dev/null))"
+  if [ "$ran" -eq "$N" ] && [ -z "$tj" ]; then echo "RESULT 3-launch-race: INCONCLUSIVE (all $N ran, but no transcript was found under ~/.claude/projects, so a start failure that was retried cannot be ruled out)"
+  elif [ "$ran" -eq "$N" ] && [ -z "$bw" ]; then echo "RESULT 3-launch-race: PASS (all $N commands ran, no bwrap failure text in the transcript; churn: $(cat "$OUT/churn.res" 2>/dev/null))"
   elif [ "$ran" -eq "$N" ]; then echo "RESULT 3-launch-race: FAIL (all $N ran in the end but start failures were reported, so the harness or the worker retried: $bw)"
   elif [ -n "${att:-}" ] && [ "$att" -lt "$N" ]; then echo "RESULT 3-launch-race: INCONCLUSIVE (the worker attempted only $att of $N commands; ran=$ran)"
   else echo "RESULT 3-launch-race: FAIL ($((N - ran)) of $N commands never ran: numbers$missing; text: ${bw:-not in the transcript})"; fi
