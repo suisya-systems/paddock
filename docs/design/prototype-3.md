@@ -452,4 +452,4 @@ Touches, failed steps and other things noted (none is a `RESULT` FAIL):
 
 Run 7's rows 4 and 6 (#306, #307) did not repeat: the question was whole, and the worker's done report was not refused (it quotes the gate's last line).
 
-Not exercised by this run: a review finding handled by the worker; the gate's rounds beyond round 1; a second approval answered on the screen. #243 stays open for these.
+Not exercised by this run: a review finding handled by the worker; the gate's rounds beyond round 1; a second approval answered on the screen. #243 was closed after Run 7.
