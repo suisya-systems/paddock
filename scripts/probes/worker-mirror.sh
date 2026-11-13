@@ -204,6 +204,26 @@ trust_answer() {
     hc keys $NAME down >/dev/null 2>&1; sleep 1; n=$((n + 1))
   done
 }
+# resend_task: the first message given to hc run is lost behind the trust dialog (measured). After the answer, wait for an
+# empty input box (a "❯" line with nothing after it, no dialog on screen), send $TASK with hc send --if idle (hc pastes
+# the text and presses Enter), and see on screen that the text arrived or work started. 0 = sent and seen.
+resend_task() {
+  i=0
+  while [ $i -lt 30 ]; do
+    s=$(hc read $NAME 2>/dev/null)
+    case "$s" in *"trust this folder"*|*"Quick safety check"*) ;; *) printf '%s\n' "$s" | grep -Eq '^ *❯ *$' && break ;; esac
+    i=$((i + 1)); sleep 2
+  done
+  [ $i -lt 30 ] || return 1
+  hc send --if idle $NAME "$TASK" >/dev/null 2>&1 || return 1
+  i=0
+  while [ $i -lt 15 ]; do
+    sleep 2; i=$((i + 1))
+    s=$(hc read $NAME 2>/dev/null)
+    case "$s" in *"Probe for paddock Issue #277"*|*"w.sh read"*) echo "-- sent the task to $NAME with: hc send --if idle $NAME <task text>"; return 0 ;; esac
+  done
+  return 1
+}
 # poll helper: wait for $OUT/$1 up to WAIT s; stops on a dialog the probe cannot answer.
 waitfor() {
   t=0
@@ -212,6 +232,7 @@ waitfor() {
     if [ -z "$NOW" ]; then
       case "$(hc read $NAME 2>/dev/null)" in *"Quick safety check"*|*"trust this folder"*)
         if [ -z "$ANSWERED" ] && trust_answer; then ANSWERED=1
+          resend_task || { echo "NEEDS-PERSON: answered the trust dialog in $NAME but could not see an empty input box or the task arrive; send the task by hand (hc send $NAME ...), or rerun"; KEEP=1; exit 1; }
         elif [ -z "$ANSWERED" ]; then echo "NEEDS-PERSON: folder-trust dialog in $NAME; answer it (or set PADDOCK_PROBE_ANSWER_TRUST=1), and rerun"; KEEP=1; exit 1; fi ;; esac
     fi
     t=$((t + 3)); sleep 3
