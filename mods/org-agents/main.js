@@ -83,7 +83,7 @@ export default class OrgState extends View {
     return h_flex().id(`ap-${a.id}`).items_stretch().gap(10).rounded(10).bg(t.raised).px(12).py(10)
       .child(div().w(3).flex_none().rounded(2).bg(t.blocked))
       .child(v_flex().flex_1().min_w(0).gap(4)
-        .child(div().text_size(13).font_medium().text_color(t.foreground).whitespace_normal().max_h(40).overflow_hidden().child(a.question ?? ""))
+        .child(div().text_size(13).font_medium().text_color(t.foreground).whitespace_normal().child(a.question ?? ""))
         .child(h_flex().gap(8).text_size(11).text_color(t.dim)
           .child(div().flex_1().min_w(0).truncate().child(a.task_id ?? ""))
           .child(div().flex_none().child(since(a.asked_at, now)))));
@@ -120,7 +120,9 @@ export default class OrgState extends View {
     // ponytail: pixel budget for the 420 px dialog instead of scrolling, measured from a shot at 1x:
     // 382 px inside the padding; headers, section gap and one "and N more" line take 92; a two-line
     // card with its gap 90, the approvals' "and N more" 26, "Nothing waiting" 28, a row 32. Measure again once it docks.
-    const used = cards.length ? 90 * cards.length + (approvals.length > cards.length ? 26 : 0) : 28;
+    // The question is never cut (Issue #306), so a card is taller by the lines past two (about 50 characters a line, 17 px each).
+    const cardPx = (a) => 90 + 17 * Math.max(0, Math.ceil((a.question ?? "").length / 50) - 2);
+    const used = cards.length ? cards.reduce((n, a) => n + cardPx(a), 0) + (approvals.length > cards.length ? 26 : 0) : 28;
     const maxRows = Math.max(0, Math.floor((382 - 92 - used) / 32));
     const rows = work.slice(0, maxRows);
 
