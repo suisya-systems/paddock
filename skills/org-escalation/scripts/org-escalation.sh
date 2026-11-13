@@ -13,6 +13,7 @@ Usage: org-escalation.sh prompt --task TASK_ID [--then-send TEXT]
        org-escalation.sh ask --task TASK_ID --question TEXT [--prompt TEXT]
                            [--background TEXT] [--if-yes TEXT] [--if-no TEXT]
                            [--recommend yes|no --why TEXT] [--lang CODE]
+       org-escalation.sh lang --lang CODE
        org-escalation.sh answer --id APPROVAL_ID --text TEXT
        org-escalation.sh remove --id APPROVAL_ID
        org-escalation.sh list
@@ -34,6 +35,8 @@ Usage: org-escalation.sh prompt --task TASK_ID [--then-send TEXT]
           --recommend   your recommendation, yes or no, with --why (at most 400 bytes)
           --lang        the language code of the conversation (ja, en); the card's own words follow it
           A field left out is shown on the card as not written.
+  lang    record the conversation language (ja, en) in org-state, for the cockpit's own words when
+          no approval is open (the consult band); run it when you settle the language
   answer  send "Answer to your question (<id>): <text>" to w-<task_id> through the mailbox,
           then remove the entry. A prompt entry takes yes or no: only while w-<task_id> is
           blocked and its screen still shows the recorded prompt, yes presses enter on
@@ -60,6 +63,12 @@ USAGE
 # in $ESC_ENTRY. Exit 3 = the value is not a JSON object, 4 = id not found (add: id exists).
 if [ "${1:-}" = _edit ]; then
   mode=${2:-}; id=${3:-}
+  if [ "$mode" = setlang ]; then # $id is the code: set the top-level conversation_lang (Issue #284)
+    v=$(cat | tr -d '\n'); case $v in [[:space:]]*|'{'*) ;; *) exit 3 ;; esac
+    case $v in *'"conversation_lang"'*) printf '%s\n' "$v" | sed -E "s/\"conversation_lang\" *: *\"[^\"]*\"/\"conversation_lang\":\"$id\"/" ;;
+      *) printf '%s\n' "$v" | sed -E "s/^ *\{ *\}/{\"conversation_lang\":\"$id\"}/; t; s/^ *\{/{\"conversation_lang\":\"$id\",/" ;; esac
+    exit 0
+  fi
   MODE=$mode ID=$id exec awk '
     { s = s $0 "\n" }
     END {
@@ -233,6 +242,11 @@ case $cmd in
     case $st in 0) die 7 "an entry $id exists already" ;; 4) ;; *) die 5 "org-state is not a JSON object (or cannot be read)" ;; esac
     update add "$id"
     echo "APPROVAL_ID=$id" ;;
+
+  lang)
+    case ${lang-} in [a-z][a-z]|[a-z][a-z]-[A-Za-z][A-Za-z]) ;; *) die 2 "lang needs --lang <code> such as en or ja" ;; esac
+    secretary doc update org-state -- bash "$self" _edit setlang "$lang" >/dev/null || die 5 "org-state was not written (lang $lang)"
+    echo "LANG=$lang" ;;
 
   answer)
     valid_aid "$id" || die 2 "answer needs --id <approval_id>"

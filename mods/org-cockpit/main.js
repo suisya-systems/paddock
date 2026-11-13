@@ -70,7 +70,8 @@ async function sendAnswer(on, id, word) {
 // words around it. A code with no table here (or none) shows English.
 const STR = {
   en: {
-    asking: "THE SECRETARY IS ASKING YOU", background: "BACKGROUND", ifYouAnswer: "IF YOU ANSWER",
+    asking: "THE SECRETARY IS ASKING YOU", waitingForYou: "It is waiting for your answer.",
+    answerInTerminal: "Answer in the secretary's terminal", background: "BACKGROUND", ifYouAnswer: "IF YOU ANSWER",
     recommends: "SECRETARY RECOMMENDS", fromSecretary: "FROM THE SECRETARY",
     yes: "Yes", no: "No", wordCol: 28, recommended: "Recommended",
     waiting: (d) => `waiting ${d}`, more: (n) => `and ${n} more waiting`,
@@ -86,20 +87,21 @@ const STR = {
     sent: (word, task, late, d) => `${word} · ${task} · ${late ? `not passed on yet, ${d}` : "passing on"}`,
   },
   ja: {
-    asking: "秘書からの確認です", background: "背景", ifYouAnswer: "回答すると",
-    recommends: "秘書のおすすめ", fromSecretary: "秘書から",
+    asking: "窓口からの確認です", waitingForYou: "あなたの回答を待っています。",
+    answerInTerminal: "窓口のターミナルで回答してください", background: "背景", ifYouAnswer: "回答すると",
+    recommends: "窓口のおすすめ", fromSecretary: "窓口から",
     yes: "はい", no: "いいえ", wordCol: 40, recommended: "おすすめ",
     waiting: (d) => `${d}待ち`, more: (n) => `ほかに${n}件あります`,
     under1m: "1分未満", min: (n) => `${n}分`, hour: (n) => `${n}時間`, day: (n) => `${n}日`,
     fields: { background: "背景", if_yes: "「はい」の結果", if_no: "「いいえ」の結果", recommend: "おすすめ" },
-    notWritten: (names) => `未記入：${names.join("、")}`, askFirst: " 回答の前に秘書へ確認してください。",
-    noQuestion: "質問が書かれていません。内容を秘書に確認してください。",
+    notWritten: (names) => `未記入：${names.join("、")}`, askFirst: " 回答の前に窓口へ確認してください。",
+    noQuestion: "質問が書かれていません。内容を窓口に確認してください。",
     fallbackQuestion: (id, task) => `${task}の承認依頼（${id || "IDなし"}）`, unnamedTask: "名前のないタスク",
     sending: "送信中…", notSent: "送信できませんでした。もう一度お試しください。",
-    openSecretary: "言葉で答えるには秘書を開く", secretaryDown: "秘書は起動していません",
+    openSecretary: "言葉で答えるには窓口を開く", secretaryDown: "窓口は起動していません",
     nothingWaiting: "確認待ちはありません。", nothingElse: "ほかに確認待ちはありません。",
-    nothingWritten: "秘書からの書き込みはまだありません。", answered: (n) => `ほか${n}件回答済み`,
-    sent: (word, task, late, d) => `${word} · ${task} · ${late ? `${d}経過、まだ伝わっていません` : "秘書に伝えています"}`,
+    nothingWritten: "窓口からの書き込みはまだありません。", answered: (n) => `ほか${n}件回答済み`,
+    sent: (word, task, late, d) => `${word} · ${task} · ${late ? `${d}経過、まだ伝わっていません` : "窓口に伝えています"}`,
   },
 };
 const words = (lang) => STR[String(lang ?? "").slice(0, 2).toLowerCase()] ?? STR.en;
@@ -159,6 +161,9 @@ export default class Cockpit extends View {
       // The consult copy, in the layout once, labels the secretary when it lacks the labels and
       // shows its pane once per new address.
       cx.timer.every(2000, (cx) => this.adoptSecretary(cx));
+      // org-state only for the conversation language of the band's words.
+      this.refresh(cx);
+      cx.timer.every(5000, (cx) => this.refresh(cx));
       return; // otherwise live data only: terminals() redraws it
     }
     this.refresh(cx);
@@ -460,7 +465,7 @@ export default class Cockpit extends View {
   renderApproval(t) {
     let body;
     // The quiet lines have no entry of their own: they speak the language of the oldest approval.
-    const L = words((this.value()?.approvals ?? [])[0]?.lang);
+    const L = words((this.value()?.approvals ?? [])[0]?.lang ?? this.value()?.conversation_lang);
     if (this.error) body = this.problem(t);
     else if (!this.doc) body = div();
     else if (!this.value()) body = this.quiet(t, L.nothingWritten);
@@ -492,12 +497,13 @@ export default class Cockpit extends View {
   renderConsult(t) {
     const sec = this.secretary();
     if (sec?.status !== "blocked") return div();
+    const L = words(this.value()?.conversation_lang);
     return v_flex().id("consult").w(300).px(16).py(14).gap(8).cursor_pointer()
       .on_click(() => run("pane.focus", { terminal: sec.address }))
-      .child(this.label(t, "THE SECRETARY IS ASKING YOU", t.blocked))
+      .child(this.label(t, L.asking, t.blocked))
       .child(div().text_size(14).font_medium().line_height(1.35).text_color(t.foreground).whitespace_normal()
-        .child(sec.report?.msg || "It is waiting for your answer."))
-      .child(div().text_size(11).text_color(t.dim).child("Answer in the secretary's terminal"));
+        .child(sec.report?.msg || L.waitingForYou))
+      .child(div().text_size(11).text_color(t.dim).child(L.answerInTerminal));
   }
 
   render(_cx) {
