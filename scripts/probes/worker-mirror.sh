@@ -19,7 +19,8 @@
 # the terminal, template, worktree and temp folder (kept, and named, when a person must answer a dialog).
 #
 # How the worker is started. The command line is the one in templates/worker.md with two edits, both
-# printed: the read-only token check and GH_TOKEN="$tok" are cut out (so GH_TOKEN is unset), and
+# printed: the read-only token check and GH_TOKEN="$tok" are cut out, the four GitHub token variables are
+# unset in the launch prefix (so a token in the runner's environment is not inherited), and
 # --settings points at a copy of templates/worker-settings.json whose allowWrite holds only the probe's
 # result folder. GH_CONFIG_DIR is kept as the template sets it (a fresh empty folder). The worktree gets
 # the same .claude/settings.local.json deny of the core socket folder that org-delegate writes. Not
@@ -76,14 +77,14 @@ WORK=$(mktemp -d "${TMPDIR:-/tmp}/probe277.XXXXXX") || exit 1
 case "$WORK$WT$bd" in *[[:space:]]*) echo "RESULT precondition-failed: paths must not contain whitespace ($WORK $WT $bd)"; exit 1 ;; esac
 OUT=$WORK/out; UP=$WORK/up.git; SEED=$WORK/seed; PROJ=$WORK/proj
 mkdir -p "$OUT" || exit 1
-KEEP=
+KEEP= OWNTERM= OWNTPL=
 . "$(dirname "$0")/claude-link.sh"
 claude_link_save
 cleanup() {
   claude_link_restore
   if [ -n "$KEEP" ]; then echo "kept for a person: terminal $NAME, worktree $WT, temp folder $WORK, template $TPL_DIR/$TPL.md"; return; fi
-  if [ -z "$NOW" ]; then hc kill $NAME >/dev/null 2>&1; hc rm $NAME >/dev/null 2>&1; fi
-  rm -f "$TPL_DIR/$TPL.md"
+  if [ -n "$OWNTERM" ]; then hc kill $NAME >/dev/null 2>&1; hc rm $NAME >/dev/null 2>&1; fi
+  if [ -n "$OWNTPL" ]; then rm -f "$TPL_DIR/$TPL.md"; fi
   git -C "$PROJ" worktree remove --force "$WT" >/dev/null 2>&1
   rm -rf "$WT" "$WORK"
 }
@@ -160,9 +161,10 @@ if [ -z "$NOW" ]; then
   # The template: the command of templates/worker.md without the token check and GH_TOKEN, with --settings at the probe's copy.
   CMD=$(sed -n 's/^command: //p' "$ROOT/templates/worker.md")
   SETTINGS=$WORK/worker-settings.json
-  CMD=$(printf '%s' "$CMD" | sed -e 's/tok=.*exit 1; }; //' -e 's/ GH_TOKEN="\$tok"//' -e "s|--settings \"\\\$ws\"|--settings $SETTINGS|")
-  case "$CMD" in *GH_TOKEN*|*'$tok'*|*'"$ws"'*) echo "RESULT precondition-failed: could not derive the credential-free command from templates/worker.md (it changed?)"; echo "   $CMD" | cut -c1-300; exit 1 ;; esac
-  case "$CMD" in *"exec env GH_CONFIG_DIR="*"--settings $SETTINGS") ;; *) echo "RESULT precondition-failed: derived command lacks the expected GH_CONFIG_DIR / --settings parts"; exit 1 ;; esac
+  CMD=$(printf '%s' "$CMD" | sed -e 's/tok=.*exit 1; }; //' -e 's/ GH_TOKEN="\$tok"//' -e "s|--settings \"\\\$ws\"|--settings $SETTINGS|" \
+    -e 's/^env -u /env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN -u /')
+  case "$CMD" in *'GH_TOKEN="'*|*'$tok'*|*'--settings "$ws"'*) echo "RESULT precondition-failed: could not derive the credential-free command from templates/worker.md (it changed?)"; echo "   $CMD" | cut -c1-300; exit 1 ;; esac
+  case "$CMD" in *"exec env GH_CONFIG_DIR="*"--settings $SETTINGS'") ;; *) echo "RESULT precondition-failed: derived command lacks the expected GH_CONFIG_DIR / --settings parts"; exit 1 ;; esac
   [ -f "$bd/worker-rules.md" ] || { echo "RESULT precondition-failed: $bd/worker-rules.md missing (run org-start from this checkout first)"; exit 1; }
   # worker settings: the shipped file with allowWrite holding only the result folder.
   [ "$(grep -c '"allowWrite": \[\]' "$ROOT/templates/worker-settings.json")" = 1 ] || { echo "RESULT precondition-failed: templates/worker-settings.json has no single empty allowWrite"; exit 1; }
@@ -172,12 +174,14 @@ if [ -z "$NOW" ]; then
   mkdir -p "$WT/.claude" && printf '{"sandbox":{"filesystem":{"denyRead":["%s"],"denyWrite":["%s"]}}}\n' "$sockdir" "$sockdir" > "$WT/.claude/settings.local.json" \
     && printf 'settings.local.json\n.gitignore\n' > "$WT/.claude/.gitignore" || { echo "RESULT precondition-failed: cannot write $WT/.claude"; exit 1; }
   printf -- '---\ndescription: probe 277 (temporary)\ncommand: %s\n---\nProbe 277. Follow only the message below.\n' "$CMD" > "$TPL_DIR/$TPL.md" || exit 1
+  OWNTPL=1
   echo "== command under test (from templates/worker.md; token check and GH_TOKEN removed, --settings = $SETTINGS)"; echo "   $CMD" | cut -c1-400
   TASK="Probe for paddock Issue #277. This is a measurement the secretary asks for and permits; do not decline or report blocked. Work only in this worktree plus the folder $OUT. Run these three commands, each as ONE Bash call, in this order, with the sandbox ON (never skip it), and do nothing else:
 1. sh $OUT/w.sh read
 2. sh $OUT/w.sh wait     (set this Bash call's timeout to 200000; it waits for the secretary)
 3. sh $OUT/w.sh rebase
 If a command fails or prints an error, do not retry it another way; just go on to the next. Then reply with the single word done."
+  OWNTERM=1
   hc run --bg --outlive-parent --name $NAME --cwd "$WT" --label task_id=p277 $TPL "$TASK" >/dev/null 2>&1 || { echo "RESULT precondition-failed: hc run failed"; exit 1; }
 else
   (run_phases_local >/dev/null 2>&1 &)  # dry run: the phases run in the background; "go2" is touched below like in the real run
