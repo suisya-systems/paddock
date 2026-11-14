@@ -1,6 +1,6 @@
 # 0007. First-run setup: which steps stay outside a round, and how the rest is made mechanical
 
-Status: **draft** (2026-11-14). The owner has not decided. Refs #328 (goal clause G1). When the owner picks an option this file is rewritten as `accepted` and the follow-up Issue implements only what the decision makes mechanical.
+Status: **accepted** (2026-11-14, owner: Q1 yes, Q2 (c), Q3 `/proc`). Refs #328 (goal clause G1). The implementation (`org-start --check` and the core PATH check) is a separate task; this file records the decision only.
 
 ## The question, in plain words
 
@@ -33,7 +33,7 @@ Make org-start do or refuse everything: write `notes = false` itself, restart th
 - Costs: it breaks decisions already made. Writing `config.toml` breaks L-N1; a script an agent runs is the agent writing trusted code. Restarting the core ends every running terminal, including a live secretary and workers (org-start "never stops or restarts the core" today, by design). Recording trust means writing `~/.claude.json`, rejected in Q13 (undocumented key that may change).
 - Only the *detection* part of (b) is safe, and that is already inside (c).
 
-### (c) A mix (recommended)
+### (c) A mix (chosen)
 
 1. **The check goes into org-start**, which every host already runs. Add the missing step-2 check (core PATH has `hc`; same method as `prepare`, Linux `/proc`, silent skip elsewhere) next to the existing notes check. Each failure prints the exact fix and exits non-zero before anything is placed. org-start stays the one command a person types.
 2. **`org-start --check`** runs only the checks (read-only, no placement, no secretary) and also checks trust of the project clones it is given (`--project DIR`, reusing `trusted()` from `prototype-3-setup.sh`). Output is `ok` or `TODO <step>: <exact command>` per step; exit 0 only when nothing is left for a person. This is the single `setup` entry of (a), without a second script.
@@ -43,18 +43,33 @@ Make org-start do or refuse everything: write `notes = false` itself, restart th
 - Costs: org-start grows a flag and one more exit code (a bad core PATH); the check code is shared, so a change to it touches three callers. The `/proc` read works on Linux and WSL only.
 - Does **not** make steps 1, 2, 4 mechanical. It makes them *impossible to miss and impossible to guess*, which is what the Issue's definition of done asks for ("no step that is not printed by a paddock command").
 
-## Recommendation
+## Decision
 
-(c). It is the only option that respects L-N1, Q13 and "org-start never restarts the core", and it closes the one real hole (step 2 is silent today). Choose (a) instead if you would rather not touch org-start and prefer a separate `setup` command; the cost is a second place that must agree with org-start.
+The owner chose (c), with these answers:
 
-## Questions for the owner
+1. **G1 wording.** First-run setup is a person's one-time job per machine, outside the round. G1 covers a round only. The goal ledger says so (the secretary edits it, not this file).
+2. **Where the check lives.** `org-start --check`, added to org-start. No separate `setup` command.
+3. **Core PATH.** Checked by reading the running core's own environment from `/proc/<core pid>/environ` (Linux and WSL only; silent skip elsewhere), not by looking at the PATH of the shell that runs org-start. That is the case that failed in Run 6.
 
-1. Is "first-run setup is a person's one-time job per machine, outside the round" acceptable wording for G1? If not, only a change to L-N1 or Q13 can make steps 1 or 4 automatic, and that is a bigger decision than this one.
-2. (a) separate `setup` command, or (c) `org-start --check`?
-3. Should the check read the core's environment through `/proc` (Linux and WSL only), or is "hc is on this shell's PATH" enough? The second is simpler and wrong when the core was started from another shell, which is exactly Run 6.
+What this means in practice:
+
+- Steps 1, 2 and 4 stay with a person. Step 3 is already mechanical.
+- org-start gains the step-2 check next to its notes check, and `org-start --check` runs only the checks (read-only, no placement, no secretary). It also checks the trust of project clones given with `--project DIR`, reusing `trusted()` from `prototype-3-setup.sh`. Output is `ok` or `TODO <step>: <exact command>` per step; exit 0 only when nothing is left for a person.
+- `prototype-3-setup.sh` and `prepare` call the same check instead of carrying copies.
+- "A clean host reaches `org-start: ready`" means after the person's three actions, with `--check` clean.
+
+## Why
+
+(c) is the only option that respects L-N1, Q13 and "org-start never restarts the core", and it closes the one real hole: step 2 was silent. (a) would add a second place that must agree with org-start. (b) breaks three earlier decisions. `/proc` was chosen over the shell's PATH because the core's environment, not the caller's, is what its terminals inherit.
+
+## Costs accepted
+
+- org-start grows a flag and one more exit code (bad core PATH). The check code is shared by three callers.
+- The `/proc` read works on Linux and WSL only.
+- Steps 1, 2 and 4 are not made mechanical; they are made impossible to miss and impossible to guess.
 
 ## What is not checked here
 
-- The goal ledger itself is not in this repository; G1's wording is taken from the Issue text.
-- The core's PATH check was measured in `prepare` (Run 6/7), not run again for this draft. Nothing in this file was executed.
+- The goal ledger is not in this repository; G1's wording is taken from the Issue text.
+- The core's PATH check was measured in `prepare` (Run 6/7), not run again for this document.
 - Whether the core re-reads `config.toml` without a restart is still unmeasured (org-start's exit 8 message says so).
