@@ -1,6 +1,6 @@
-# 0010. Clone a repository the request names when it is not on the machine yet
+# 0011. Clone a repository the request names when it is not on the machine yet
 
-Status: **proposed** (2026-11-14, draft for the owner). Refs #356. This file records the decision only; the clone step is built in a separate task. The number is the next free one on `origin/main` at writing; a parallel record (#357) may take it too, and the later one to merge renumbers.
+Status: **proposed** (2026-11-14, draft for the owner). Refs #356. This file records the decision only; the clone step is built in a separate task. It was drafted as 0010 and renumbered to 0011 because the parallel record (#357, PR #358) merges first. Related: a request that names no repository at all is decision 0010 (`0010-request-without-a-repository-runs-in-a-local-one.md`, not linked until #358 merges).
 
 ## The question, in plain words
 
@@ -61,7 +61,6 @@ Order and rule: **nothing is registered and no worker starts unless the clone co
 6. Target path exists but is not a clone of that `origin`: stop; never reuse or overwrite it.
 
 ## Decision (proposed, not yet taken)
-
 Recommended: 1 (a), 2 (a), 3 (a), 4 (a), 5 as above. Shape of the build: one new script `skills/org-delegate/scripts/org-clone.sh OWNER/NAME|URL` that prints the `projects.md` name on success; the secretary template says to run it when `org-delegate --project` would exit 2 for a named repository, then delegates by that name. `org-delegate` itself does not change (the clone is a separate step, so its exit codes and "nothing created before checks" rule stay as they are).
 
 ## Why
