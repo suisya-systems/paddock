@@ -272,12 +272,13 @@ send_first() {
 # finish_resend <task_id>: org-delegate stopped at the dialog (exit 10) and saved its first message and work entry
 # (skills/org-delegate/scripts/resend.sh). With the dialog answered, send and write them. A failure leaves the terminal and
 # the saved files, puts a card in front of the person and exits with resend.sh's code (12 not sent, 13 entry not written).
+resend_q="Trust was answered, but" # the start of the question of a resend card: how answer tells it from a worker's question
 rdir() { printf '%s/resend/%s' "${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}" "$1"; }
 finish_resend() {
   local o rc
   o=$(bash "$root/skills/org-delegate/scripts/resend.sh" "$1" 2>&1); rc=$?
   [ "$rc" -ne 0 ] || { echo "RESENT w-$1"; return 0; }
-  bash "$self" ask --task "$1" --question "Trust was answered, but the first message or work entry of w-$1 is not finished: finish it?" \
+  bash "$self" ask --task "$1" --question "$resend_q the first message or work entry of w-$1 is not finished: finish it?" \
     --background "$(clean "$o" | cut -c1-500)" --if-yes "The secretary tries again to send the first message and write the work entry." \
     --if-no "The saved first message is dropped; the terminal is left as it is." >/dev/null 2>&1 || echo "org-escalation: the card could not be recorded" >&2
   die "$rc" "$o"
@@ -368,15 +369,14 @@ case $cmd in
       ( update remove "$id" ) || die 9 "answered $w but entry $id could not be removed; run: remove --id $id"
       echo "RELAYED $id $key -> $w"; exit 0
     fi
-    if [ -d "$(rdir "$wtask")" ]; then
+    if [ -d "$(rdir "$wtask")" ] && [ "$(edit list "" | awk -F'\t' -v i="$id" '$1 == i { print substr($3, 1, length(RQ)) }' RQ="$resend_q")" = "$resend_q" ]; then
       # The card finish_resend raised (the worker has no first message, so it asked nothing): yes tries again, no leaves the terminal.
+      case $(printf '%s' "$t" | tr 'A-Z' 'a-z' | tr -d ' ') in yes) ra=yes ;; no) ra=no ;;
+        *) die 2 "entry $id is a resend card: the answer is yes or no; nothing done, entry kept" ;; esac
       ( update remove "$id" ) || die 9 "entry $id could not be removed; run: remove --id $id"
-      case $(printf '%s' "$t" | tr 'A-Z' 'a-z' | tr -d ' ') in
-        yes) finish_resend "$wtask"; exit 0 ;;
-        no) rm -f "$(rdir "$wtask")/message" "$(rdir "$wtask")/entry"; rmdir "$(rdir "$wtask")" 2>/dev/null
-            echo "DROPPED $id: w-$wtask is left as it is"; exit 0 ;;
-        *) die 2 "entry $id is a resend card: the answer is yes or no; entry removed, nothing sent (run resend.sh $wtask)" ;;
-      esac
+      if [ "$ra" = yes ]; then finish_resend "$wtask"; exit 0; fi
+      rm -f "$(rdir "$wtask")/message" "$(rdir "$wtask")/entry"; rmdir "$(rdir "$wtask")" 2>/dev/null
+      echo "DROPPED $id: w-$wtask is left as it is"; exit 0
     fi
     secretary send_message "w-$wtask" "Answer to your question ($id): $t" >/dev/null \
       || die 8 "the answer could not be put in the mailbox of w-$wtask; entry $id kept"
