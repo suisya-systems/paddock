@@ -171,54 +171,33 @@ wt_lock() {
   done
 }
 wt_unlock() { rm -f "$wtlk/pid"; rmdir "$wtlk" 2>/dev/null; }
-# Issue #320: a live worker's sandbox leaves a 0-byte read-only <git-common-dir>/config.lock while its command runs
-# (Claude Code's placeholder). It blocks every git config write in the shared .git, and worktree add with an upstream.
-# It goes away when the command ends, so wait for it, bounded by PADDOCK_GIT_LOCK_WAIT seconds (default 300: a worker running its tests or a review gate holds the placeholder for minutes).
-# One that outlasts the bound is a worker command still running or a stranded placeholder; which one cannot be told
-# from the file alone, so it is reported, never removed.
-cfglk=$(dirname "$wtlk")/config.lock
-cfg_wait() {
-  local end=$((SECONDS + ${PADDOCK_GIT_LOCK_WAIT:-300}))
-  while [ -e "$cfglk" ] || [ -L "$cfglk" ]; do
-    [ "$SECONDS" -lt "$end" ] || return 1
-    sleep 0.1 2>/dev/null || sleep 1
-  done
-}
-cfg_stuck() {
-  local kind="a git config lock"
-  [ -s "$cfglk" ] || [ -w "$cfglk" ] || kind="a 0-byte read-only file, the shape of a worker sandbox placeholder"
-  die 6 "$cfglk is held ($kind) for over ${PADDOCK_GIT_LOCK_WAIT:-300}s. It is either a worker command still running or a placeholder left by a killed worker; remove it only when no worker command is running"
-}
-# git config write that waits out the lock instead of failing on it (a failed attempt is retried until the bound).
-cfg_set() {
-  local end=$((SECONDS + ${PADDOCK_GIT_LOCK_WAIT:-300}))
-  until git -C "$project" config "$@" >/dev/null 2>&1; do
-    [ "$SECONDS" -lt "$end" ] || return 1
-    sleep 0.1 2>/dev/null || sleep 1
-  done
-}
-# Wait before taking wt_lock: other delegates queue on it for about a minute, far less than the bound.
-cfg_wait || cfg_stuck
+# Issue #323 (after #320): a live worker's sandbox leaves a 0-byte read-only <git-common-dir>/config.lock for the whole
+# of every command it runs, so any git config write in the shared .git can fail for minutes. This script writes none:
+# --no-track stops `worktree add` from recording an upstream (nothing reads it: the review gate takes its base from
+# the file below, and no org script reads branch.<b>.merge), and the base the review gate needs is a file in the
+# state folder, not branch.<b>.paddockBase. <state>/bases/<task id> holds the base ref. The secretary owns it:
+# the worker's sandbox writes nowhere in the state folder except its own files, and the file tools are refused there.
+state=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
 wt_lock
 newbranch=; git -C "$project" rev-parse --verify -q "refs/heads/$branch" >/dev/null 2>&1 || newbranch=1
-if cfg_wait; then
-  git -C "$project" worktree add -q -b "$branch" "$wt" "$base" >/dev/null 2>&1; added=$?
-else added=; fi
-cfgfail=
+git -C "$project" worktree add -q --no-track -b "$branch" "$wt" "$base" >/dev/null 2>&1; added=$?
+basefail=
 # Issue #177: the review gate reads the base back, so a worker on a non-main base is reviewed against it.
-[ "$added" != 0 ] || cfg_set "branch.$branch.paddockBase" "$base" || cfgfail=1
+if [ "$added" = 0 ]; then
+  { mkdir -p "$state/bases" && printf '%s\n' "$base" > "$state/bases/$id.tmp" && mv -f "$state/bases/$id.tmp" "$state/bases/$id"; } 2>/dev/null || basefail=1
+fi
 if [ "$added" != 0 ] && [ -n "$newbranch" ]; then
   # A failed add can leave the branch it was creating (no worktree); it is ours and has no work on it (-d only).
   [ -e "$wt" ] || git -C "$project" branch -q -d "$branch" >/dev/null 2>&1 || true
 fi
 wt_unlock
-[ -n "$added" ] || cfg_stuck
 [ "$added" -eq 0 ] || die 6 "git worktree add failed for branch $branch at $base (does the branch exist already?)"
 
 # undo removes the worktree and branch, which are new and ours, and says so if it cannot. Used only
 # where no worker can exist: before the launch, or after the core answered that the terminal is not there.
 undo() {
   wt_lock
+  rm -f "$state/bases/$id"
   git -C "$project" worktree remove --force "$wt" >/dev/null 2>&1 \
     || echo "org-delegate: could not remove the worktree $wt; it is left behind (git worktree remove --force -f $wt)" >&2
   # -d only: a branch with work on it, or whose base is not merged into the project's HEAD, is kept and named.
@@ -227,7 +206,7 @@ undo() {
   wt_unlock
 }
 fail_undone() { code=$1; shift; undo; die "$code" "$*"; }
-[ -z "$cfgfail" ] || fail_undone 6 "could not write branch.$branch.paddockBase in $project (is $cfglk held?); the delegate is undone because the review gate needs the base"
+[ -z "$basefail" ] || fail_undone 6 "could not write the base to $state/bases/$id; the delegate is undone because the review gate needs the base"
 
 # A symlinked workers folder is fine; the worktree itself must land directly inside it.
 [ "$(cd "$wt" && pwd -P)" = "$(cd "$workers" && pwd -P)/$id" ] \
@@ -256,7 +235,6 @@ fi
 # the state folder (from scripts/org own_files) and the --allow-write paths, written to
 # <state>/settings/<id>.json, where the worker can write nothing; the template passes it.
 org=$root/scripts/org
-state=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
 own=$(bash "$org" --as secretary own_files "$name" 2>&1) || fail_undone 12 "cannot create $name's files in the state folder (nothing was started): ${own:0:200}"
 list=
 while IFS= read -r p; do

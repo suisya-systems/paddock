@@ -24,8 +24,12 @@ set -uo pipefail
 [ "$#" -eq 0 ] || { [ "$#" -eq 1 ] && [ "$1" = --design ]; } || {
   echo "usage: bash \"\$PADDOCK_CODEX_GATE\" [--design]" >&2; exit 2; }
 mode=diff; [ "${1:-}" = --design ] && mode=design
-# The base org-delegate recorded for this branch (Issue #177), else origin/main.
-base=$(git config --get "branch.$(git rev-parse --abbrev-ref HEAD 2>/dev/null).paddockBase" 2>/dev/null) || base=
+# The base org-delegate recorded for this task (Issues #177, #323), else origin/main. It is the file
+# <state>/bases/<task>, which only the secretary writes (the task is the worktree's folder name, as in end() below);
+# a worktree made before #323 has it in git config (branch.<b>.paddockBase) instead.
+pd=${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}; pd=${pd%/}
+base=$(head -n 1 "${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/bases/${pd##*/}" 2>/dev/null) || base=
+[ -n "$base" ] || base=$(git config --get "branch.$(git rev-parse --abbrev-ref HEAD 2>/dev/null).paddockBase" 2>/dev/null) || base=
 base=${base:-origin/main}
 design=.worker-scratch/design.md
 # end <status> <last line>: record the result, then print the last line and exit
