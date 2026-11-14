@@ -24,6 +24,10 @@ The worktree and branch stay: [org-pull-request](../org-pull-request/SKILL.md) w
 
 With `--drop` (the work is abandoned, or the launch failed): no report needed. It ends the terminal when there is one (same label rule), removes the worktree under `PADDOCK_WORKERS_DIR` (uncommitted work in it is lost), deletes the branch only when it has no commit beyond its base (`git branch -d`; otherwise the branch is kept and named), and removes the `work` entry. Afterwards the same `task_id` can be delegated again.
 
+## Task in a local repository (no PR)
+
+For a task run in a repository made by `local-repo.sh` ([org-delegate](../org-delegate/SKILL.md)) there is no PR. After the owner agrees, `bash skills/org-close/scripts/merge-local.sh --task <task_id>` fast-forwards that repository's `main` to the worker's branch (`git merge --ff-only`; no merge commit). It refuses a worktree that does not belong to `$PADDOCK_LOCAL_DIR/<task_id>`, uncommitted tracked changes, and a `main` that cannot fast-forward (exit 6). Run it before `org-close`; it pushes nothing. Tested with real git only (`tests/org-local-repo.test.sh`).
+
 ## Exit codes
 
 0 closed, 2 bad argument, 3 `hc` not found, 5 core or `org-state` error (or `hc kill` / `hc rm` failed), 6 no done record addressed to secretary, 7 the terminal does not carry the task's label, 8 the worktree could not be removed.
