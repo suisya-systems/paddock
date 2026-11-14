@@ -75,6 +75,7 @@ Portability. The predecessor carried its own terminal transports, pane launcher,
 - **Not a management console.** No tables, no charts. The screen shows the conversation with the secretary and live views of the workers.
 - **Not a sandbox.** herdr-core runs commands with your account's access and is not a permission broker. Permissions, hooks and sandboxing stay with Claude Code's own settings.
 - **Not a general multi-stack framework.** Only herdr-core, herdr-app and Claude Code are in scope.
+- **Not an organization of resident area-lead agents.** No agent sits on an area waiting for work; the goal ledger and the clause-ordered triage take that role ([decision 0012](docs/decisions/0012-no-resident-area-lead-agents.md)).
 
 ## CI
 
