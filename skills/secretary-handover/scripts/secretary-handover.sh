@@ -41,7 +41,7 @@ for v in CLAUDECODE CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_SESSION_ID \
 done
 
 name=${PADDOCK_SECRETARY_NAME:-secretary}
-root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd) # Issue #130: the new secretary starts here, whatever folder this runs from
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd) # the new secretary starts here, whatever folder this runs from
 
 # 1. The handover document must exist before anything is ended. hc has no document verb,
 # so one doc.get line goes into hc connect, input held open 1 s (prototype 1).
@@ -68,7 +68,7 @@ fi
 
 # 3. The task travels in the launch (decision 0002). The new secretary reads the document itself.
 task="Resume as the secretary from the handover. Read the core document secretary-handover (doc.get through hc connect), the org-state document, and hc ls for the running workers (task_id labels). Take up what they say, then clear secretary-handover (doc.set with a null value) and tell the person you are back."
-lang=$(bash "$root/scripts/org" --as secretary config get conversation_language 2>/dev/null) # Q9, Issue #193
+lang=$(bash "$root/scripts/org" --as secretary config get conversation_language 2>/dev/null) # Q9
 [ -z "$lang" ] || [ "$lang" = auto ] || task="$task Conversation language: $lang"
 out=$(hc run --bg --keep --name "$name" --cwd "$root" secretary "$task") || die 5 "hc run failed for $name; rerun this script (the handover document is untouched)"
 printf '%s' "$out" | grep -Eq '"sent": *true' \

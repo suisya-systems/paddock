@@ -3,6 +3,8 @@
 # Every skills/**/*.md file must have
 #   - no Issue / PR number or URL (history belongs in references/rationale.md as content, or in commit messages), and
 #   - no link that leaves its skill folder, except to the short allowlist below
+#   - the same two rules for the non-Markdown files (scripts): no Issue / PR number, and every "../" or "$root/" path that
+#     leaves the skill folder is in allow_script_files.
 #     (a sibling skill's SKILL.md, or a single source of truth that would drift if copied).
 # Fixtures are built under a temp dir; the last case scans the real skills/.
 set -u
