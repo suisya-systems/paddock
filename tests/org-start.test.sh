@@ -24,11 +24,12 @@ echo "$*" >> "$STUB/calls"
 case "$1" in
   ls) [ -z "${STUB_CORE_DOWN:-}" ] || { echo '{"error":{"kind":"unavailable"}}'; exit 1; }
       echo "ok"; exit 0 ;;
-  get) [ -f "$STUB/secretary" ] || { echo '{"error":{"kind":"not_found"}}'; exit 1; }
+  get) case " $* " in *" watcher "*) [ -f "$STUB/watcher" ] && { echo "{\"name\":\"watcher\",\"state\":\"live\"}"; exit 0; }; echo "{\"error\":{\"kind\":\"not_found\"}}"; exit 1 ;; esac
+       [ -f "$STUB/secretary" ] || { echo '{"error":{"kind":"not_found"}}'; exit 1; }
        if [ -f "$STUB/finished" ]; then echo '{"name":"secretary","state":"finished","reason":"killed","status":null}'; exit 0; fi
        echo '{"name":"secretary","state":"live","status":{"app":"claude-code","state":"idle"}}'; exit 0 ;;
   rm) rm -f "$STUB/secretary" "$STUB/finished"; echo '{"removed":true}'; exit 0 ;;
-  run) : > "$STUB/secretary"; echo '{"name":"secretary"}'; exit 0 ;;
+  run) case " $* " in *" --name watcher "*) : > "$STUB/watcher"; echo "{\"name\":\"watcher\"}"; exit 0 ;; esac; : > "$STUB/secretary"; echo '{"name":"secretary"}'; exit 0 ;;
 esac
 exit 0
 EOF2
@@ -71,8 +72,10 @@ out=$(run STUB_CORE_DOWN=1); rc=$?
 : > "$tmp/stub/calls"
 out=$(run); rc=$?
 [ "$rc" -eq 0 ]; check "first run exits 0 ($out)" $?
-[ "$(grep -c '^run ' "$tmp/stub/calls")" -eq 1 ] \
+[ "$(grep -c "^run .* secretary" "$tmp/stub/calls")" -eq 1 ] \
   && grep -qx "run --bg --keep --name secretary --cwd $here secretary" "$tmp/stub/calls"; check "starts the secretary once with --keep" $?
+[ "$(grep -c '^run .*--name watcher' "$tmp/stub/calls")" -eq 1 ] \
+  && grep -qx "run --bg --keep --no-notify --name watcher --label paddock_role=watcher --cwd $here -- env PADDOCK_SECRETARY_NAME=secretary bash $here/skills/org-watch/scripts/org-watch.sh" "$tmp/stub/calls"; check "starts the watcher once, kept, with the role label" $?
 cmp -s "$here/templates/secretary.md" "$tmp/core/templates/secretary.md"; check "template placed in core templates folder" $?
 cmp -s "$here/mods/org-agents/main.js" "$tmp/app/mods/org-agents/main.js" \
   && cmp -s "$here/mods/org-agents/mod.json" "$tmp/app/mods/org-agents/mod.json"; check "mod files placed" $?
@@ -87,10 +90,11 @@ bad=; for f in "$tmp/core/templates"/*.md; do [ "$(head -n 1 "$f")" = "---" ] ||
 [ -z "$bad" ]; check "every *.md in the templates folder has a front matter${bad:+ (not:$bad)}" $?
 
 # Name override: the terminal gets the given name; the template stays "secretary".
-: > "$tmp/stub/calls"; rm -f "$tmp/stub/secretary"
+: > "$tmp/stub/calls"; rm -f "$tmp/stub/secretary" "$tmp/stub/watcher"
 out=$(run PADDOCK_SECRETARY_NAME=probe-sec); rc=$?
 [ "$rc" -eq 0 ] && grep -qx "run --bg --keep --name probe-sec --cwd $here secretary" "$tmp/stub/calls" \
   && grep -qx 'get probe-sec' "$tmp/stub/calls"; check "PADDOCK_SECRETARY_NAME names the terminal" $?
+[ "$rc" -eq 0 ] && grep -q -- '-- env PADDOCK_SECRETARY_NAME=probe-sec bash ' "$tmp/stub/calls"; check "the watcher is told the effective secretary name" $?
 rm -f "$tmp/stub/secretary"; run >/dev/null # back to the first-run state for the next checks
 
 # Second run: idempotent.

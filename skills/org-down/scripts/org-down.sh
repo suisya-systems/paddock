@@ -49,6 +49,15 @@ for n in $names; do
   l=$(printf '%s\n' "$terms" | awk -F'\t' -v n="$n" '$1==n {print $2; exit}')
   [ -z "$l" ] || wts+=("${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}/$l")
 done
+
+# 2b. The watcher (decision 0008) goes with the organization: only a terminal with the label
+# paddock_role=watcher, never another terminal that happens to be called watcher.
+wn=${PADDOCK_WATCHER_NAME:-watcher}
+if term_json "$wn" | grep -Eq '"paddock_role": *"watcher"'; then
+  hc kill "$wn" >/dev/null 2>&1 || die 5 "hc kill $wn failed; the core was not stopped"
+  hc rm "$wn" >/dev/null 2>&1 || die 5 "hc rm $wn failed; the core was not stopped"
+  echo "org-down: ended $wn"
+fi
 # Issue #324: only after every worker is ended, so none of them counts as a live worker of its clone.
 [ "${#wts[@]}" -eq 0 ] || sweep_config_lock "${wts[@]}"
 

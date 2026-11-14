@@ -32,6 +32,7 @@ Environment overrides:
                               default ${XDG_DATA_HOME:-~/.local/share}/paddock/bin)
   PADDOCK_READY_TRIES         seconds to wait for a status (default 15)
   PADDOCK_SECRETARY_NAME      terminal name of the secretary (default secretary)
+  PADDOCK_WATCHER_NAME        terminal name of the watcher (default watcher)
   PADDOCK_PROC_DIR            replaces /proc when the core's PATH is read (tests)
 
 Exit codes: 0 ready (7 also prints the terminal exit code and last line), 2 bad argument, 3 hc not found, 4 run inside an agent,
@@ -238,6 +239,26 @@ else
   # Issue #130: --cwd, so the secretary finds scripts/org and skills/*/scripts from any starting folder.
   hc run --bg --keep --name "$name" --cwd "$root" secretary ${task:+"$task"} || die 5 "hc run failed for the secretary"
   started=1
+fi
+
+# 3b. The watcher (decision 0008): a kept terminal named watcher that tells the person outside the
+# window. It carries paddock_role=watcher, so org-down ends it and no other terminal of that name.
+# A terminal gets the core's environment, not this shell's, so what the watcher reads is passed in the command.
+wenv=("PADDOCK_SECRETARY_NAME=$name")
+for v in PADDOCK_STATE_DIR XDG_STATE_HOME PADDOCK_WATCH_N PADDOCK_WATCH_INTERVAL PADDOCK_POWERSHELL; do
+  [ -z "${!v:-}" ] || wenv+=("$v=${!v}")
+done
+wname=${PADDOCK_WATCHER_NAME:-watcher}
+wj=$(hc get --json "$wname" 2>/dev/null | tr -d '\n')
+if printf '%s' "$wj" | grep -Eq '"state": *"finished"' && printf '%s' "$wj" | grep -Eq '"paddock_role": *"watcher"'; then
+  hc rm "$wname" >/dev/null 2>&1 || echo "org-start: warning: hc rm $wname failed (the finished watcher terminal)" >&2
+fi
+if hc get "$wname" >/dev/null 2>&1; then
+  echo "org-start: $wname already exists; not starting another"
+elif hc run --bg --keep --no-notify --name "$wname" --label paddock_role=watcher --cwd "$root" -- env "${wenv[@]}" bash "$root/skills/org-watch/scripts/org-watch.sh" >/dev/null; then
+  echo "org-start: started $wname (tells you outside the window; org-down ends it)"
+else
+  echo "org-start: warning: hc run failed for $wname; nobody will be told outside the window" >&2
 fi
 
 # 4. Readiness: hc get shows a status object. (The CLAUDE_CODE_CHILD_SESSION check is probe #52.)
