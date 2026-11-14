@@ -94,6 +94,7 @@ _in_dirs() { # _in_dirs <dir>...: 0 when a process has its cwd in one of them, 1
   done
   return 1
 }
+_placeholder() { [ -f "$1" ] && [ ! -L "$1" ] && [ ! -s "$1" ] && [ ! -w "$1" ]; }
 sweep_config_lock() {
   local state=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
   local wait=${PADDOCK_LOCK_WAIT:-10} seen=' ' wt c lk ended other n r
@@ -102,7 +103,7 @@ sweep_config_lock() {
     c=$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || continue
     case "$seen" in *" $c "*) continue ;; esac; seen="$seen$c "
     lk=$c/config.lock
-    [ -f "$lk" ] && [ ! -L "$lk" ] && [ ! -s "$lk" ] && [ ! -w "$lk" ] || continue
+    _placeholder "$lk" || continue
     ended=(); for r in "$@"; do
       [ "$(git -C "$r" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" = "$c" ] && ended+=("$(cd "$r" && pwd -P)")
     done
@@ -119,6 +120,8 @@ sweep_config_lock() {
     if [ "${#other[@]}" -gt 0 ] && _in_dirs "${other[@]}"; then
       echo "NOT removed $lk: another worker of this clone is still running; remove it by hand when none runs" >&2; continue
     fi
+    # The wait above can be long: a real git lock may have replaced the placeholder meanwhile, so look again just before rm.
+    _placeholder "$lk" || { echo "NOT removed $lk: it changed while waiting and is no longer a leftover placeholder" >&2; continue; }
     if rm -f "$lk"; then
       echo "removed leftover $lk (0 bytes, read-only; the worker's terminal is ended and no command of it runs)"
       { mkdir -p "$state" && printf '%s removed %s after ending %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$lk" "${ended[*]}" >> "$state/removed-locks.log"; } 2>/dev/null \
