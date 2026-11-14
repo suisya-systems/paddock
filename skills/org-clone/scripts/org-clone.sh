@@ -99,6 +99,11 @@ if [ -e "$tgt" ] || [ -L "$tgt" ]; then
 else
   # 4. Clone into the partial folder, with the person's own login. No retry, no other credential.
   mkdir -p "$dir/$owner" || die 8 "cannot create $dir/$owner"
+  # One clone of a target at a time: the staging folder is shared by name. mkdir is the atomic lock.
+  # ponytail: a run killed with SIGKILL leaves the lock; the message names it, remove it by hand.
+  lock=$dir/$owner/.$name.lock
+  mkdir "$lock" 2>/dev/null || die 8 "another org-clone of $want is running (or died: remove $lock if no run is left)"
+  trap 'rmdir "$lock" 2>/dev/null' EXIT
   [ ! -e "$part" ] || rm -r "$part" # left by an earlier failed run of this script
   err=$(mktemp "${TMPDIR:-/tmp}/org-clone.XXXXXX") || die 8 "cannot create a temporary file"
   # GH_HOST=github.com: a secretary with GH_HOST set to another host must not resolve OWNER/NAME there.
