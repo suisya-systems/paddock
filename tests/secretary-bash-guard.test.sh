@@ -29,6 +29,9 @@ done
 refused 'while ! gh pr view 5 --json state | grep -q MERGED; do sleep 5; done' 'polling loop'
 refused 'until hc get w-t1 | grep -q idle; do sleep 2; done' 'polling loop'
 refused $'for i in 1 2 3\ndo\n  gh pr checks 5\n  sleep 3\ndone' 'polling loop'
+refused 'gh run watch|cat' 'CI watch'
+refused 'gh pr checks 5 --watch|tail -3' 'CI watch'
+refused 'sleep 5 5 5' 'sleep over'
 refused "bash -c 'gh pr checks 5 --watch'" 'CI watch'
 refused 'sleep "60"' 'sleep over'
 refused "sleep '2m'" 'sleep over'
@@ -45,7 +48,7 @@ done
 
 for c in 'bash scripts/org --as secretary wait --children' \
          'bash skills/org-pull-request/scripts/org-pull-request.sh --task t1 --title "x" --body-file b.md' \
-         'sleep 1' 'sleep 0.5' 'sleep 5' 'gh pr checks 377' 'gh pr checks 377 --required' 'gh pr view 377' 'gh run view 5' \
+         'sleep 1' 'sleep 0.5' 'sleep 5' 'sleep 2 3' 'gh run watcher' 'gh pr checks 377' 'gh pr checks 377 --required' 'gh pr view 377' 'gh run view 5' \
          'git status' 'ls -la' 'hc send w-t1 hello' 'hc read w-t1' 'grep -n watch file' 'echo sleeping' \
          'hc run --bg --name ci-5 sh -c "gh pr checks 5 --watch"'; do
   allowed "$c"

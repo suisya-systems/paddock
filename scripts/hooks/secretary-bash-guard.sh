@@ -46,12 +46,15 @@ wait_hint='while a shell call runs you take no input. Run it in a background ter
 
 printf '%s\n' "$text" | grep -Eq "${b}hc[[:space:]]+(keys([[:space:]]|;|$)|send([[:space:]][^;&|]*)?[[:space:]](--force|-f)([[:space:]]|;|$))" &&
   refuse 'keys reach a worker only through org-escalation.sh prompt or answer, after a fresh screen read (L-N3, Issue #260)'
-printf '%s\n' "$fg" | grep -Eq "${b}gh[[:space:]]+(pr[[:space:]]+checks[^;&|]*[[:space:]]--watch|run[[:space:]]+watch)([[:space:]=]|;|$)" &&
+printf '%s\n' "$fg" | grep -Eq "${b}gh[[:space:]]+(pr[[:space:]]+checks[^;&|]*[[:space:]]--watch|run[[:space:]]+watch)([^[:alnum:]_-]|$)" &&
   refuse "a CI watch blocks you: $wait_hint"
 printf '%s\n' "$fg" | grep -Eq "${b}(while|until|for)[[:space:]].*${b}do([[:space:]]|;)(.*${b})?sleep([[:space:]]|;|$)" &&
   refuse "a polling loop blocks you: $wait_hint"
 # sleep: more than 5 seconds, a unit of minutes or more, or infinity
-printf '%s\n' "$fg" | grep -Eo "${b}sleep[[:space:]]+[^;&|)\`]*" | sed 's/.*sleep[[:space:]]*//' | tr ' \t' '\n\n' |
-  awk '/^[0-9.]+s?$/ { if ($0 + 0 > 5) bad = 1; next } /^[0-9.]+[mhd]$/ || /^inf/ { bad = 1 } END { exit !bad }' &&
+# (GNU sleep adds its arguments: one line per sleep call, summed)
+printf '%s\n' "$fg" | grep -Eo "${b}sleep[[:space:]]+[^;&|)\`]*" | sed 's/.*sleep[[:space:]]*//' |
+  awk '{ t = 0; for (i = 1; i <= NF; i++) { v = $i; u = 1; if (v ~ /^inf/) t += 1e9
+           else if (v ~ /^[0-9.]+[smhd]?$/) { if (v ~ /m$/) u = 60; else if (v ~ /h$/) u = 3600; else if (v ~ /d$/) u = 86400; t += (v + 0) * u } }
+         if (t > 5) bad = 1 } END { exit !bad }' &&
   refuse "a sleep over 5 seconds blocks you: $wait_hint"
 exit 0
