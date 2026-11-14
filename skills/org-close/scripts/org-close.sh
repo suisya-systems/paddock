@@ -73,6 +73,8 @@ if [ -n "$have" ]; then
   hc kill "$name" >/dev/null 2>&1 || die 5 "hc kill $name failed; nothing else was done"
   hc rm "$name" >/dev/null 2>&1 || die 5 "hc rm $name failed (killed); run it again"
 fi
+# Issue #324: the killed worker may have left Claude Code's 0-byte read-only config.lock in the clone's shared .git.
+sweep_config_lock "$wt"
 
 # 3. --drop: the worktree, then the branch if it is unused.
 if [ -n "$drop" ] && [ -e "$wt" ]; then

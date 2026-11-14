@@ -75,3 +75,54 @@ work_lines() {
     printf 'work\t%s\t%s\t%s\t%s\t%s\t%s\n' "${id:--}" "${wt:--}" "$h" "$d" "${tk:--}" "${ti:--}"
   done
 }
+
+# sweep_config_lock <worktree>...: Issue #324. Call it after the terminals of those workers are ended (hc kill, hc rm).
+# Claude Code's sandbox leaves a 0-byte read-only <git-common-dir>/config.lock for the whole of every command a worker
+# runs, and it stays when the terminal is killed mid-command (measured 2026-11-14, docs/design/worker-github-access.md D);
+# every later git config write in that clone then fails. The file's attributes cannot tell a live command from a leftover,
+# so it is removed only when (a) it is a regular file, 0 bytes, not writable (a real git lock is writable or has content),
+# (b) no process has its cwd in the ended workers' worktrees (waits PADDOCK_LOCK_WAIT s, default 10, for a killed command
+# to end) and (c) none has it in another linked worktree of the same clone. Otherwise it stays and is reported.
+# ponytail: processes are found through /proc/*/cwd (hc get shows no pid); where /proc is missing nothing is removed.
+# ponytail: a command that changed its cwd out of the worktree is not seen; hc exposing a pid would replace this scan.
+_in_dirs() { # _in_dirs <dir>...: 0 when a process has its cwd in one of them, 1 none, 2 /proc unreadable
+  local p c d
+  [ -r /proc/self/cwd ] || return 2
+  for p in /proc/[0-9]*; do
+    c=$(readlink "$p/cwd" 2>/dev/null) || continue
+    for d in "$@"; do case "$c" in "$d"|"$d"/*) return 0 ;; esac; done
+  done
+  return 1
+}
+sweep_config_lock() {
+  local state=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
+  local wait=${PADDOCK_LOCK_WAIT:-10} seen=' ' wt c lk ended other n r
+  for wt in "$@"; do
+    [ -d "$wt" ] || continue
+    c=$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || continue
+    case "$seen" in *" $c "*) continue ;; esac; seen="$seen$c "
+    lk=$c/config.lock
+    [ -f "$lk" ] && [ ! -L "$lk" ] && [ ! -s "$lk" ] && [ ! -w "$lk" ] || continue
+    ended=(); for r in "$@"; do
+      [ "$(git -C "$r" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" = "$c" ] && ended+=("$(cd "$r" && pwd -P)")
+    done
+    n=0; _in_dirs "${ended[@]}"; r=$?
+    while [ "$r" -eq 0 ] && [ "$n" -lt "$wait" ]; do sleep 1; n=$((n + 1)); _in_dirs "${ended[@]}"; r=$?; done
+    [ "$r" -ne 2 ] || { echo "NOT removed $lk: cannot tell whether a command of the ended worker still runs (no /proc); remove it by hand if none does" >&2; continue; }
+    if [ "$r" -eq 0 ]; then
+      echo "NOT removed $lk: a process of the ended worker is still running in its worktree (${ended[*]}); remove it by hand once it has ended" >&2; continue
+    fi
+    # Other linked worktrees of the clone (the first one listed is the clone itself): any process there is a live worker.
+    other=(); while IFS= read -r r; do
+      [ -d "$r" ] && r=$(cd "$r" && pwd -P); case " ${ended[*]} " in *" $r "*) ;; *) other+=("$r") ;; esac
+    done < <(git -C "$wt" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | tail -n +2)
+    if [ "${#other[@]}" -gt 0 ] && _in_dirs "${other[@]}"; then
+      echo "NOT removed $lk: another worker of this clone is still running; remove it by hand when none runs" >&2; continue
+    fi
+    if rm -f "$lk"; then
+      echo "removed leftover $lk (0 bytes, read-only; the worker's terminal is ended and no command of it runs)"
+      { mkdir -p "$state" && printf '%s removed %s after ending %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$lk" "${ended[*]}" >> "$state/removed-locks.log"; } 2>/dev/null \
+        || echo "could not write $state/removed-locks.log" >&2
+    else echo "NOT removed $lk: rm failed" >&2; fi
+  done
+}

@@ -41,11 +41,16 @@ bash "$here/../../org-suspend/scripts/org-suspend.sh" || die 5 "org-suspend fail
 terms=$(paddock_terminals) || die 5 "cannot reach the herdr core (hc ls failed)"
 names=$(printf '%s\n' "$terms" | cut -f1)
 [ -z "$secretary" ] || names=$(printf '%s\n%s\n' "$names" "${PADDOCK_SECRETARY_NAME:-secretary}")
+wts=()
 for n in $names; do
   hc kill "$n" >/dev/null 2>&1 || die 5 "hc kill $n failed; stopped there, the core was not stopped"
   hc rm "$n" >/dev/null 2>&1 || die 5 "hc rm $n failed; stopped there, the core was not stopped"
   echo "org-down: ended $n"
+  l=$(printf '%s\n' "$terms" | awk -F'\t' -v n="$n" '$1==n {print $2; exit}')
+  [ -z "$l" ] || wts+=("${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}/$l")
 done
+# Issue #324: only after every worker is ended, so none of them counts as a live worker of its clone.
+[ "${#wts[@]}" -eq 0 ] || sweep_config_lock "${wts[@]}"
 
 # 3. The person's core is stopped only when asked.
 if [ -n "$stop_core" ]; then

@@ -16,7 +16,8 @@ bash skills/org-down/scripts/org-down.sh [--secretary] [--stop-core]
 1. Runs [org-suspend](../org-suspend/SKILL.md). If that fails, nothing is ended.
 2. Finds the terminals with a `task_id` label and runs `hc kill`, then `hc rm`, on each. A terminal without that label is never touched, whatever its name.
 3. With `--secretary`, also `hc kill` and `hc rm` the secretary (`PADDOCK_SECRETARY_NAME`, default `secretary`). Without it the secretary stays.
-4. With `--stop-core`, afterwards runs `hc server stop`. **Without the flag the core is never stopped.** It never runs `hc server restart`, `hc send` or `hc keys`.
+4. After every worker is ended, The 0-byte read-only `config.lock` that Claude Code's sandbox leaves in the clone's shared `.git` when a worker is killed mid-command ([Issue #324](https://github.com/suisya-systems/paddock/issues/324)) is removed, but only if no process has its cwd in the ended worker's worktree (it waits up to `PADDOCK_LOCK_WAIT` seconds, default 10, for a killed command to end), none has it in another linked worktree of the same clone, and the file is a regular, 0-byte, not writable file. Otherwise it stays and the output says why. What was removed is printed and appended to `removed-locks.log` in the state folder. Without `/proc` nothing is removed. (a worker ended here no longer counts as live.)
+5. With `--stop-core`, afterwards runs `hc server stop`. **Without the flag the core is never stopped.** It never runs `hc server restart`, `hc send` or `hc keys`.
 
 ## Why the core stays
 
