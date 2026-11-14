@@ -15,7 +15,7 @@ Bash and `git` only. Then `org-pull-request --pr <n> --worktree <worker worktree
 
 ## What it does
 
-1. `git fetch origin`; refuses when tracked files have uncommitted changes (exit 7, nothing touched).
+1. `git fetch origin` (in a worker a failed fetch is not an error: the sandbox cannot reach GitHub, so it goes on with the `origin/<base>` the secretary fetched in the project clone); refuses when tracked files have uncommitted changes (exit 7, nothing touched).
 2. Already contains `origin/<base>`: prints that and exits 0.
 3. In a worker (`PADDOCK_ORG` is set, which only the worker launch command does): lists the files of the incoming range (`merge-base..origin/<base>`); if any is `.claude/skills/**`, `.claude/hooks/**`, `.claude/settings.json` or `.claude/settings.local.json` (the four paths measured as stopping a rebase in a worker, and a merge writes them the same way), it names them and exits 4 with the branch unchanged. The secretary runs the same command outside the sandbox, where the check is off.
 4. `git merge --no-edit origin/<base>`. On a conflict it runs `git merge --abort` and exits 6, branch unchanged; the conflict is resolved by hand.
@@ -28,7 +28,7 @@ Bash and `git` only. Then `org-pull-request --pr <n> --worktree <worker worktree
 | 2 | Bad argument, or no branch checked out. | Fix the call. |
 | 3 | `git` not found. | Report to the person. |
 | 4 | Worker: the range touches a protected path. | Run it again from the secretary's own shell. |
-| 5 | Fetch failed, or no `origin/<base>`. | Report. |
+| 5 | The secretary's fetch failed, or there is no `origin/<base>` (a worker that has none says to ask the secretary to run `git fetch origin` in the project clone). | Report, or fetch in the project clone and rerun. |
 | 6 | Merge conflict (aborted). | Send the worker back to resolve it, or resolve it by hand. |
 | 7 | Uncommitted tracked changes. | Have the worker commit first. |
 
@@ -42,4 +42,4 @@ Bash and `git` only. Then `org-pull-request --pr <n> --worktree <worker worktree
 
 - The protected list is fixed in the script, not read from what the sandbox places, which would be better. It is the four measured paths. Add a path to the script's `grep` when a new one is measured.
 - A worker is told apart by `PADDOCK_ORG`; a secretary shell with that variable set would be checked like a worker (harmless: exit 4 only refuses).
-- Not measured: how the gate treats files that arrive through the merge (they are main's, not the branch's); a real push after the merge; `PADDOCK_ORG` in a real worker session. Tested against a local bare repository (`tests/org-update-branch.test.sh`).
+- Not measured: how the gate treats files that arrive through the merge (they are main's, not the branch's); Measured on a host 2026-11-14 (host probe of the paddock repository, `docs/design/acceptance-mode-probe.md`): a real push after the merge, and `PADDOCK_ORG` in a real worker session (the protected-path stop, and the merge that goes on without a fetch). Also tested against a local bare repository (`tests/org-update-branch.test.sh`, `tests/org-update-branch-worker-fetch.test.sh`).
