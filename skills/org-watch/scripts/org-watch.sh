@@ -63,7 +63,9 @@ $b = [Security.SecurityElement]::Escape($env:PADDOCK_TOAST_BODY)
 $x = New-Object Windows.Data.Xml.Dom.XmlDocument
 $x.LoadXml("<toast><visual><binding template=`"ToastText02`"><text id=`"1`">$t</text><text id=`"2`">$b</text></binding></visual><audio src=`"ms-winsoundevent:Notification.Default`"/></toast>")
 $app = "{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe"
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show([Windows.UI.Notifications.ToastNotification]::new($x))'
+$n = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app)
+if ($n.Setting -ne "Enabled") { exit 3 }
+$n.Show([Windows.UI.Notifications.ToastNotification]::new($x))'
 notify() { # notify <title> <body>
   local ps
   printf 'org-watch: %s - %s\n' "$1" "$2"

@@ -29,7 +29,7 @@ It polls every 30 seconds (`PADDOCK_WATCH_INTERVAL`) and only reads: `hc ls`, `h
 
 The first that works, per message:
 
-1. Windows toast with the system sound, through `powershell.exe` (WSL). The script goes in on stdin and the text in environment variables, so a question with quotes or shell syntax is never run. A kept terminal's PATH lacks `/mnt/c`, so the default path `/mnt/c/WINDOWS/System32/WindowsPowerShell/v1.0/powershell.exe` is tried when the name is not found (`PADDOCK_POWERSHELL` names another).
+1. Windows toast with the system sound, through `powershell.exe` (WSL). When Windows reports notifications disabled for it (`Setting` is not `Enabled`) the toast counts as failed and the next channel runs. The script goes in on stdin and the text in environment variables, so a question with quotes or shell syntax is never run. A kept terminal's PATH lacks `/mnt/c`, so the default path `/mnt/c/WINDOWS/System32/WindowsPowerShell/v1.0/powershell.exe` is tried when the name is not found (`PADDOCK_POWERSHELL` names another).
 2. `notify-send` (Linux desktop with a notification daemon).
 3. The terminal bell, plus the message on the watcher's terminal. Always printed, whatever channel worked.
 

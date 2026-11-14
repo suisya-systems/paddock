@@ -244,7 +244,8 @@ fi
 # 3b. The watcher (decision 0008): a kept terminal named watcher that tells the person outside the
 # window. It carries paddock_role=watcher, so org-down ends it and no other terminal of that name.
 wname=${PADDOCK_WATCHER_NAME:-watcher}
-if hc get --json "$wname" 2>/dev/null | grep -Eq '"state": *"finished"'; then
+wj=$(hc get --json "$wname" 2>/dev/null | tr -d '\n')
+if printf '%s' "$wj" | grep -Eq '"state": *"finished"' && printf '%s' "$wj" | grep -Eq '"paddock_role": *"watcher"'; then
   hc rm "$wname" >/dev/null 2>&1 || echo "org-start: warning: hc rm $wname failed (the finished watcher terminal)" >&2
 fi
 if hc get "$wname" >/dev/null 2>&1; then
