@@ -84,7 +84,10 @@ work_lines() {
 # (b) no process has its cwd in the ended workers' worktrees (waits PADDOCK_LOCK_WAIT s, default 10, for a killed command
 # to end) and (c) none has it in another linked worktree of the same clone. Otherwise it stays and is reported.
 # ponytail: processes are found through /proc/*/cwd (hc get shows no pid); where /proc is missing nothing is removed.
-# ponytail: a command that changed its cwd out of the worktree is not seen; hc exposing a pid would replace this scan.
+# (d) A command that cd'd out of the worktree is still seen when its sandbox has the clone's .git or the lock mounted
+# (/proc/*/mountinfo, as the sandbox's bind mounts show there); that signal is skipped when this very process has that
+# mount (a sandboxed secretary), since it could not tell the ended worker from the caller.
+# ponytail: a process with neither its cwd nor those mounts in the clone is not seen; hc exposing a pid would replace this scan.
 _in_dirs() { # _in_dirs <dir>...: 0 when a process has its cwd in one of them, 1 none, 2 /proc unreadable
   local p c d
   [ -r /proc/self/cwd ] || return 2
@@ -94,10 +97,18 @@ _in_dirs() { # _in_dirs <dir>...: 0 when a process has its cwd in one of them, 1
   done
   return 1
 }
+_mounted() { # _mounted <path>...: 0 when a process (not this one) has a mount point at one of them
+  local p
+  for p in /proc/[0-9]*; do
+    [ "$p" = "/proc/$$" ] && continue
+    awk -v a="$1" -v b="$2" '$5==a||$5==b{f=1;exit}END{exit !f}' "$p/mountinfo" 2>/dev/null && return 0
+  done
+  return 1
+}
 _placeholder() { [ -f "$1" ] && [ ! -L "$1" ] && [ ! -s "$1" ] && [ ! -w "$1" ]; }
 sweep_config_lock() {
   local state=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
-  local wait=${PADDOCK_LOCK_WAIT:-10} seen=' ' wt c lk ended other n r
+  local wait=${PADDOCK_LOCK_WAIT:-10} seen=' ' wt c lk ended other n r mnt
   for wt in "$@"; do
     [ -d "$wt" ] || continue
     c=$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || continue
@@ -107,9 +118,14 @@ sweep_config_lock() {
     ended=(); for r in "$@"; do
       [ "$(git -C "$r" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" = "$c" ] && ended+=("$(cd "$r" && pwd -P)")
     done
-    n=0; _in_dirs "${ended[@]}"; r=$?
-    while [ "$r" -eq 0 ] && [ "$n" -lt "$wait" ]; do sleep 1; n=$((n + 1)); _in_dirs "${ended[@]}"; r=$?; done
+    mnt=1; awk -v a="$lk" -v b="$c" '$5==a||$5==b{f=1;exit}END{exit !f}' /proc/self/mountinfo 2>/dev/null || mnt=0
+    busy() { _in_dirs "${ended[@]}"; r=$?; [ "$r" -eq 2 ] || [ "$mnt" -eq 1 ] || { [ "$r" -ne 0 ] && _mounted "$lk" "$c" && r=3; }; }
+    n=0; busy
+    while [ "$r" -eq 0 ] || [ "$r" -eq 3 ]; do [ "$n" -lt "$wait" ] || break; sleep 1; n=$((n + 1)); busy; done
     [ "$r" -ne 2 ] || { echo "NOT removed $lk: cannot tell whether a command of the ended worker still runs (no /proc); remove it by hand if none does" >&2; continue; }
+    if [ "$r" -eq 3 ]; then
+      echo "NOT removed $lk: a sandboxed process of this clone is still running (its sandbox has the clone's .git mounted); remove it by hand once it has ended" >&2; continue
+    fi
     if [ "$r" -eq 0 ]; then
       echo "NOT removed $lk: a process of the ended worker is still running in its worktree (${ended[*]}); remove it by hand once it has ended" >&2; continue
     fi
