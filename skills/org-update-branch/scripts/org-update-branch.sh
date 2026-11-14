@@ -18,7 +18,8 @@ Options:
 
 Exit codes: 0 merged or already up to date; 2 bad argument; 3 git not found; 4 worker: the incoming
 range touches a protected path (nothing changed; the secretary runs this outside the sandbox);
-5 fetch failed or no origin/<base>; 6 merge conflict (aborted, branch unchanged); 7 tracked files
+5 the secretary's fetch failed (a worker goes on with the origin/<base> already fetched), or
+no origin/<base>; 6 merge conflict (aborted, branch unchanged); 7 tracked files
 have uncommitted changes (nothing changed).
 
 A worker is told apart by PADDOCK_ORG, which only the worker's launch command sets.
@@ -39,8 +40,14 @@ done
 command -v git >/dev/null 2>&1 || die 3 "git not found on PATH"
 git -C "$wt" symbolic-ref -q HEAD >/dev/null || die 2 "no branch checked out in $wt"
 
-git -C "$wt" fetch -q origin 2>/dev/null || die 5 "git fetch origin failed"
-git -C "$wt" rev-parse -q --verify "refs/remotes/origin/$base^{commit}" >/dev/null || die 5 "no origin/$base after the fetch"
+if ! git -C "$wt" fetch -q origin 2>/dev/null; then
+  # A worker's sandbox cannot reach GitHub (docs/design/worker-github-access.md): it goes on with the
+  # origin/<base> the secretary fetched in the project clone. The secretary's own failed fetch stays exit 5.
+  [ -n "${PADDOCK_ORG:-}" ] || die 5 "git fetch origin failed"
+  echo "org-update-branch: fetch failed (a worker cannot fetch); using the existing origin/$base" >&2
+fi
+git -C "$wt" rev-parse -q --verify "refs/remotes/origin/$base^{commit}" >/dev/null \
+  || die 5 "no origin/$base; a worker cannot fetch, ask the secretary to run git fetch origin in the project clone"
 [ -z "$(git -C "$wt" status --porcelain --untracked-files=no)" ] || die 7 "tracked files have uncommitted changes; commit them first"
 
 if git -C "$wt" merge-base --is-ancestor "origin/$base" HEAD; then echo "already up to date with origin/$base"; exit 0; fi

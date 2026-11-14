@@ -42,7 +42,7 @@ It pushes two side branches of the scratch repository (never its `main`, which m
 | --- | --- |
 | `delegate`, `report-done`, `in-box` | the worker started and its `report done` reached the secretary's box |
 | `worker-env` | the worker saw `PADDOCK_ORG` set |
-| `worker-merge` | in the worker, `org-update-branch --base <plain side branch>` exits 0, `HEAD` moves, the branch holds that base (exit 5 would mean the sandbox refuses the fetch) |
+| `worker-merge` | in the worker, `org-update-branch --base <plain side branch>` exits 0, `HEAD` moves, the branch holds that base (the worker cannot fetch; exit 5 would mean origin/<base> was not in the project clone, which the secretary's fetch at delegate time provides) |
 | `worker-protected-stop` | in the worker, `--base <side branch adding .claude/skills/...>` exits 4, names the path, `HEAD` does not move |
 | `host-control` | the same range on the host with `PADDOCK_ORG` unset exits 0 and merges |
 

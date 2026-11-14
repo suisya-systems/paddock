@@ -30,7 +30,7 @@
 #   worker-env            PASS = the worker saw PADDOCK_ORG set (env=set), so the check was active.
 #   worker-merge          PASS = org-update-branch in the worker exited 0 on the plain range, HEAD
 #                         moved, and the branch holds origin/<ok>. FAIL prints the exit code (5 = the
-#                         fetch from the worker sandbox failed; 6 = merge failed, e.g. no git identity).
+#                         origin/<base> not visible to the worker (it cannot fetch); 6 = merge failed, e.g. no git identity).
 #   worker-protected-stop PASS = on the range touching .claude/skills the worker run exited 4, named
 #                         the path (prot-listed=yes) and HEAD did not move.
 #   host-control          PASS = the same range with PADDOCK_ORG unset (the secretary's case) exits 0
@@ -154,7 +154,7 @@ elif [ "$env" = set ]; then res worker-env PASS "PADDOCK_ORG set in the worker"
 else res worker-env FAIL "env=${env:-empty}"; fi
 if [ -z "$okrc" ]; then res worker-merge "NO DATA"
 elif [ "$okrc" = 0 ] && [ "$okm" = yes ] && [ "$okh" = yes ]; then res worker-merge PASS "exit 0, HEAD moved, origin/$OK in the branch"
-else res worker-merge FAIL "exit $okrc, moved=$okm, has-base=$okh (5: fetch failed in the sandbox; 6: merge failed)"; fi
+else res worker-merge FAIL "exit $okrc, moved=$okm, has-base=$okh (5: no origin/<base> visible to the worker; 6: merge failed)"; fi
 if [ -z "$prc" ]; then res worker-protected-stop "NO DATA"
 elif [ "$prc" = 4 ] && [ "$pm" = no ] && [ "$pl" = yes ]; then res worker-protected-stop PASS "exit 4, path named, HEAD unchanged"
 else res worker-protected-stop FAIL "exit $prc, moved=$pm, listed=$pl (expected 4, no, yes)"; fi
