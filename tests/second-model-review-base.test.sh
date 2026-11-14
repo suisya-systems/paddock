@@ -22,9 +22,20 @@ run() { : > "$STUB_LOG"; out=$(cd "$repo" && TMPDIR="$tmp" PATH="$tmp/bin:$PATH"
 
 run   # no origin/main in this fixture and no recorded base
 [ "$rc" -eq 1 ] && ! grep -q . "$STUB_LOG"; check "no recorded base and no origin/main: nothing to review, reviewer not called" $?
-git -C "$repo" config branch.work.paddockBase origin/dev
+# Issue #323: the base is the file org-delegate wrote in the state folder (<state>/bases/<task>, the task being the worktree's folder name)
+mkdir -p "$tmp/state/bases"; echo origin/dev > "$tmp/state/bases/repo"
+export PADDOCK_STATE_DIR=$tmp/state
 run
-[ "$rc" -eq 0 ] && grep -q -- '--base origin/dev' "$STUB_LOG"; check "the recorded base is the review's base" $?
+[ "$rc" -eq 0 ] && grep -q -- '--base origin/dev' "$STUB_LOG"; check "the base recorded in the state folder is the review's base" $?
+# A worktree made before #323 has the base in git config only: read it when the state folder has none.
+rm "$tmp/state/bases/repo"; git -C "$repo" config branch.work.paddockBase origin/dev
+run
+[ "$rc" -eq 0 ] && grep -q -- '--base origin/dev' "$STUB_LOG"; check "no state file: the base in git config (older worktree) is still found" $?
+# The state folder wins over git config.
+git -C "$repo" branch origin/other HEAD~1; echo origin/other > "$tmp/state/bases/repo"
+run
+[ "$rc" -eq 0 ] && grep -q -- '--base origin/other' "$STUB_LOG"; check "the state folder's base wins over git config" $?
+rm "$tmp/state/bases/repo"
 (cd "$repo" && git revert --no-edit HEAD >/dev/null 2>&1)
 run
 [ "$rc" -eq 1 ] && ! grep -q . "$STUB_LOG"; check "a change and its revert: commits ahead but no diff, reviewer not called" $?
