@@ -1,0 +1,7 @@
+# Why org-escalation is built this way
+
+- **Every question is answered through the secretary.** A card never types into a worker; it sends one `ANSWER <id> <text>` line to the secretary's mailbox, and the secretary runs `answer`. An earlier way of letting a card answer a worker's prompt directly was removed (`--answer-in` exits 2): keys reach a worker only after a fresh screen read matched a known dialog.
+- **The card carries the context.** The person sees only the card when deciding, so `ask` takes the background, what Yes and what No lead to, and a recommendation with its reason, and the card names every one left out ("Not written: ..."). A decision made on a bare question was the failure this prevents.
+- **A short, fixed policy list for prompts.** Only folder-trust and the auto-mode setup dialog are answered without the person, each recognised by whole option lines, re-read before every key, with the cursor checked before `enter`. Anything else is asked, never guessed. The folder-trust answer matches what org-start does for the secretary.
+- **`answer` sends first and removes second.** A failed send keeps the entry; a failed removal after the send says to run `remove`, so the worker is never left without its answer.
+- **An idle worker is nudged once.** A worker that ended its turn will not read its mailbox, so after the send it gets one `hc send --if idle` telling it to run `check_messages`; a working worker is never interrupted, and a refused nudge does not change the exit code.

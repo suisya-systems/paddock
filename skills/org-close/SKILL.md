@@ -5,7 +5,7 @@ description: End a finished or failed worker in one call. Checks the worker's do
 
 # org-close
 
-Implements row 7 of [routine procedures](../../docs/design/routine-procedures.md). Run it from the secretary.
+Closes a worker after its task. Run it from the secretary. Why it is built this way: [references/rationale.md](references/rationale.md).
 
 ```sh
 bash skills/org-close/scripts/org-close.sh --task <task_id> [--drop]
@@ -17,7 +17,7 @@ Without `--drop` (the worker finished):
 
 1. Needs a `done` record for the task, written by `w-<task_id>` and addressed to `secretary`. A `done` sent to anyone else does not count, and nothing is ended.
 2. Needs the terminal `w-<task_id>` to carry the label `task_id=<task_id>`. A terminal without it, or with another task's label, is never touched.
-3. `hc kill`, then `hc rm`, then (after both) the 0-byte read-only `config.lock` that Claude Code's sandbox leaves in the clone's shared `.git` when a worker is killed mid-command ([Issue #324](https://github.com/suisya-systems/paddock/issues/324)) is removed, but only if no process has its cwd in the ended worker's worktree (it waits up to `PADDOCK_LOCK_WAIT` seconds, default 10, for a killed command to end), none has it in another linked worktree of the same clone, and the file is a regular, 0-byte, not writable file. Otherwise it stays and the output says why. What was removed is printed and appended to `removed-locks.log` in the state folder. A process whose sandbox still has the clone's `.git` mounted (`/proc/*/mountinfo`), a process of the same user that cannot be inspected, or a caller whose own sandbox has that mount, also keeps it. Without `/proc` nothing is removed.
+3. `hc kill`, then `hc rm`, then (after both) the 0-byte read-only `config.lock` that Claude Code's sandbox leaves in the clone's shared `.git` when a worker is killed mid-command is removed, but only if no process has its cwd in the ended worker's worktree (it waits up to `PADDOCK_LOCK_WAIT` seconds, default 10, for a killed command to end), none has it in another linked worktree of the same clone, and the file is a regular, 0-byte, not writable file. Otherwise it stays and the output says why. What was removed is printed and appended to `removed-locks.log` in the state folder. A process whose sandbox still has the clone's `.git` mounted (`/proc/*/mountinfo`), a process of the same user that cannot be inspected, or a caller whose own sandbox has that mount, also keeps it. Without `/proc` nothing is removed.
 4. Removes the `work` entry of the task from `org-state` (its `approvals` are left alone).
 
 The worktree and branch stay: [org-pull-request](../org-pull-request/SKILL.md) works from them.
@@ -30,7 +30,7 @@ With `--drop` (the work is abandoned, or the launch failed): no report needed. I
 
 ## Known limits
 
-- The `work` entries of `org-state` are cut out with a scan that skips string contents, so a `]` or a brace inside a task or title does not end an entry (Issue #182); the entries are flat objects, like [org-suspend](../org-suspend/SKILL.md).
+- The `work` entries of `org-state` are cut out with a scan that skips string contents, so a `]` or a brace inside a task or title does not end an entry; the entries are flat objects, like [org-suspend](../org-suspend/SKILL.md).
 - `git branch -d` keeps an unused branch when the project's `HEAD` is not at or past the branch's base.
 
 ## Not measured
