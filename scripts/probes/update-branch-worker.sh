@@ -115,6 +115,7 @@ done
 # The worker's commands, one Bash call. \$ stays for the worker's shell; $OUB, $OK etc. are filled in here.
 TASK="Probe for paddock Issue #330. Change nothing else. Run this block in ONE Bash call exactly as written, then stop:
 OUB='$OUB'
+FE=\$(git fetch origin 2>&1 | tr '\\n\"\\\\' '   ' | cut -c1-160)
 H0=\$(git rev-parse HEAD)
 bash \"\$OUB\" --worktree \"\$PWD\" --base $OK >/dev/null 2>&1; A=\$?
 H1=\$(git rev-parse HEAD)
@@ -124,7 +125,7 @@ E=\$(bash \"\$OUB\" --worktree \"\$PWD\" --base $PROT 2>&1 >/dev/null); B=\$?
 H2=\$(git rev-parse HEAD)
 [ \"\$H1\" = \"\$H2\" ] && BM=no || BM=yes
 case \"\$E\" in *'protected: .claude/skills/'*) BL=yes ;; *) BL=no ;; esac
-bash \"\$PADDOCK_ORG\" --as $W report done --task $ID \"probe done env=\${PADDOCK_ORG:+set} ok-rc=\$A ok-moved=\$AM ok-has-base=\$AH prot-rc=\$B prot-moved=\$BM prot-listed=\$BL\""
+bash \"\$PADDOCK_ORG\" --as $W report done --task $ID \"probe done env=\${PADDOCK_ORG:+set} ok-rc=\$A ok-moved=\$AM ok-has-base=\$AH prot-rc=\$B prot-moved=\$BM prot-listed=\$BL fetch-err=[\$FE]\""
 out=$(bash "$DELEGATE" --project "$project" --task-id "$ID" --task "$TASK" 2>&1); rc=$?
 echo "$out" > "$RUN/delegate.out"
 if [ "$rc" -eq 0 ]; then res delegate PASS
@@ -143,6 +144,8 @@ STATE=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
 box=$(cat "$STATE"/events/*/"$W".jsonl 2>/dev/null | grep '"kind":"run_completed","to":"secretary"' | grep "\"task_id\":\"$ID\"" | grep 'probe done' | tail -n 1)
 if [ -n "$box" ]; then res in-box PASS; else res in-box FAIL; fi
 echo "done text: $(printf '%s' "$box" | sed -n 's/.*\(probe done[^"]*\).*/\1/p')"
+printf '%s\n' "$box" > "$RUN/done.json"
+fe=$(printf '%s' "$box" | sed -n 's/.*fetch-err=\[\([^]]*\)\].*/\1/p'); echo "worker plain git fetch origin output: ${fe:-<empty: fetch printed nothing>}"
 f() { printf '%s' "$box" | sed -n "s/.*[ \"]$1=\([a-z0-9]*\).*/\1/p" | tail -n 1; } # f <field>: value in the done text
 env=$(f env); okrc=$(f ok-rc); okm=$(f ok-moved); okh=$(f ok-has-base); prc=$(f prot-rc); pm=$(f prot-moved); pl=$(f prot-listed)
 
