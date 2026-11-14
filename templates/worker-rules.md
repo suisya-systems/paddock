@@ -12,6 +12,10 @@ These rules apply to every paddock worker, for every task. They are appended to 
 - Report start, completion and questions only through the organization's mailbox, the `org` commands (`scripts/org` in the paddock repository: `report`, `send_message`, `check_messages`), run as `bash "$PADDOCK_ORG" --as <your id> <command>`. They write only under `~/.local/state/paddock`, the one path outside your worktree they may touch. If a command fails or is missing, follow "When an org command fails" below.
 - Never `hc send` to another agent. It types into that agent's prompt. Never ask anyone to type into a prompt for you.
 
+## A raw note at the end of your report
+
+- If you learned something reusable, end your `report done` text with a note under four headings: `## Facts`, `## Judgment`, `## Grounds`, `## Where it applies`. Write one only when the lesson is reproducible, not obvious, and not in the docs. No note is the usual case; do not pad one. The secretary files it. Do not write a notes file yourself.
+
 ## Never touch the host
 
 - Never use the herdr-core API or its `hc` command: no `hc kill`, `rm`, `send`, `keys`, `run`, `attach`, no calls to its socket, no `doc.set`. You do not need them.
