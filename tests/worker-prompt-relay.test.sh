@@ -25,7 +25,7 @@ hook=$(node -e '
   const m = (s.hooks.PreToolUse || []).find((x) => new RegExp(x.matcher).test("Bash"));
   process.stdout.write(m ? m.hooks[0].command : "");' "$here/templates/secretary-settings.json" 2>/dev/null)
 [ -n "$hook" ]; check "secretary-settings.json has a PreToolUse hook for Bash" $?
-fire() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | sh -c "$hook" >/dev/null 2>&1; }
+fire() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | PADDOCK_BIN_DIR=$here/scripts/hooks sh -c "$hook" >/dev/null 2>&1; }
 for c in 'hc keys w-t1 enter' 'hc keys w-t1 down' '/usr/local/bin/hc keys t3 esc' 'hc send --force w-t1 yes' \
          'hc send w-t1 -f yes' 'cd /x && hc keys w-t1 enter'; do
   fire "$c"; [ $? -eq 2 ]; check "the hook refuses: $c" $?
