@@ -32,6 +32,23 @@ bash skills/org-delegate/scripts/org-delegate.sh \
 
 It prints `org-delegate: worker=w-<id> worktree=<path> branch=<branch>` on success.
 
+## A request that names no repository (decision 0010)
+
+Nothing to delegate into? Make a repository for the task, then delegate as above (worktree, settings and review gate base work unchanged, with no `origin`):
+
+```sh
+repo=$(bash skills/org-delegate/scripts/local-repo.sh --task-id <id>)   # $PADDOCK_LOCAL_DIR/<id>, default ~/paddock-local/<id>
+bash skills/org-delegate/scripts/org-delegate.sh --project "$repo" --task-id <id> --task "<task text>" --title "<a few words>"
+```
+
+`local-repo.sh` runs `git init` on `main` plus one empty commit with an explicit author (so a machine with no `user.name` works), one repository per task. A person who wants reuse adds a `projects.md` row and names it; that is the ordinary path. A path that exists is refused (exit 6).
+
+**Trust: measured, the parent folder is not enough.** Host probe `scripts/probes/folder-trust-local-parent.sh` (2026-11-14, decision 0010 point 3): a parent folder trusted by answering the dialog once; a repository made inside it afterwards still raised the dialog, in the repository itself (`repo-in-parent`) and in its worktree outside the parent (`wt-outside`); the untrusted control raised it too. So each new repository raises the dialog once: after `org-delegate` exits 10, read the screen with `hc read w-<id>` and answer it from there (never a blind Enter: the default is "No, exit"). No script writes Claude Code's configuration.
+
+**Task text for such a task.** Tell the worker: no PR (it has no GitHub access anyway), and its `report done` carries a short summary and the worktree path. Do not accept an `Acceptance-Test:` declaration for it: acceptance mode needs a required CI job and a repository with no CI has none, so it closes in `human` mode whatever `merge_approval_mode` says. The Codex review gate stays (its base is the recorded `main`).
+
+**Close.** Tell the owner the summary and the path. After the owner agrees: `bash skills/org-close/scripts/merge-local.sh --task <id>` (fast-forwards the repository's `main`), then [org-close](../org-close/SKILL.md); to throw it away, `org-close --drop`. Never `org-pull-request`. Pushing to a new remote happens only when the owner asks. Folders under `$PADDOCK_LOCAL_DIR` are never cleaned up by paddock.
+
 ## What it does not do
 
 - **No `AGENTS.md`, no `CLAUDE.md`, no rules file in the worktree.** The role rules are `templates/worker-rules.md`, passed by the template with `--append-system-prompt-file`; the task is the launch's text. Writing `AGENTS.md` would collide with a target repository's own files.

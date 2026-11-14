@@ -1,6 +1,6 @@
 # 0010. A request that names no repository runs in a local repository made for it
 
-Status: **accepted** (2026-11-14, owner: all recommendations taken, decision board 2026-11-14T11:28Z). Refs #357. This file records the decision only; the build is a follow-up task (see "Decision"). Options and recommendations for the four points the Issue lists are kept below as the reasoning.
+Status: **accepted** (2026-11-14, trust probe measured the same day: see the end; owner: all recommendations taken, decision board 2026-11-14T11:28Z). Refs #357. This file records the decision only; the build is a follow-up task (see "Decision"). Options and recommendations for the four points the Issue lists are kept below as the reasoning.
 
 ## Decision
 
@@ -90,3 +90,7 @@ There is no `origin`, no CI and no PR. Proposed handling:
 ## Owner's answers (2026-11-14)
 
 All five questions were answered as recommended: place and unit, result, trust (probe first, then the secretary answers once if the folder is not enough; option (c) rejected), acceptance and PR, and one build task for create, delegate and close.
+
+## Measured (2026-11-14, Issue #359)
+
+Host probe `scripts/probes/folder-trust-local-parent.sh` (commit e452b28, run by the secretary on the host): the parent folder was trusted by answering the dialog once (`parent-accept: ok`); then `control: DIALOG`, `repo-in-parent: DIALOG`, `wt-outside: DIALOG`. A repository made inside a trusted parent still raises the dialog, in the repository and in its worktree outside the parent (first message not sent). So Decide 3 (b) is not available: **(a) applies**, the secretary answers once per repository from the screen. The build is in `skills/org-delegate/scripts/local-repo.sh` and `skills/org-close/scripts/merge-local.sh`; the repository-to-worker path through every `org-delegate` step is tested with a stubbed `hc` only (`tests/org-local-repo.test.sh`), not run against a real core.
