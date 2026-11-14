@@ -85,16 +85,18 @@ work_lines() {
 # to end) and (c) none has it in another linked worktree of the same clone. Otherwise it stays and is reported.
 # ponytail: processes are found through /proc/*/cwd (hc get shows no pid); where /proc is missing nothing is removed.
 # (d) A command that cd'd out of the worktree is still seen when its sandbox has the clone's .git or the lock mounted
-# (/proc/*/mountinfo, as the sandbox's bind mounts show there); that signal is skipped when this very process has that
-# mount (a sandboxed secretary), since it could not tell the ended worker from the caller.
+# (/proc/*/mountinfo, as the sandbox's bind mounts show there). A caller that itself has that mount (a sandboxed
+# secretary) cannot use that signal, so nothing is removed. A process of this user that cannot be inspected counts as unknown.
 # ponytail: a process with neither its cwd nor those mounts in the clone is not seen; hc exposing a pid would replace this scan.
 _in_dirs() { # _in_dirs <dir>...: 0 when a process has its cwd in one of them, 1 none, 2 /proc unreadable
-  local p c d
+  local p c d unknown=0
   [ -r /proc/self/cwd ] || return 2
   for p in /proc/[0-9]*; do
-    c=$(readlink "$p/cwd" 2>/dev/null) || continue
+    # A process of ours whose cwd cannot be read (non-dumpable, ...) is unknown, not absent; zombies, other users and pid 1 (the sandbox init when run in one) are skipped.
+    c=$(readlink "$p/cwd" 2>/dev/null) || { [ "$p" != /proc/1 ] && [ -O "$p" ] && ! grep -q '^State:[[:space:]]*Z' "$p/status" 2>/dev/null && unknown=1; continue; }
     for d in "$@"; do case "$c" in "$d"|"$d"/*) return 0 ;; esac; done
   done
+  [ "$unknown" -eq 0 ] || return 2
   return 1
 }
 _mounted() { # _mounted <path>...: 0 when a process (not this one) has a mount point at one of them
@@ -118,11 +120,13 @@ sweep_config_lock() {
     ended=(); for r in "$@"; do
       [ "$(git -C "$r" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" = "$c" ] && ended+=("$(cd "$r" && pwd -P)")
     done
-    mnt=1; awk -v a="$lk" -v b="$c" '$5==a||$5==b{f=1;exit}END{exit !f}' /proc/self/mountinfo 2>/dev/null || mnt=0
-    busy() { _in_dirs "${ended[@]}"; r=$?; [ "$r" -eq 2 ] || [ "$mnt" -eq 1 ] || { [ "$r" -ne 0 ] && _mounted "$lk" "$c" && r=3; }; }
+    if awk -v a="$lk" -v b="$c" '$5==a||$5==b{f=1;exit}END{exit !f}' /proc/self/mountinfo 2>/dev/null; then
+      echo "NOT removed $lk: this process runs in a sandbox that has the clone's .git mounted, so a command of the ended worker cannot be told from this one; run it from your own shell and remove the file by hand if none runs" >&2; continue
+    fi
+    busy() { _in_dirs "${ended[@]}"; r=$?; [ "$r" -eq 0 ] || [ "$r" -eq 2 ] || { _mounted "$lk" "$c" && r=3; }; }
     n=0; busy
     while [ "$r" -eq 0 ] || [ "$r" -eq 3 ]; do [ "$n" -lt "$wait" ] || break; sleep 1; n=$((n + 1)); busy; done
-    [ "$r" -ne 2 ] || { echo "NOT removed $lk: cannot tell whether a command of the ended worker still runs (no /proc); remove it by hand if none does" >&2; continue; }
+    [ "$r" -ne 2 ] || { echo "NOT removed $lk: cannot tell whether a command of the ended worker still runs (no /proc, or a process of yours that cannot be inspected); remove it by hand if none does" >&2; continue; }
     if [ "$r" -eq 3 ]; then
       echo "NOT removed $lk: a sandboxed process of this clone is still running (its sandbox has the clone's .git mounted); remove it by hand once it has ended" >&2; continue
     fi
