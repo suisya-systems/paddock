@@ -1,7 +1,7 @@
 #!/bin/sh
 # Issue #332: lines and bytes per round per writer, from a state folder. READ-ONLY: it opens
 # <state-dir>/events/*/*.jsonl for reading and writes nothing; it does not call hc.
-# usage: record-growth-measure.sh [state-dir]   (default: $PADDOCK_STATE_DIR, else ~/.local/state/paddock)
+# usage: record-growth-measure.sh [state-dir]   (default: $PADDOCK_STATE_DIR, else $XDG_STATE_HOME or ~/.local/state, then paddock)
 # A round is one task: the lines that carry its task_id, from every writer (run_started ..
 # run_completed, with the messages and summaries between). Lines with no task_id are "no-task".
 # Output is tab-separated: scope, key, lines, bytes, rounds. Scopes:
@@ -17,7 +17,7 @@
 # Bytes are line length plus the newline, counted in the C locale. Needs only sh, awk and sort.
 set -u
 LC_ALL=C; export LC_ALL
-d=${1:-${PADDOCK_STATE_DIR:-$HOME/.local/state/paddock}}
+d=${1:-${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}}
 [ -d "$d/events" ] || { echo "record-growth-measure: no $d/events" >&2; exit 1; }
 # the awk program has no output redirect so that a reader of this file can see at a glance that nothing is written
 set -- "$d"/events/*/*.jsonl
