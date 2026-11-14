@@ -70,6 +70,7 @@ ROOT=$(pwd)
 ORG="$ROOT/scripts/org"
 HERE=$(cd "$(dirname "$0")" && pwd)
 SETUP="sh $HERE/prototype-3-setup.sh" # Issue #267: clones, the workers folder, what a person must do
+. "$HERE/../../skills/org-start/scripts/first-run-checks.sh" # Issue #328: the checks org-start --check runs
 FIXTURE="$HERE/prototype-3-acceptance.yml" # beside this script: the run may call it from another checkout
 STATE=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
 RUNS=${XDG_STATE_HOME:-$HOME/.local/state}/paddock-proto3
@@ -132,12 +133,7 @@ if [ "$phase" = prepare ]; then
   pgrep -f '(^|/)herdr-core serve' >/dev/null 2>&1 || die 6 "the core is not running: start herdr first (this runbook never starts the core, so it never gets this shell's environment)"
   # Issue #305: every terminal takes the core's PATH. Without hc's folder on it the hooks exit 127 and no
   # approval card appears. Read it from the process (no hc call); where /proc is not readable, skip.
-  corepid=$(pgrep -f '(^|/)herdr-core serve' 2>/dev/null | head -n 1)
-  corepath=$(tr '\0' '\n' < "/proc/${corepid:-0}/environ" 2>/dev/null | sed -n 's/^PATH=//p')
-  if [ -n "$corepath" ] && ! PATH=$corepath command -v hc >/dev/null 2>&1; then
-    hcdir=$(dirname "$(command -v hc)")
-    die 6 "hc is not on the core's PATH: its terminals cannot run hc, so no approval card appears. Stop herdr-core, then start herdr again from a login shell that has $hcdir (where hc is) on PATH"
-  fi
+  fr_core_path || { [ $? -eq 2 ] || die 6 "$FR_PATH_FIX"; }
   # Terminal names first (Issue #287): a stale terminal is named with its program and how to remove it.
   hc ls >/dev/null 2>&1 || die 6 "hc ls failed: the core is not reachable"
   if sj=$(hc get --json secretary 2>/dev/null); then
@@ -197,10 +193,9 @@ EOF
   printf '%s\n' "${os:-null}" > "$RUN/org-state.before"
   echo "RESULT preconditions: PASS (paddock main at $phead, clean; origin = github.com/$repo for fetch and push; $ob has the acceptance job and no $FILE; no secretary, no $W, org-state free)" | tee "$RUN/prepare.txt"
   # Core child notes must be off (decision 0002, Q2): a note typed into the secretary would move the loop.
-  cfg=${APPDATA:-${XDG_CONFIG_HOME:-$HOME/.config}}/herdr-core
-  nl=$(grep -rhs -E '^[[:space:]]*notes[[:space:]]*=' "$cfg" 2>/dev/null | head -n 1)
-  case "$nl" in *false*) echo "RESULT notes-off: PASS ($nl)" | tee -a "$RUN/prepare.txt" ;;
-    *) echo "RESULT notes-off: FAIL (no 'notes = false' under $cfg; set it before the run, decision 0002; a note typed into the secretary counts as a touch)" | tee -a "$RUN/prepare.txt" ;; esac
+  cfg=${PADDOCK_CORE_CONFIG_DIR:-${APPDATA:-${XDG_CONFIG_HOME:-$HOME/.config}}/herdr-core}
+  if fr_notes_ok "$cfg"; then echo "RESULT notes-off: PASS (notes = false in $cfg/config.toml)" | tee -a "$RUN/prepare.txt"
+  else echo "RESULT notes-off: FAIL ($FR_NOTES_FIX; decision 0002: a note typed into the secretary counts as a touch)" | tee -a "$RUN/prepare.txt"; fi
   # Trust of the throwaway clone (Q13, reopened): workers are worktrees of it and take its trust. A first-worker dialog ends the run (host rule), so a person answers it once now.
   { if sh "$HERE/prototype-3-setup.sh" --check-trust "$project"; then
       echo "RESULT project-trust: PASS ($project is recorded as trusted)"

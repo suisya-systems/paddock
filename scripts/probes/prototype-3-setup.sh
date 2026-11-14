@@ -23,29 +23,14 @@ set -u
 die() { c=$1; shift; echo "prototype-3-setup: $*" >&2; exit "$c"; }
 usage() { sed -n '2,25p' "$0"; }
 
-# Is DIR itself recorded as trusted in the agent's config? Not a folder above it: trust follows the
-# git repository (Q13, reopened). The key is not a documented interface. ponytail: braces inside strings are not skipped; fine for this file.
-trusted() {
-  cf=${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json
-  [ -r "$cf" ] || return 1
-  d=$(cd "$1" 2>/dev/null && pwd -P) || return 1
-  tr '\n\r' '  ' < "$cf" | awk -v k="\"$d\"" '{
-      s = $0; i = index(s, k); if (!i) exit 1
-      j = i + length(k); while (substr(s, j, 1) == " ") j++
-      if (substr(s, j, 1) != ":") exit 1
-      j++; while (substr(s, j, 1) == " ") j++
-      if (substr(s, j, 1) != "{") exit 1
-      depth = 0
-      for (n = j; n <= length(s); n++) { c = substr(s, n, 1)
-        if (c == "{") depth++; else if (c == "}") { depth--; if (depth == 0) break } }
-      exit (substr(s, j, n - j + 1) ~ /"hasTrustDialogAccepted" *: *true/) ? 0 : 1 }'
-}
+# fr_trusted comes from first-run-checks.sh (Issue #328): the clone it is given, else the one this script sits in (a fetched copy has none of its own).
+frlib() { for b in "$1" "$(dirname "$0")/../.."; do [ -f "$b/skills/org-start/scripts/first-run-checks.sh" ] && { . "$b/skills/org-start/scripts/first-run-checks.sh"; return 0; }; done; die 6 "no first-run-checks.sh under $1"; }
 
 repo= project= paddock=$HOME/paddock-run
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
-    --check-trust) [ $# -ge 2 ] || die 2 "$1 needs a value"; trusted "$2"; exit $? ;;
+    --check-trust) [ $# -ge 2 ] || die 2 "$1 needs a value"; frlib "$(dirname "$0")/../.."; fr_trusted "$2"; exit $? ;;
     --repo|--project|--paddock) [ $# -ge 2 ] || die 2 "$1 needs a value"
       case "$1" in --repo) repo=$2 ;; --project) project=$2 ;; *) paddock=$2 ;; esac; shift 2 ;;
     *) die 2 "unknown option: $1" ;;
@@ -84,6 +69,8 @@ else
 fi
 echo "ok   paddock clone: $paddock at $(git -C "$paddock" rev-parse --short HEAD)"
 
+frlib "$paddock"
+
 # 3. The workers folder.
 workers=${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}
 mkdir -p "$workers" || die 6 "cannot make $workers"
@@ -91,7 +78,7 @@ echo "ok   workers folder: $workers"
 
 # 4. Folder trust of the throwaway clone (Q13): worktrees take the trust of their repository, and
 # only the person can answer the dialog.
-if trusted "$project"; then
+if fr_trusted "$project"; then
   echo "ok   folder trust: $project is recorded as trusted"
 else
   todo=1

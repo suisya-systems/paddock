@@ -19,7 +19,7 @@ out=$(sh "$S" --help 2>&1); [ $? -eq 0 ] && ! grep -qi 'token' <<<"$out"; check 
 git_() { git -c user.name=t -c user.email=t@example.com "$@"; }
 for r in throwaway paddock; do
   git init -q --bare -b main "$tmp/$r.git"
-  git init -q -b main "$tmp/seed-$r" && : > "$tmp/seed-$r/f" && git_ -C "$tmp/seed-$r" add f \
+  git init -q -b main "$tmp/seed-$r" && : > "$tmp/seed-$r/f" && { [ "$r" != paddock ] || { mkdir -p "$tmp/seed-$r/skills/org-start/scripts" && cp skills/org-start/scripts/first-run-checks.sh "$tmp/seed-$r/skills/org-start/scripts/"; }; } && git_ -C "$tmp/seed-$r" add -A \
     && git_ -C "$tmp/seed-$r" commit -qm one && git_ -C "$tmp/seed-$r" push -q "$tmp/$r.git" main
 done
 mkdir -p "$tmp/bin" "$tmp/home"
