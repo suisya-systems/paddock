@@ -15,7 +15,7 @@
 # <trusted-git-project> is a git repository (with a branch `main`) that Claude Code already
 # trusts, so the new worktree raises no folder-trust dialog (Issue #133). If the dialog shows
 # anyway the probe prints "NEEDS-PERSON" and keeps the terminal; answer the dialog and rerun.
-# Needs a running core and secretary, hc, git, bash and the worker token file. Takes up to
+# Needs a running core and secretary, hc, git, bash. Takes up to
 # 180 s (PADDOCK_PROBE_WAIT to change). It uses the real mailbox (one start and one done record
 # for task p40-<pid>), one worktree and branch work/p40-<pid> in <project>, and one terminal
 # w-p40-<pid>; the trap removes the decoy, the terminal, the worktree and the branch.

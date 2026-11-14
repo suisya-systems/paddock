@@ -10,7 +10,7 @@
 # <trusted-git-project> is a git repository (with a branch `main`) that Claude Code already
 # trusts and whose worktrees go to the trusted workers folder (Issue #133). If a trust dialog
 # shows anyway the probe prints "NEEDS-PERSON" and keeps the terminal; answer it and rerun.
-# Needs a running core and secretary, hc, git, bash, cmp, and the worker token file. Takes up
+# Needs a running core and secretary, hc, git, bash, cmp,. Takes up
 # to 180 s (PADDOCK_PROBE_WAIT to change). Do not start other workers while it runs: the placed
 # settings file is edited on purpose if the fence fails (see below).
 #

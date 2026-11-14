@@ -21,10 +21,10 @@
 #              read-only shared .git); worktrees $workers/p7d-<pid>-<time>[-x] and branches in those clones; terminals
 #              w-p7d-<pid>-<time>[-x] (hc kill + hc rm); the host's ~/.local/bin/claude link is restored if claude moved it.
 #   mounts, race, shapes : also one temporary template p277d-worker in the core's templates folder (removed), made from
-#              templates/worker.md with the read-only token check and GH_TOKEN cut out and --settings pointing at a copy of
+#              templates/worker.md with --settings pointing at a copy of
 #              templates/worker-settings.json whose allowWrite holds only the probe's result folder (as worker-mirror.sh).
-#   delegate : runs skills/org-delegate/scripts/org-delegate.sh itself with the real `worker` template and the real token
-#              file (it must exist), as org-script-reach.sh does. So it also writes, in the real state folder
+#   delegate : runs skills/org-delegate/scripts/org-delegate.sh itself with the real `worker` template,
+#              as org-script-reach.sh does. So it also writes, in the real state folder
 #              (${PADDOCK_STATE_DIR:-~/.local/state/paddock}): a start record per task p7d-<pid>-<time>-<x> in the mailbox,
 #              the worker's own files, and settings/<task>.json (the last is removed on exit; the records stay and are
 #              harmless: those tasks are not in org-state). No --title is passed, so org-state is not touched.
@@ -152,10 +152,9 @@ mk_template() {
   [ ! -e "$TPL_DIR/$TPL.md" ] || { echo "RESULT precondition-failed: $TPL_DIR/$TPL.md exists; remove it"; exit 1; }
   CMD=$(sed -n 's/^command: //p' "$ROOT/templates/worker.md")
   SETTINGS=$WORK/worker-settings.json
-  CMD=$(printf '%s' "$CMD" | sed -e 's/tok=.*exit 1; }; //' -e 's/ GH_TOKEN="\$tok"//' -e "s|--settings \"\\\$ws\"|--settings $SETTINGS|" \
-    -e 's/^env -u /env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN -u /')
+  CMD=$(printf '%s' "$CMD" | sed -e "s|--settings \"\\\$ws\"|--settings $SETTINGS|")
   case "$CMD" in *'GH_TOKEN="'*|*'$tok'*|*'--settings "$ws"'*) echo "RESULT precondition-failed: could not derive the credential-free command from templates/worker.md (it changed?)"; exit 1 ;; esac
-  case "$CMD" in *"exec env GH_CONFIG_DIR="*"--settings $SETTINGS'") ;; *) echo "RESULT precondition-failed: derived command lacks the expected GH_CONFIG_DIR / --settings parts"; exit 1 ;; esac
+  case "$CMD" in *"exec env -u GH_TOKEN"*"GH_CONFIG_DIR="*"--settings $SETTINGS'") ;; *) echo "RESULT precondition-failed: derived command lacks the expected GH_CONFIG_DIR / --settings parts"; exit 1 ;; esac
   [ -f "$bd/worker-rules.md" ] || { echo "RESULT precondition-failed: $bd/worker-rules.md missing (run org-start from this checkout first)"; exit 1; }
   [ "$(grep -c '"allowWrite": \[\]' "$ROOT/templates/worker-settings.json")" = 1 ] || { echo "RESULT precondition-failed: templates/worker-settings.json has no single empty allowWrite"; exit 1; }
   sed "s|\"allowWrite\": \[\]|\"allowWrite\": [\"$OUT\"]|" "$ROOT/templates/worker-settings.json" > "$SETTINGS"
@@ -223,8 +222,7 @@ facts() { # SUFFIX: what the delegate left
 diag() { echo "  diag: config.lock $(hostlock "$PJ/.git"); processes matching the sleep: $(pgrep -af "$OUT/$2.release" | head -n 3 | tr '\n' '|' | cut -c1-200); screen: $(hc read "$1" 2>&1 | tail -n 8 | tr '\n' '|' | cut -c1-500)"; }
 wait_lock() { t=0; while [ "$t" -lt "$WAIT" ]; do case "$(hostlock "$PJ/.git")" in present*) [ "$(pgrep -f "$OUT/$1.release" | wc -l)" -gt 0 ] && return 0 ;; esac; t=$((t + 1)); sleep 1; done; return 1; }
 sub_delegate() {
-  tf=${PADDOCK_WORKER_GH_TOKEN_FILE:-$cfg/paddock/worker-gh-token}
-  [ -s "$tf" ] && [ -f "$TPL_DIR/worker.md" ] && [ -f "$bd/worker-rules.md" ] || { echo "RESULT precondition-failed: needs the real worker template ($TPL_DIR/worker.md), $bd/worker-rules.md and a non-empty token file ($tf); the production path starts with them"; exit 1; }
+  [ -f "$TPL_DIR/worker.md" ] && [ -f "$bd/worker-rules.md" ] || { echo "RESULT precondition-failed: needs the real worker template ($TPL_DIR/worker.md)) and $bd/worker-rules.md; the production path starts with them"; exit 1; }
   P=$WORK/d; build "$P" && publish "$P" || { echo "RESULT precondition-failed: could not build the throw-away repository"; exit 1; }
   PJ=$P/proj
   echo "== 2c the secretary side. Is this shell sandboxed? (run it the way the secretary runs org-delegate, from its Bash tool, to learn the secretary's answer)"

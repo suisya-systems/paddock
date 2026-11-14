@@ -91,9 +91,9 @@ cat > "$stubdir/claude" <<'EOF3'
 for a in "$@"; do echo "ARG:$a"; done > "$CLAUDE_OUT"
 EOF3
 chmod +x "$stubdir/claude"
-mkdir -p "$tmp/cfg/paddock" "$tmp/other/t9"; printf 'tok\n' > "$tmp/cfg/paddock/worker-gh-token"
+mkdir -p "$tmp/cfg/paddock" "$tmp/other/t9"
 launch() { # launch <cwd> <out>
-  (cd "$1" && env -u APPDATA -u PADDOCK_WORKER_GH_TOKEN_FILE -u PADDOCK_BIN_DIR XDG_CONFIG_HOME="$tmp/cfg" \
+  (cd "$1" && env -u APPDATA -u PADDOCK_BIN_DIR XDG_CONFIG_HOME="$tmp/cfg" \
     XDG_DATA_HOME="$tmp/data" PADDOCK_STATE_DIR="$state" PATH="$stubdir:$PATH" CLAUDE_OUT="$2" sh -c "$cmd" >/dev/null 2>&1)
 }
 launch "$workers/t1" "$tmp/o1"

@@ -26,7 +26,6 @@ chmod +x "$tmp/bin/hc"
 printf '#!/bin/sh\necho "$0 $*" > "$STUB/claude-ran"\n' > "$tmp/home/.local/bin/claude"
 chmod +x "$tmp/home/.local/bin/claude"
 printf 'notes = false\n' > "$tmp/core/config.toml"
-printf 'tok\n' > "$tmp/gh-token"
 
 start() { # start <PATH for org-start>
   env -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID \
@@ -47,7 +46,7 @@ for t in secretary worker; do
   rm -f "$tmp/stub/claude-ran"
   cmd=$(sed -n 's/^command: //p' "$tmp/core/templates/$t.md")
   env -i HOME="$tmp/home" TMPDIR="${TMPDIR:-/tmp}" PATH="$minpath" STUB="$tmp/stub" PADDOCK_BIN_DIR="$tmp/bin-org" \
-      PADDOCK_WORKER_GH_TOKEN_FILE="$tmp/gh-token" PADDOCK_STATE_DIR="$tmp/state" \
+      PADDOCK_STATE_DIR="$tmp/state" \
       sh -c "$cmd" >/dev/null 2>&1
   grep -q "^$tmp/home/.local/bin/claude " "$tmp/stub/claude-ran" 2>/dev/null
   check "$t template starts claude by absolute path on a minimal PATH" $?

@@ -19,7 +19,8 @@ These rules apply to every paddock worker, for every task. They are appended to 
 
 ## No GitHub writes
 
-- You may fetch and pull. Never push, and never write to GitHub in any way (pull request, comment, review, issue, release, workflow run): your token is read-only and GitHub refuses it. Do not look for another login, and do not unset `GH_TOKEN` or `GH_CONFIG_DIR`.
+- You have no GitHub credential, and `GH_CONFIG_DIR` points at an empty folder. Never push, and never write to GitHub in any way (pull request, comment, review, issue, release, workflow run). Do not look for a login or a token, and do not unset or change `GH_CONFIG_DIR`. Do not fetch: `git fetch origin` fails for a private repository, which is intended.
+- Read the base from the local `origin/<branch>`: your worktree shares the project clone's remote-tracking refs, and the secretary fetched them when it started you. If you need a newer base, say it is stale: `bash "$PADDOCK_ORG" --as <your id> send_message secretary "base is stale: need origin/<branch> at or after <sha, or: the latest>"`, then end the turn in `wait` (see "Blocked"). The secretary fetches in the project clone and answers; then `origin/<branch>` is updated in your worktree and you rebase yourself. Ask only when you need it.
 - When your work is committed, say so in your completion report. The secretary pushes.
 
 ## Review by a second model

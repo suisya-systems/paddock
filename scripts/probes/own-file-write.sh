@@ -9,7 +9,7 @@
 # (From inside a core terminal, HC_TERMINAL_SOCKET is enough.) <trusted-git-project> is a git
 # repository (with a branch `main`) that Claude Code already trusts (Issue #133). If the folder-trust
 # dialog shows anyway the probe prints "NEEDS-PERSON" and keeps the terminal. Needs a running core
-# and secretary, hc, git, bash, cmp, the worker token file. Takes up to 300 s (PADDOCK_PROBE_WAIT).
+# and secretary, hc, git, bash, cmp. Takes up to 300 s (PADDOCK_PROBE_WAIT).
 #
 # What it builds. A decoy folder $HOME/paddock-probe-<id>-state/ (outside every allowWrite entry of
 # the shipped worker settings; the probe refuses to start if it exists) with two decoy files, each one

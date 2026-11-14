@@ -19,10 +19,9 @@
 # or org-state record. No real repository is changed; the github URL is only read. The exit trap removes
 # the terminal, template, worktree and temp folder (kept, and named, when a person must answer a dialog).
 #
-# How the worker is started. The command line is the one in templates/worker.md with two edits, both
-# printed: the read-only token check and GH_TOKEN="$tok" are cut out, the four GitHub token variables are
-# unset in the launch prefix (so a token in the runner's environment is not inherited), and
-# --settings points at a copy of templates/worker-settings.json whose allowWrite holds only the probe's
+# How the worker is started. The command line is the one in templates/worker.md with one edit, printed: the
+# template holds no token and removes the four GitHub token variables itself, so a token in the runner's
+# environment is not inherited. --settings points at a copy of templates/worker-settings.json whose allowWrite holds only the probe's
 # result folder. GH_CONFIG_DIR is kept as the template sets it (a fresh empty folder). The worktree gets
 # the same .claude/settings.local.json deny of the core socket folder that org-delegate writes. Not
 # reproduced: the template body (the probe's message replaces it), org-delegate itself (it needs a real
@@ -162,13 +161,12 @@ W
 run_phases_local() { for p in read wait rebase; do (cd "$WT" && sh "$OUT/w.sh" $p); done; }
 
 if [ -z "$NOW" ]; then
-  # The template: the command of templates/worker.md without the token check and GH_TOKEN, with --settings at the probe's copy.
+  # The template: the command of templates/worker.md with --settings at the probe's copy.
   CMD=$(sed -n 's/^command: //p' "$ROOT/templates/worker.md")
   SETTINGS=$WORK/worker-settings.json
-  CMD=$(printf '%s' "$CMD" | sed -e 's/tok=.*exit 1; }; //' -e 's/ GH_TOKEN="\$tok"//' -e "s|--settings \"\\\$ws\"|--settings $SETTINGS|" \
-    -e 's/^env -u /env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN -u /')
+  CMD=$(printf '%s' "$CMD" | sed -e "s|--settings \"\\\$ws\"|--settings $SETTINGS|")
   case "$CMD" in *'GH_TOKEN="'*|*'$tok'*|*'--settings "$ws"'*) echo "RESULT precondition-failed: could not derive the credential-free command from templates/worker.md (it changed?)"; echo "   $CMD" | cut -c1-300; exit 1 ;; esac
-  case "$CMD" in *"exec env GH_CONFIG_DIR="*"--settings $SETTINGS'") ;; *) echo "RESULT precondition-failed: derived command lacks the expected GH_CONFIG_DIR / --settings parts"; exit 1 ;; esac
+  case "$CMD" in *"exec env -u GH_TOKEN"*"GH_CONFIG_DIR="*"--settings $SETTINGS'") ;; *) echo "RESULT precondition-failed: derived command lacks the expected GH_CONFIG_DIR / --settings parts"; exit 1 ;; esac
   [ -f "$bd/worker-rules.md" ] || { echo "RESULT precondition-failed: $bd/worker-rules.md missing (run org-start from this checkout first)"; exit 1; }
   # worker settings: the shipped file with allowWrite holding only the result folder.
   [ "$(grep -c '"allowWrite": \[\]' "$ROOT/templates/worker-settings.json")" = 1 ] || { echo "RESULT precondition-failed: templates/worker-settings.json has no single empty allowWrite"; exit 1; }
@@ -179,7 +177,7 @@ if [ -z "$NOW" ]; then
     && printf 'settings.local.json\n.gitignore\n' > "$WT/.claude/.gitignore" || { echo "RESULT precondition-failed: cannot write $WT/.claude"; exit 1; }
   printf -- '---\ndescription: probe 277 (temporary)\ncommand: %s\n---\nProbe 277. Follow only the message below.\n' "$CMD" > "$TPL_DIR/$TPL.md" || exit 1
   OWNTPL=1
-  echo "== command under test (from templates/worker.md; token check and GH_TOKEN removed, --settings = $SETTINGS)"; echo "   $CMD" | cut -c1-400
+  echo "== command under test (from templates/worker.md; --settings = $SETTINGS)"; echo "   $CMD" | cut -c1-400
   TASK="Probe for paddock Issue #277. This is a measurement the secretary asks for and permits; do not decline or report blocked. Work only in this worktree plus the folder $OUT. Run these three commands, each as ONE Bash call, in this order, with the sandbox ON (never skip it), and do nothing else:
 1. sh $OUT/w.sh read
 2. sh $OUT/w.sh wait     (set this Bash call's timeout to 200000; it waits for the secretary)

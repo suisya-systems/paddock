@@ -11,7 +11,7 @@
 # local branch name of <git repo> (for example main). org-delegate passes it to `git worktree add`;
 # a remote-tracking ref such as origin/main failed there on the host (2026-11-10), so it is not
 # the documented form.
-# Needs a running core and secretary, hc, git, bash and the worker token file. Takes up to
+# Needs a running core and secretary, hc, git, bash. Takes up to
 # 180 s (PADDOCK_PROBE_WAIT to change). It uses the real mailbox: the secretary gets one start
 # and one done record for task p129-<pid>. It creates one worktree and branch work/p129-<pid>
 # in <git repo>; the trap kills and removes the terminal w-p129-<pid>, that worktree and that

@@ -25,7 +25,6 @@ Environment overrides:
   PADDOCK_BIN_DIR          folder of the org script and the worker rules and settings (absolute;
                               default ${XDG_DATA_HOME:-~/.local/share}/paddock/bin)
   PADDOCK_READY_TRIES         seconds to wait for a status (default 15)
-  PADDOCK_WORKER_GH_TOKEN_FILE  read-only GitHub token file for workers (default $cfg/paddock/worker-gh-token)
   PADDOCK_SECRETARY_NAME      terminal name of the secretary (default secretary)
 
 Exit codes: 0 ready (7 also prints the terminal exit code and last line), 2 bad argument, 3 hc not found, 4 run inside an agent,
@@ -132,9 +131,6 @@ case "$codexbin" in /*) printf '%s\n' "$codexbin" > "$orgbin/codex-path" || die 
 # Copies an older org-start placed beside the templates (Issue #129).
 rm -f "$templates/worker-rules.md" "$templates/worker-settings.json" \
   || die 6 "cannot remove the old worker-rules.md / worker-settings.json from $templates"
-# Q20: a worker will not start without the read-only GitHub token file. Warn only; never read it.
-tokfile=${PADDOCK_WORKER_GH_TOKEN_FILE:-$cfg/paddock/worker-gh-token}
-[ -s "$tokfile" ] || echo "org-start: warning: no read-only GitHub token in $tokfile; workers will refuse to start until you create it (see skills/org-start/SKILL.md)" >&2
 
 if [ ! -d "$mods/org-agents" ] && [ -z "${PADDOCK_APP_MODS_DIR:-}" ] && [ -n "$app" ]; then
   # First time: let herdr-app create the folder so it gets the type files.
