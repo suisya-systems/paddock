@@ -178,8 +178,36 @@ printf '%s\n' "$claudebin" > "$orgbin/claude-path" || die 6 "cannot write $orgbi
 # same for the review gate's CLI, which often lives in a Node version manager's folder. Optional:
 # without it the gate ends "unavailable" and prepare's codex-cli check says so. Drop a stale record.
 rm -f "$orgbin/codex-path" || die 6 "cannot remove the old $orgbin/codex-path"
-codexbin=$(command -v codex 2>/dev/null)
-case "$codexbin" in /*) printf '%s\n' "$codexbin" > "$orgbin/codex-path" || die 6 "cannot write $orgbin/codex-path" ;; esac
+# Record a path that outlives this shell. fnm puts codex under a per-shell folder
+# (.../fnm_multishells/<pid>_<ms>, a link to the install) that goes away with the shell, so each PATH
+# entry is resolved to its real folder (the file name is kept: a Node CLI needs its folder's node) and a
+# folder that is still under fnm_multishells is skipped. The first one found is recorded, which is the
+# one the gate runs; a second, different install gets a warning with the fix.
+codexbin= codexall= codexskip=
+oldifs=$IFS; IFS=:
+for d in $PATH; do
+  [ -n "$d" ] && [ -x "$d/codex" ] && [ -f "$d/codex" ] || continue
+  rd=$(cd -P "$d" 2>/dev/null && pwd -P) || continue
+  case "$rd/" in */fnm_multishells/*) echo "org-start: skipping $d/codex: it is under fnm's temporary folder fnm_multishells, which goes away with its shell; install codex outside it (npm i -g @openai/codex under one Node version) and put that folder on PATH" >&2; codexskip=1; continue ;; esac
+  real=$(readlink -f "$rd/codex" 2>/dev/null) || real=$rd/codex
+  case " $codexall " in *" $real "*) continue ;; esac
+  codexall="$codexall $real"
+  [ -n "$codexbin" ] && codexmore="${codexmore:-}
+  $rd/codex ($("$rd/codex" --version 2>/dev/null | head -n 1))" || codexbin=$rd/codex
+done
+IFS=$oldifs
+# Windows (Git Bash): codex may be only codex.exe, which the scan above misses but command -v finds.
+if [ -z "$codexbin" ] && [ -z "$codexskip" ]; then
+  c=$(command -v codex 2>/dev/null)
+  case "$c" in /*) rd=$(cd -P "${c%/*}" 2>/dev/null && pwd -P) && codexbin=$rd/${c##*/} ;; esac
+fi
+if [ -n "$codexbin" ]; then
+  printf '%s\n' "$codexbin" > "$orgbin/codex-path" || die 6 "cannot write $orgbin/codex-path"
+  if [ -n "${codexmore:-}" ]; then
+    echo "org-start: several codex installs are on PATH; the review gate will run $codexbin ($("$codexbin" --version 2>/dev/null | head -n 1)), the first. Others:$codexmore
+  To use another, put its folder first on PATH and run org-start again, or remove the ones you do not want." >&2
+  fi
+fi
 # Copies an older org-start placed beside the templates.
 rm -f "$templates/worker-rules.md" "$templates/worker-settings.json" \
   || die 6 "cannot remove the old worker-rules.md / worker-settings.json from $templates"

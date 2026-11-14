@@ -42,7 +42,7 @@ A worker holds no GitHub credential and org-start asks the person for none (the 
 
 ## Exit codes
 
-0 ready, 2 bad argument, 3 `hc` not found, 4 run inside an agent, 5 core unreachable or `hc run` failed, 6 files could not be placed, 7 no status yet (the message gives the terminal's exit code and last output line, and names a missing `claude`), 8 the core's notes are not off, 9 `claude` not found from org-start's shell (its absolute path is recorded in `claude-path` beside the org script, and the templates start it by that path; the same is done for `codex` in `codex-path`, which the review gate reads when its PATH lacks it), 10 `hc` is not on the running core's PATH (restart herdr from a login shell that has it).
+0 ready, 2 bad argument, 3 `hc` not found, 4 run inside an agent, 5 core unreachable or `hc run` failed, 6 files could not be placed, 7 no status yet (the message gives the terminal's exit code and last output line, and names a missing `claude`), 8 the core's notes are not off, 9 `claude` not found from org-start's shell (its absolute path is recorded in `claude-path` beside the org script, and the templates start it by that path; the same is done for `codex` in `codex-path`, resolved to a stable folder (never one under fnm's `fnm_multishells`), which the review gate runs before any codex on its PATH; org-start warns when two different codex installs are on PATH), 10 `hc` is not on the running core's PATH (restart herdr from a login shell that has it).
 
 ## After it runs
 
