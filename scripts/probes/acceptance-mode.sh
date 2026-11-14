@@ -69,14 +69,14 @@ OPR="$ROOT/skills/org-pull-request/scripts/org-pull-request.sh"
 OUB="$ROOT/skills/org-update-branch/scripts/org-update-branch.sh"
 PADDOCK=suisya-systems/paddock
 fail=0
-res() { echo "RESULT $1: $2${3:+ ($3)}"; [ "$2" != FAIL ] || fail=1; }
+res() { echo "RESULT $1: $2${3:+ ($3)}"; case "$2" in FAIL|"NO DATA") fail=1 ;; esac; }
 
 # Paddock's own settings, read only. A 404/403 is recorded as what it is, not as "off".
 gj() { gh api "$@" 2>&1; }
 record_paddock() {
   p=$(gj "repos/$PADDOCK/branches/main/protection" --jq '"required=" + ((.required_status_checks.contexts // []) | join(",")) + " strict=" + ((.required_status_checks.strict // false) | tostring) + " enforce_admins=" + ((.enforce_admins.enabled // false) | tostring)')
   case $p in required=*) res settings-paddock-protection INFO "$p" ;; *) res settings-paddock-protection INFO "no readable classic protection: $(printf '%s' "$p" | tr '\n' ' ' | cut -c1-160)" ;; esac
-  r=$(gj "repos/$PADDOCK/rules/branches/main" --jq '[.[] | .type + (if .parameters.strict_required_status_checks_policy then "(strict=" + (.parameters.strict_required_status_checks_policy|tostring) + " checks=" + ([.parameters.required_status_checks[]?.context] | join(",")) + ")" else "" end)] | join(" ")')
+  r=$(gj "repos/$PADDOCK/rules/branches/main" --jq '[.[] | .type + (if .type == "required_status_checks" then "(strict=" + (.parameters.strict_required_status_checks_policy // false | tostring) + " checks=" + ([.parameters.required_status_checks[]?.context] | join(",")) + ")" else "" end)] | join(" ")')
   res settings-paddock-rules INFO "${r:-none}"
 }
 
