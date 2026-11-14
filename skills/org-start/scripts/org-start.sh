@@ -243,6 +243,11 @@ fi
 
 # 3b. The watcher (decision 0008): a kept terminal named watcher that tells the person outside the
 # window. It carries paddock_role=watcher, so org-down ends it and no other terminal of that name.
+# A terminal gets the core's environment, not this shell's, so what the watcher reads is passed in the command.
+wenv=("PADDOCK_SECRETARY_NAME=$name")
+for v in PADDOCK_STATE_DIR XDG_STATE_HOME PADDOCK_WATCH_N PADDOCK_WATCH_INTERVAL PADDOCK_POWERSHELL; do
+  [ -z "${!v:-}" ] || wenv+=("$v=${!v}")
+done
 wname=${PADDOCK_WATCHER_NAME:-watcher}
 wj=$(hc get --json "$wname" 2>/dev/null | tr -d '\n')
 if printf '%s' "$wj" | grep -Eq '"state": *"finished"' && printf '%s' "$wj" | grep -Eq '"paddock_role": *"watcher"'; then
@@ -250,7 +255,7 @@ if printf '%s' "$wj" | grep -Eq '"state": *"finished"' && printf '%s' "$wj" | gr
 fi
 if hc get "$wname" >/dev/null 2>&1; then
   echo "org-start: $wname already exists; not starting another"
-elif hc run --bg --keep --no-notify --name "$wname" --label paddock_role=watcher --cwd "$root" -- bash "$root/skills/org-watch/scripts/org-watch.sh" >/dev/null; then
+elif hc run --bg --keep --no-notify --name "$wname" --label paddock_role=watcher --cwd "$root" -- env "${wenv[@]}" bash "$root/skills/org-watch/scripts/org-watch.sh" >/dev/null; then
   echo "org-start: started $wname (tells you outside the window; org-down ends it)"
 else
   echo "org-start: warning: hc run failed for $wname; nobody will be told outside the window" >&2
