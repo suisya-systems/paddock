@@ -1,6 +1,6 @@
 # 0011. Clone a repository the request names when it is not on the machine yet
 
-Status: **proposed** (2026-11-14, draft for the owner). Refs #356. This file records the decision only; the clone step is built in a separate task. It was drafted as 0010 and renumbered to 0011 because the parallel record (#357, PR #358) merges first. Related: a request that names no repository at all is decision 0010 (`0010-request-without-a-repository-runs-in-a-local-one.md`, not linked until #358 merges).
+Status: **accepted** (2026-11-14, owner: Q1 ask the person on the first use of a fresh clone, Q2 `~/paddock-projects/<owner>/<name>`, Q3 GitHub only, Q4 ask back `OWNER/NAME`, Q5 clone what is named). Refs #356. This file records the decision only; the clone step is a follow-up task. It was drafted as 0010 and renumbered to 0011 because the parallel record (#357, PR #358) merged first. Related: a request that names no repository at all is [decision 0010](0010-request-without-a-repository-runs-in-a-local-one.md).
 
 ## The question, in plain words
 
@@ -43,7 +43,7 @@ A repository the person's login cannot read fails at the clone (see 5); the scri
 
 ### 4. Trust
 
-- **(a) No new mechanism: the existing prompt path passes the dialog (recommended).** The first worker on a fresh clone stops on the folder-trust dialog, and the secretary's `org-escalation prompt --then-send` answers it from the screen (Q13, #260). So "trust once" is already automatic for the unattended case; the clone skill adds no key press and no write to `~/.claude.json`.
+- **(a) No new mechanism: the existing prompt path passes the dialog (recommended in the draft; the owner chose to ask the person first, see Decision item 4).** The first worker on a fresh clone stops on the folder-trust dialog, and the secretary's `org-escalation prompt --then-send` answers it from the screen (Q13, #260). So "trust once" is already automatic for the unattended case; the clone skill adds no key press and no write to `~/.claude.json`.
 - (b) Open `claude` once in the clone right after cloning, to pass the dialog before any worker. Needs a throwaway Claude Code session per clone, with the same screen reading as (a), and gains nothing: the worker's first message is already resent after the answer.
 - (c) Write `hasTrustDialogAccepted` into `~/.claude.json`. Rejected in Q13 (undocumented key, the person's own config).
 
@@ -60,8 +60,18 @@ Order and rule: **nothing is registered and no worker starts unless the clone co
 5. No retries and no fallback credential. The secretary tells the person the cause (through the normal reply, and as an approval entry if the person must act, e.g. `gh auth login`), and the task is not delegated.
 6. Target path exists but is not a clone of that `origin`: stop; never reuse or overwrite it.
 
-## Decision (proposed, not yet taken)
-Recommended: 1 (a), 2 (a), 3 (a), 4 (a), 5 as above. Shape of the build: one new script `skills/org-delegate/scripts/org-clone.sh OWNER/NAME|URL` that prints the `projects.md` name on success; the secretary template says to run it when `org-delegate --project` would exit 2 for a named repository, then delegates by that name. `org-delegate` itself does not change (the clone is a separate step, so its exit codes and "nothing created before checks" rule stay as they are).
+## Decision
+
+The owner took 1 (a), 2 (a), 3 (a) and 5 as recommended, and **changed 4**: trust is not answered automatically (2026-11-14):
+
+1. **Identify.** `OWNER/NAME` or a GitHub URL; a bare `NAME` not in `projects.md` is asked back as `OWNER/NAME`, never searched. GitHub only in the first version.
+2. **Where.** `PADDOCK_PROJECTS_DIR`, default `~/paddock-projects/<owner>/<name>`.
+3. **Credential.** The secretary clones with the person's own login; a worker holds nothing.
+4. **Trust.** On the first use of a fresh clone the secretary asks the person through an approval card (`org-escalation ask`); it does not answer "Yes, I trust this folder" by itself for a clone made because a request named it. After the person answers yes, the existing prompt path presses the one key (as `answer` does for any prompt). No write to `~/.claude.json`. The folder-trust entry in the secretary's automatic policy list stays for clones a person made; for a clone made by the clone script it is not applied until the card is answered.
+5. **Failure.** As in section 5: nothing registered and no worker started unless the clone completed.
+6. **Upstream.** A request naming an upstream repository clones that repository as named. If the person has no push right, the secretary reports it at the pull-request step and stops (PRs go to `origin` only).
+
+Shape of the build: one new script `skills/org-delegate/scripts/org-clone.sh OWNER/NAME|URL` that prints the `projects.md` name on success; the secretary template says to run it when `org-delegate --project` would exit 2 for a named repository, then delegates by that name. `org-delegate` itself does not change (the clone is a separate step, so its exit codes and "nothing created before checks" rule stay as they are).
 
 ## Why
 
@@ -70,8 +80,8 @@ It is the smallest change that removes the hand step: one script, no new languag
 ## Costs accepted
 
 - One more script and its test against a stubbed `git` / `gh`, and a line in the secretary template.
-- The first worker on every fresh clone costs one dialog round (up to the first-message timeout, about a minute in the Q13 probes) before it works.
-- A repository's code is trusted on the strength of the request alone (question 1 below).
+- The first worker on every fresh clone waits for a person's answer to the trust card, so "a request alone reaches a PR" does not hold for the first task on a new repository; the owner accepted this over trusting code the person never looked at.
+- A push-less upstream is found at the pull-request step, after the work is done.
 
 ## What is not measured
 
@@ -80,10 +90,12 @@ It is the smallest change that removes the hand step: one script, no new languag
 - That a worktree of a clone made by the script behaves like a clone a person made (no dialog after the first answer) is the Q13 result, not re-measured for this layout.
 - The base branch read from `origin/HEAD` on a repository whose default branch is not `main`.
 
-## Questions for the owner
+## Owner's answers (2026-11-14)
 
-1. **Trust of a named-only repository.** Is the secretary allowed to answer "Yes, I trust this folder" for a repository it just cloned because a request named it? Alternative: stop at the dialog and ask the person (an approval card) on the first use of each fresh clone.
-2. **Clone location.** Is `~/paddock-projects/<owner>/<name>` right, or should clones sit elsewhere (for example next to the workers folder)?
-3. **Hosts.** GitHub only for now, or must another host work from the first version?
-4. **Bare names.** Agree that a bare `NAME` not in `projects.md` is asked back as `OWNER/NAME`, never searched?
-5. **Fork or upstream.** A request may name an upstream repository the person only forks. Should the clone be of the named repository, or of the person's fork when one exists? (The draft clones what is named; PRs go to `origin` only, per the global rule.)
+1. Trust of a named-only repository: ask the person by approval card on the first use of each fresh clone; no automatic Yes.
+2. Clone location: `~/paddock-projects/<owner>/<name>`.
+3. Hosts: GitHub only for the first version.
+4. Bare names: ask back `OWNER/NAME`.
+5. Upstream or fork: clone what is named; with no push right the secretary reports at the pull-request step and stops.
+
+Follow-up (not part of this record): the clone script, the secretary template line, the trust card, and their tests. The earlier draft's Why and trust options above are kept as the record of the comparison; where the Why says no new trust mechanism, the Decision's item 4 supersedes it.
