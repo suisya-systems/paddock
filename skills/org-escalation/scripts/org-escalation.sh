@@ -23,7 +23,9 @@ Usage: org-escalation.sh prompt --task TASK_ID [--then-send TEXT]
           read again, enter only with the cursor on the expected line): folder-trust (Claude
           Code's folder-trust dialog, on a terminal with no status yet) -> "Yes, I trust this
           folder"; auto-mode-setup ("Teach auto mode about your environment?") -> "Don't show
-          again". Prints POLICY <entry> w-<task_id>. With
+          again". Prints POLICY <entry> w-<task_id>. When org-delegate stopped at the dialog (exit 10) it
+          saved the first message and the work entry: they are sent and written here, after the dialog,
+          without --then-send (and so are they after answer yes). With
           --then-send, once the terminal reports a status, TEXT is sent with hc send (the first
           message the dialog stopped). Any other screen: prints PROMPT=<the dialog> and
           exits 3, nothing pressed; record it with ask --prompt
@@ -53,8 +55,9 @@ Exit codes: 0 ok, 2 bad argument, 5 org-state could not be read or written (or i
 object), 6 no entry with that id, 7 an entry with that id exists, 8 the answer could not be
 sent or the key not pressed (entry kept), 9 sent but the entry could not be removed (run
 remove), 3 (prompt) not in the policy list, 10 the screen did not show what was expected:
-nothing confirmed (entry kept), 11 (prompt) the screen could not be read, 12 (prompt) the
-dialog was answered but --then-send failed.
+nothing confirmed (entry kept), 11 (prompt) the screen could not be read, 12 the dialog was
+answered but the first message was not sent (a card says so), 13 sent, but the work entry
+was not written (a card says so).
 USAGE
 }
 
@@ -266,6 +269,20 @@ send_first() {
   echo "SENT $w"
 }
 
+# finish_resend <task_id>: org-delegate stopped at the dialog (exit 10) and saved its first message and work entry
+# (skills/org-delegate/scripts/resend.sh). With the dialog answered, send and write them. A failure leaves the terminal and
+# the saved files, puts a card in front of the person and exits with resend.sh's code (12 not sent, 13 entry not written).
+rdir() { printf '%s/resend/%s' "${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}" "$1"; }
+finish_resend() {
+  local o rc
+  o=$(bash "$root/skills/org-delegate/scripts/resend.sh" "$1" 2>&1); rc=$?
+  [ "$rc" -ne 0 ] || { echo "RESENT w-$1"; return 0; }
+  bash "$self" ask --task "$1" --question "Trust was answered, but the first message or work entry of w-$1 is not finished: finish it?" \
+    --background "$(clean "$o" | cut -c1-500)" --if-yes "The secretary runs resend.sh $1 and removes this card." \
+    --if-no "The terminal is left as it is." >/dev/null 2>&1 || echo "org-escalation: the card could not be recorded" >&2
+  die "$rc" "$o"
+}
+
 case $cmd in
   ask)
     valid_id "$task" || die 2 "ask needs --task <task_id> (lowercase letters, digits, _ and -)"
@@ -324,6 +341,7 @@ case $cmd in
         [ "$(psum "$(block "$scr")")" = "$sum" ] \
           || die 10 "the screen of $w no longer shows the prompt recorded in $id; nothing pressed, entry kept. Read it with prompt --task $wtask"
         if [ "$key" = esc ]; then hc keys "$w" esc >/dev/null 2>&1 || die 8 "hc keys esc failed on $w; entry $id kept"
+          rm -f "$(rdir "$wtask")/message" "$(rdir "$wtask")/entry"; rmdir "$(rdir "$wtask")" 2>/dev/null # declined: nothing is resent
         else
           pick 'Yes, I trust this folder' 1 \
             || die 10 "$w: the folder-trust dialog did not stay on a fresh read with the cursor reaching 'Yes, I trust this folder'; nothing confirmed, entry $id kept"
@@ -331,7 +349,9 @@ case $cmd in
         fi
         ( update remove "$id" ) || die 9 "answered $w but entry $id could not be removed; run: remove --id $id"
         echo "RELAYED $id $key -> $w"
-        [ "$key" = esc ] || [ -z "${then_send+set}" ] || send_first
+        [ "$key" = esc ] && exit 0
+        if [ -d "$(rdir "$wtask")" ]; then finish_resend "$wtask" # --then-send is not needed: org-delegate saved the message
+        elif [ -n "${then_send+set}" ]; then send_first; fi
         exit 0
       fi
       hc get --json "$w" 2>/dev/null | tr -d '\n' | grep -Eq '"status": *\{[^{}]*"state": *"blocked"' \
@@ -377,6 +397,7 @@ case $cmd in
     esac
     if [ -n "$policy" ]; then
       echo "POLICY $policy $w"
+      if [ -d "$(rdir "$task")" ]; then finish_resend "$task"; exit 0; fi
       [ -n "${then_send+set}" ] || exit 0
       send_first; exit 0
     fi
