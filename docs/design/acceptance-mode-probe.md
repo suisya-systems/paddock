@@ -26,7 +26,27 @@ Never paddock itself as `--repo` (the probe exits 6). It starts no `claude` and 
 | `2-merge-after-update` | `org-pull-request --pr N --mode acceptance` on the updated head: exit 0, PR `MERGED` |
 | `settings-paddock-*` | INFO only: records the required checks and strictness on paddock's `main` (classic protection and rulesets) |
 
-Not covered: `PADDOCK_ORG` in a real worker session.
+Not covered here: `PADDOCK_ORG` in a real worker session. That is [the worker probe](#worker-probe) below.
+
+## Worker probe
+
+`scripts/probes/update-branch-worker.sh` starts a real worker with `org-delegate` and has it run `org-update-branch` twice, so the worker check (`PADDOCK_ORG` set by the worker's launch command, the protected-path stop) runs in the sandbox it was written for. It starts no `claude` itself; the worker is the one `org-delegate` starts. Run it on the host, from the paddock root, in a terminal that `hc` launched, after `org-start` from this checkout, with the scratch repository (`happy-ryo/paddock-proto2-scratch`) and a clone of it that Claude Code already trusts:
+
+```sh
+sh scripts/probes/update-branch-worker.sh --repo happy-ryo/paddock-proto2-scratch --project <clone of it>
+```
+
+It pushes two side branches of the scratch repository (never its `main`, which may be protected) and deletes them on exit.
+
+| RESULT | PASS when |
+| --- | --- |
+| `delegate`, `report-done`, `in-box` | the worker started and its `report done` reached the secretary's box |
+| `worker-env` | the worker saw `PADDOCK_ORG` set |
+| `worker-merge` | in the worker, `org-update-branch --base <plain side branch>` exits 0, `HEAD` moves, the branch holds that base (exit 5 would mean the sandbox refuses the fetch) |
+| `worker-protected-stop` | in the worker, `--base <side branch adding .claude/skills/...>` exits 4, names the path, `HEAD` does not move |
+| `host-control` | the same range on the host with `PADDOCK_ORG` unset exits 0 and merges |
+
+Result: not run yet.
 
 ## Result
 
