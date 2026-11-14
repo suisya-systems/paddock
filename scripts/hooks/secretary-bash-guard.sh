@@ -4,7 +4,8 @@
 # - hc keys / a forced hc send: keys reach a worker only through org-escalation.sh (L-N3, Issue #260).
 # - long blocking calls (Issue #378): while a shell call runs the secretary takes no input, so a CI
 #   watch (gh pr checks --watch, gh run watch), a sleep over 5 s and a loop that sleeps are refused.
-# Only the command text is matched, after heredoc bodies and quoted strings are cut out, so a task
+# Only the command text is matched, after heredoc bodies and quoted text with a space in it are cut out
+# (a command substitution in it is kept), so a task
 # text or a PR body that mentions these commands passes. The arguments of `sh -c` / `bash -c` are kept.
 # A skill script's own calls (org-pull-request runs gh pr checks --watch) are not seen: only the top line.
 # ponytail: sed cuts the command out of the payload (no JSON parser in plain shell); an escaped
@@ -28,7 +29,11 @@ text=$(printf '%s\n' "$cmd" | sed 's/\\n/\
       if (n == 0) q = 1
       n++; word[n] = w; strip[n] = d
     }
-  }' | tr '\n' ';' | sed "s/-c[[:space:]]*'\([^']*\)'/-c \1/g; s/-c[[:space:]]*\"\([^\"]*\)\"/-c \1/g; s/'[^']*'/''/g; s/\"[^\"]*\"/\"\"/g")
+  }' | tr '\n' ';' | sed "s/-c[[:space:]]*'\([^']*\)'/-c \1/g; s/-c[[:space:]]*\"\([^\"]*\)\"/-c \1/g")
+# a command substitution runs even inside double quotes: keep it; a quoted single word (sleep "60") is
+# an argument, not prose: unquote it; a quoted string with a space in it is text: cut it out
+subs=$(printf '%s\n' "$text" | grep -o '\$([^)]*)\|`[^`]*`' | tr '\n' ';')
+text="$(printf '%s\n' "$text" | sed -E "s/'([^'[:space:]]*)'/\\1/g; s/\"([^\"[:space:]]*)\"/\\1/g; s/'[^']*'/''/g; s/\"[^\"]*\"/\"\"/g");$subs"
 b='(^|[^[:alnum:]_.-])'   # a command word starts here
 # what a background terminal runs (hc run --bg ...) does not block: cut it out for the blocking checks
 # ponytail: everything after `hc run ... --bg` on the joined text is cut, a blocking call chained after it passes

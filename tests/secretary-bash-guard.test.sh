@@ -30,7 +30,13 @@ refused 'while ! gh pr view 5 --json state | grep -q MERGED; do sleep 5; done' '
 refused 'until hc get w-t1 | grep -q idle; do sleep 2; done' 'polling loop'
 refused $'for i in 1 2 3\ndo\n  gh pr checks 5\n  sleep 3\ndone' 'polling loop'
 refused "bash -c 'gh pr checks 5 --watch'" 'CI watch'
+refused 'sleep "60"' 'sleep over'
+refused "sleep '2m'" 'sleep over'
+refused 'echo "waiting: $(sleep 60)"' 'sleep over'
+refused 'result=`gh run watch 5`' 'CI watch'
 # the old refusal set, unchanged
+refused 'result="$(hc keys w-t1 enter)"' 'L-N3'
+refused 'hc keys "w-t1" enter' 'L-N3'
 for c in 'hc keys w-t1 enter' '/usr/local/bin/hc keys t3 esc' 'hc send --force w-t1 yes' 'hc send w-t1 -f yes'; do
   refused "$c" 'L-N3'
 done
@@ -49,6 +55,7 @@ allowed $'git commit -F - <<EOF\nsleep 99\nEOF'
 allowed 'bash skills/org-delegate/scripts/org-delegate.sh --task-id t2 --task "Never run gh pr checks --watch or sleep 60; hc keys is refused."'
 allowed "git commit -m 'stop the secretary from a sleep 600 loop: while true; do sleep 9; done'"
 allowed 'cat <<< "sleep 60"'
+allowed 'echo "$HOME: no sleep 60 here, $(date)"'
 # a heredoc ends at its word: a blocking call after it is still seen
 refused $'cat > f <<EOF\ntext\nEOF\nsleep 60' 'sleep over'
 exit $fail
