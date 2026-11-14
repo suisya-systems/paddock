@@ -171,7 +171,7 @@ cp -f "$root/templates/curator.md" "$templates/curator.md" || die 6 "cannot copy
 # The org commands, and the worker's rules and settings files its template command names
 # (Q10, Q12): a worker may read this folder and may not write it (worker-settings.json).
 # Not in the templates folder: hc lists every *.md there as a template.
-for f in scripts/org scripts/second-model-review.sh scripts/hooks/premise-reminder.sh templates/secretary-settings.json templates/worker-rules.md templates/worker-settings.json; do
+for f in scripts/org scripts/second-model-review.sh scripts/hooks/premise-reminder.sh scripts/hooks/secretary-bash-guard.sh templates/secretary-settings.json templates/worker-rules.md templates/worker-settings.json; do
   cp -f "$root/$f" "$orgbin/${f##*/}" || die 6 "cannot copy $f to $orgbin"
 done
 printf '%s\n' "$claudebin" > "$orgbin/claude-path" || die 6 "cannot write $orgbin/claude-path"
