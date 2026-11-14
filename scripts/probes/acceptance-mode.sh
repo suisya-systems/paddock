@@ -181,7 +181,7 @@ if [ "$rc" -eq 0 ] && git -C "$RUN/b" merge-base --is-ancestor "$base1" HEAD && 
   res 2-update-branch PASS "exit 0, origin/main $(echo "$base1" | cut -c1-9) and the old head are both in the branch"
 else res 2-update-branch FAIL "exit $rc; see $RUN/b-update.out"; fi
 if git -C "$RUN/b" push origin "$BB" >"$RUN/b-push.out" 2>&1 \
-   && [ "$(git ls-remote origin "refs/heads/$BB" 2>/dev/null | cut -f1)" = "$(git -C "$RUN/b" rev-parse HEAD)" ]; then
+   && [ "$(git -C "$RUN/b" ls-remote origin "refs/heads/$BB" 2>/dev/null | cut -f1)" = "$(git -C "$RUN/b" rev-parse HEAD)" ]; then
   res 2-push-no-force PASS "plain git push accepted"
 else res 2-push-no-force FAIL "see $RUN/b-push.out"; fi
 b_new=$(git -C "$RUN/b" rev-parse HEAD)
