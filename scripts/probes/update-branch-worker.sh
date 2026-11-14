@@ -93,8 +93,8 @@ cleanup() {
   git -C "$project" branch -D "work/$ID" >/dev/null 2>&1
   echo "cleanup: terminal, worktree, branch work/$ID and remote branches $OK $PROT removed; run folder kept: $RUN"
 }
-[ ! -e "$WT" ] && ! hc get "$W" >/dev/null 2>&1 || die 6 "$W or $WT already exists (leftover of an earlier run)"
-trap cleanup EXIT INT TERM
+[ ! -e "$WT" ] && ! hc get "$W" >/dev/null 2>&1 && ! git -C "$project" rev-parse -q --verify "refs/heads/work/$ID" >/dev/null || die 6 "$W, $WT or branch work/$ID already exists (leftover of an earlier run)"
+trap cleanup EXIT; trap 'exit 130' INT TERM
 dialog() { case "$(hc read "$W" 2>/dev/null)" in *"Quick safety check"*|*"trust this folder"*) return 0 ;; esac; return 1; }
 needs_person() { echo "NEEDS-PERSON: folder-trust dialog in $W; answer it (or trust the project) and rerun"; KEEP=1; exit 1; }
 org() { bash "$ROOT/scripts/org" --as secretary "$@"; }
@@ -114,7 +114,7 @@ done
 
 # The worker's commands, one Bash call. \$ stays for the worker's shell; $OUB, $OK etc. are filled in here.
 TASK="Probe for paddock Issue #330. Change nothing else. Run this block in ONE Bash call exactly as written, then stop:
-OUB=$OUB
+OUB='$OUB'
 H0=\$(git rev-parse HEAD)
 bash \"\$OUB\" --worktree \"\$PWD\" --base $OK >/dev/null 2>&1; A=\$?
 H1=\$(git rev-parse HEAD)
