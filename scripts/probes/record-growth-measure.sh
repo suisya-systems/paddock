@@ -14,13 +14,15 @@
 #   round (task_id)                     lines and bytes of the round, over every writer
 #   round-stat mean|p95|max             over rounds: lines, bytes
 #   round-writer (writer)               per round the writer took part in: mean lines, mean bytes; rounds = how many
-# Bytes are line length plus the newline, counted in the C locale. Needs only sh, find, awk and sort.
+# Bytes are line length plus the newline, counted in the C locale. Needs only sh, awk and sort.
 set -u
 LC_ALL=C; export LC_ALL
 d=${1:-${PADDOCK_STATE_DIR:-$HOME/.local/state/paddock}}
 [ -d "$d/events" ] || { echo "record-growth-measure: no $d/events" >&2; exit 1; }
 # the awk program has no output redirect so that a reader of this file can see at a glance that nothing is written
-find "$d/events" -type f -name '*.jsonl' -exec awk '
+set -- "$d"/events/*/*.jsonl
+[ -f "$1" ] || { echo "record-growth-measure: no events/*/*.jsonl under $d" >&2; exit 1; }
+awk '
   function field(name,   pat) {
     pat = "\"" name "\":\"[^\"]*\""
     if (!match($0, pat)) return ""
@@ -62,4 +64,4 @@ find "$d/events" -type f -name '*.jsonl' -exec awk '
     }
     for (x in rwl) { split(x, a, SUBSEP); ww = a[2]; wr[ww] += 1; wsl[ww] += rwl[x]; wsb[ww] += rwb[x] }
     for (x in wr) print "round-writer", x, int(wsl[x] / wr[x]), int(wsb[x] / wr[x]), wr[x]
-  }' {} + | sort -t "	" -k1,1 -k2,2
+  }' "$@" | sort -t "	" -k1,1 -k2,2

@@ -18,7 +18,7 @@ esac
 [ "$n" -ge 20 ] || { echo "record-growth-synth: at least 20 lines a month" >&2; exit 2; }
 cur=${SYNTH_CUR:-$(date -u +%Y-%m)}
 case "$cur" in [0-9][0-9][0-9][0-9]-[0-9][0-9]) ;; *) echo "record-growth-synth: SYNTH_CUR is YYYY-MM" >&2; exit 2 ;; esac
-y=${cur%-*}; m=$((${cur#*-} + 0 - 1)); [ "$m" -gt 0 ] || { m=12; y=$((y - 1)); }
+mm=${cur#*-}; y=${cur%-*}; m=$((${mm#0} - 1)); [ "$m" -gt 0 ] || { m=12; y=$((y - 1)); }
 prev=$(printf '%04d-%02d' "$y" "$m")
 [ ! -e "$out/events" ] || { echo "record-growth-synth: $out/events exists; give a new folder" >&2; exit 1; }
 
