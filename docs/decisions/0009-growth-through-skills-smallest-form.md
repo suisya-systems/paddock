@@ -1,6 +1,6 @@
 # 0009. Growth through skills: the smallest form (raw notes, curator trigger, candidate queue, skill template) and what counts as "learned"
 
-Status: **draft** (2026-11-14, for the owner to decide). Refs #336 (goal clause G8). This file proposes and records the decision only; nothing is built by it.
+Status: **accepted** (2026-11-14, owner: all four questions as recommended, plus the rule that the curator judges candidates on all accumulated notes, see Part 4). Refs #336 (goal clause G8). This file records the decision only; the parts are built in separate tasks.
 
 ## The question, in plain words
 
@@ -58,7 +58,7 @@ Org-delegate adds the one note path to the worker's `allowWrite` (like its histo
 
 ### (1) A count at `org-close`
 
-After a worker is closed, `org-close` counts `knowledge/raw/*.md` and pending entries in the queue (`ls`, `grep -c`, `wc`). At 5 raw notes or 5 pending candidates (the predecessor's numbers) it prints one line, and the secretary's rules say: start the curator. The count is shell, tested against a fake folder; no resident process.
+After a worker is closed, `org-close` counts `knowledge/raw/*.md` and pending entries in the queue (`ls`, `grep -c`, `wc`). At 5 raw notes not yet reviewed (newer than the file `knowledge/last-curated`, which the curator touches at the end of a cycle; `find -newer`) or 5 pending candidates (the predecessor's numbers) it prints one line, and the secretary's rules say: start the curator. The count is shell, tested against a fake folder; no resident process.
 
 - **Cost:** one function in `org-close` and a test; a person must also be able to ask for it on demand. The 20-work-skills threshold of the predecessor is dropped: there are no work skills yet.
 
@@ -74,7 +74,7 @@ After a worker is closed, `org-close` counts `knowledge/raw/*.md` and pending en
 
 ## Part 4. What the curator does, and the queue
 
-The curator is a template (`templates/curator.md`, same front matter as the others, `check-templates.sh` covers it) started with `hc run --bg --name curator`. One cycle per start: read `raw/`, merge into `curated/<topic>.md`, move merged raw notes to `raw/archive/`, and for each pattern that passes the check below, append one entry to the queue. It reports to the secretary through the mailbox, never to the person. It writes only `knowledge/`; it creates no skill.
+The curator is a template (`templates/curator.md`, same front matter as the others, `check-templates.sh` covers it) started with `hc run --bg --name curator`. One cycle per start: read **all** accumulated notes in `raw/`, not only the new ones; merge into `curated/<topic>.md`; and for each pattern that passes the check below, append one entry to the queue. A note that is not yet a candidate is **kept in `raw/`**, not archived or deleted, and is read again at the next start: the count of 5 is the signal to start, and the judgment is made on the whole pile, so a pattern that needs 10 or 20 notes to show itself is found when it does. Only a note that a curated note has fully absorbed, or that a merged skill came from, moves to `raw/archive/` (still counted by the gate below). Finally the curator touches `knowledge/last-curated`. It reports to the secretary through the mailbox, never to the person. It writes only `knowledge/`; it creates no skill.
 
 **Queue entry** (a line `- **status**: pending` is what the count matches): date and pattern name; the raw files it comes from; one line on when it applies; proposed skill name; status `pending | approved | rejected | merged-into-<skill>`; decision date; reason if rejected.
 
@@ -83,7 +83,7 @@ The curator is a template (`templates/curator.md`, same front matter as the othe
 | Form | Cost |
 | --- | --- |
 | The predecessor's five signals, scored | Faithful, but five scores to define, explain and test; most of the predecessor's text is this. |
-| **Two gates plus judgment** | Three or more raw notes from different tasks name the same pattern, **and** the curator can write one sentence saying when to use it. Both are checkable by `grep`. Anything beyond is the curator's judgment, written into the entry. |
+| **Two gates plus judgment** | Three or more notes in `raw/` or `raw/archive/`, from different tasks, name the same pattern (counted over everything accumulated, not one cycle), **and** the curator can write one sentence saying when to use it. Both are checkable by `grep`. Anything beyond is the curator's judgment, written into the entry. |
 | No gate, the curator decides | Cheapest; nothing to check, and a one-off lesson can become a skill. |
 
 **Recommendation: two gates.** They are the two signals that can be tested without judgment, and they keep the queue from filling with one-offs.
@@ -114,17 +114,17 @@ The claim is true when one chain exists and each link can be checked by a shell 
 
 A script check for 1 to 4 on a fixture folder (`tests/knowledge-chain.test.sh`, shell, fake notes and a fake queue) comes with the build. Link 5 is shown by one real run, written up like the earlier prototypes. **Not part of the acceptance:** how many skills are written, or that a skill saves time (not measured by any means paddock has).
 
-## Questions for the owner
+## The owner's answers (2026-11-14)
 
-Plain words; the recommended answer is marked.
+1. **Where does a worker's lesson come from?** (A): it writes the note at the end of its report and the secretary saves it as a file.
+2. **Where do the notes live?** (a): this machine's state folder, private; only an accepted skill goes into the repository, by pull request.
+3. **What starts the curator?** (1): a count at the end of each task (5 unreviewed raw notes or 5 pending candidates), and the person can ask for it at any time.
+4. **How does a pattern become a candidate, and who says yes?** Two gates (3 matching notes from different tasks, and a one-sentence trigger); nothing becomes a skill until the owner answers, in a batch.
 
-1. **Where does a worker's lesson come from?** (A) It writes it at the end of its report and the secretary saves it as a file **(recommended: nothing new to permit or measure)**. (B) It writes its own file (needs a permission measured first). (C) It commits it in the pull request (not recommended).
-2. **Where do the notes live?** (a) In this machine's state folder, private; only an accepted skill goes into the repository by pull request **(recommended)**. (b) In the repository, reviewed, shared, but private details land there too.
-3. **What starts the curator?** (1) A count at the end of each task: 5 raw notes or 5 waiting candidates, and you can also ask for it **(recommended)**. (2) Only when you ask. (3) A timer.
-4. **How does a pattern become a candidate, and who says yes?** The curator queues a pattern when 3 notes from different tasks match and it can say when to use it; nothing becomes a skill until you answer, in a batch of 5 **(recommended)**. Or the curator decides alone (a skill could appear that you never saw).
+Owner's addition: 5 notes can be thin, and some patterns will only reach skill level at 10 or 20 notes. So the curator reviews the whole pile at every start, keeps notes that did not qualify, and re-evaluates as the pile grows (Part 4).
 
-## Consequences once accepted
+## Consequences
 
-- Build, each its own task: the raw-note step in the worker rules and `org-close`, the count in `org-close` and `templates/curator.md`, `templates/skill/`, `tests/knowledge-chain.test.sh`. README "Not built yet" keeps the line until the first of these lands, then points here.
+- Build, each its own task: the raw-note step in the worker rules and `org-close`, the count in `org-close` (with `knowledge/last-curated`) and `templates/curator.md`, whose test covers a note that waits through two cycles and then qualifies, `templates/skill/`, `tests/knowledge-chain.test.sh`. README "Not built yet" keeps the line until the first of these lands, then points here.
 - Inventory rows SK-7, SK-8, REG-4, REG-5 and GT-11 get this record as their decision. The privacy split of REG-4 becomes "state folder is private, `skills/` is the product".
-- If (B) is chosen, L-K4's unmeasured case (a file that does not exist at launch) becomes the first thing to probe.
+- (B) was not chosen, so L-K4's unmeasured case (a file that does not exist at launch) stays unmeasured until a later change asks for it.
