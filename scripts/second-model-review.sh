@@ -57,12 +57,15 @@ else
     || { end 1 "CODEX_GATE: not-established (no change against $base, or no $base: nothing to review)"; }
 fi
 
-# Issue #298: this runs from the core's PATH, which may lack codex's folder. org-start recorded the path
-# it found beside this script (codex-path); put that folder on PATH when codex is not found otherwise.
-if ! command -v codex >/dev/null 2>&1; then
-  cp=$(cat "$(dirname "$0")/codex-path" 2>/dev/null) && [ -x "$cp" ] && PATH=$(dirname "$cp"):$PATH
-fi
-command -v codex >/dev/null 2>&1 || { end 3 "CODEX_GATE: unavailable (the reviewing CLI is not installed)"; }
+# Issues #298, #364: this runs from the core's PATH, which may lack codex's folder, and may hold a
+# different codex than the one the person set up. org-start recorded the stable path it found beside
+# this script (codex-path); that one runs when it exists, else the one on PATH. prepare's codex-cli
+# check uses the same order (scripts/probes/prototype-3.sh, codex_gate_lookup).
+cp=$(head -n 1 "$(dirname "$0")/codex-path" 2>/dev/null)
+if [ -n "$cp" ] && [ -x "$cp" ]; then PATH=$(dirname "$cp"):$PATH; codex_bin=$cp; else codex_bin=$(command -v codex 2>/dev/null); fi
+[ -n "$codex_bin" ] || { end 3 "CODEX_GATE: unavailable (the reviewing CLI is not installed)"; }
+codex_ver=$("$codex_bin" --version 2>/dev/null | head -n 1)
+echo "reviewer: $codex_bin ${codex_ver:-unknown version}"
 
 # The reviewer keeps its login and settings in CODEX_HOME. A worker's sandbox may not let it write
 # there, and it refuses a home under a temp folder, so it gets a folder in the worktree that links
@@ -81,13 +84,13 @@ fi
 log=$(mktemp "${TMPDIR:-/tmp}/second-review-$mode.XXXXXX") || { end 1 "CODEX_GATE: not-established (cannot create the log)"; }
 if [ "$mode" = design ]; then
   prompt="Read the design at $design and verify it against this repository: every file, function, flag, hook and path it relies on exists and works as assumed, and the design reaches its stated goal without gaps. List findings as Blocker / Major / Minor, each with evidence (file:line) and a concrete fix."
-  codex exec -c model_reasoning_effort=high -c sandbox_mode='"read-only"' "$prompt" </dev/null 2>&1 | tee "$log"
+  "$codex_bin" exec -c model_reasoning_effort=high -c sandbox_mode='"read-only"' "$prompt" </dev/null 2>&1 | tee "$log"
 else
-  codex exec review --base "$base" -c model_reasoning_effort=medium -c sandbox_mode='"read-only"' </dev/null 2>&1 | tee "$log"
+  "$codex_bin" exec review --base "$base" -c model_reasoning_effort=medium -c sandbox_mode='"read-only"' </dev/null 2>&1 | tee "$log"
 fi
 status=${PIPESTATUS[0]}
 
 ok=$(grep -cE '^ *succeeded in [0-9]+(ms|s|m)' "$log"); bad=$(grep -cE '^ *(failed|exited [0-9]+) in [0-9]+(ms|s|m)' "$log")
-summary="succeeded=$ok failed=$bad status=$status log=$log"
+summary="succeeded=$ok failed=$bad status=$status codex=$codex_bin ${codex_ver:-unknown version} log=$log"
 if [ "$ok" -ge 1 ] && [ "$bad" -eq 0 ] && [ "$status" -eq 0 ]; then end 0 "CODEX_GATE: passed ($summary)"; fi
 end 1 "CODEX_GATE: not-established ($summary; HEAD=$(git rev-parse --short HEAD 2>/dev/null))"

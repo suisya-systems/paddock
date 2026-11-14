@@ -36,6 +36,19 @@
 # 2 bad argument, 3 a tool is missing, 6 a precondition failed (the core not running is one).
 set -u
 
+# BEGIN codex-lookup
+# Issue #364: the codex the review gate runs (scripts/second-model-review.sh): the path org-start recorded
+# in codex-path beside the gate when that file runs, else codex on PATH. Sets CODEX_BIN and CODEX_SRC.
+codex_gate_lookup() {
+  CODEX_BIN= CODEX_SRC=
+  _cp=$(head -n 1 "${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}/codex-path" 2>/dev/null)
+  if [ -n "$_cp" ] && [ -x "$_cp" ]; then CODEX_BIN=$_cp CODEX_SRC=codex-path; return 0; fi
+  _c=$(command -v codex 2>/dev/null)
+  case "$_c" in /*) CODEX_BIN=$_c CODEX_SRC=PATH; return 0 ;; esac
+  return 1
+}
+# END codex-lookup
+
 die() { c=$1; shift; echo "prototype-3: $*" >&2; exit "$c"; }
 usage() { sed -n '2,36p' "$0"; }
 
@@ -201,9 +214,13 @@ EOF
       echo "RESULT project-trust: PASS ($project is recorded as trusted)"
     else echo "RESULT project-trust: FAIL ($project is not recorded as trusted; run: $SETUP --repo $repo --project $project --paddock $ROOT, then follow its TODO folder-trust line)"; fi; } | tee -a "$RUN/prepare.txt"
   # The review gate calls the reviewing CLI with the login in CODEX_HOME (scripts/second-model-review.sh).
-  { if command -v codex >/dev/null 2>&1 && [ -e "${CODEX_HOME:-$HOME/.codex}/auth.json" ]; then
-      echo "RESULT codex-cli: PASS ($(codex --version 2>/dev/null | head -n 1); login file exists, not read)"
-    else echo "RESULT codex-cli: FAIL (codex not on PATH or no ${CODEX_HOME:-~/.codex}/auth.json; the gate would end 'unavailable' or 'not-established')"; fi; } | tee -a "$RUN/prepare.txt"
+  { if codex_gate_lookup && [ -e "${CODEX_HOME:-$HOME/.codex}/auth.json" ]; then
+      echo "RESULT codex-cli: PASS ($("$CODEX_BIN" --version 2>/dev/null | head -n 1) at $CODEX_BIN, from $CODEX_SRC, the one the gate runs; login file exists, not read)"
+      pc=$(command -v codex 2>/dev/null)
+      if [ "$CODEX_SRC" = codex-path ] && [ -n "$pc" ] && [ "$(readlink -f "$pc")" != "$(readlink -f "$CODEX_BIN")" ]; then
+        echo "NOTE codex-cli: PATH has another codex ($pc, $("$pc" --version 2>/dev/null | head -n 1)); the gate ignores it. To switch, put the wanted folder first on PATH and run org-start again"
+      fi
+    else echo "RESULT codex-cli: FAIL (no codex in codex-path or on PATH, or no ${CODEX_HOME:-~/.codex}/auth.json; the gate would end 'unavailable' or 'not-established')"; fi; } | tee -a "$RUN/prepare.txt"
   # The request is test scaffolding (fixed text, so the results can be checked): watch sends it.
   cat > "$RUN/request.txt" <<EOF
 Delegate one task to a worker with the org-delegate skill: project $project, task id $T, title "paddock prototype 3", base $base. The task text: "Add an acceptance test, then the file it checks. (1) Add $TESTF, a bash script that exits 0 only when the file $FILE at the repository root holds exactly the one line 'paddock prototype 3, task $T', and exits 1 otherwise. Commit it alone, as the first commit of your branch, with the line 'Acceptance-Test: $TESTF' in the last paragraph of the commit message (no blank line inside that paragraph). Check that git log -1 --format='%(trailers)' shows the line and that bash $TESTF fails. (2) Before you create $FILE, report blocked with the question 'May I add $FILE at the repository root?' and wait for the answer as your instructions say. On no, report done without the file. (3) On yes, add $FILE with that one line, commit it as a second commit, and check that bash $TESTF passes. Commit only these two files. Never change the test after its commit; if a review finding is about the test, leave it and say so in your report. (4) Ask for the review by the second model as your rules say, and fix Blocker and Major findings in new commits. (5) Report done with both commit SHAs, the test result and the last line of the review gate." When the worker asks its question, do not answer it yourself: put it on the card with org-escalation ask, and when the ANSWER from the card is in your mailbox, forward it with org-escalation answer. When the worker reports done, open the pull request with the org-pull-request skill, --mode human --base $base --task-id $T, title "paddock prototype 3 run $T", and tell me its URL and the skill's exit code. Do not merge. This is a test run; the pull request goes to the throwaway repository $repo.
