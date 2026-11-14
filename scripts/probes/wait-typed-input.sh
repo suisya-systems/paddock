@@ -36,7 +36,10 @@ command -v hc >/dev/null 2>&1 || { echo "RESULT precondition-failed: hc not on P
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/probe285.XXXXXX") || exit 1
 HC_SESSION=p285-$$; export HC_SESSION
 PADDOCK_STATE_DIR=$WORK/state; export PADDOCK_STATE_DIR
-cleanup() { hc kill p285-sec >/dev/null 2>&1; hc kill p285-kid >/dev/null 2>&1; hc server stop >/dev/null 2>&1; rm -rf "$WORK"; }
+. "$(dirname "$0")/claude-link.sh"
+claude_link_save
+unset PADDOCK_ORG_ID PADDOCK_SECRETARY_NAME
+cleanup() { claude_link_restore; hc kill p285-sec >/dev/null 2>&1; hc kill p285-kid >/dev/null 2>&1; hc server stop >/dev/null 2>&1; rm -rf "$WORK"; }
 trap cleanup EXIT INT TERM
 
 hc run --bg --name p285-sec -- sh -c "hc run --bg --name p285-kid -- sleep 120; bash '$ROOT/scripts/org' --as secretary wait --children --timeout 60 > '$WORK/out' 2>&1; sleep 30" >/dev/null 2>&1 \
