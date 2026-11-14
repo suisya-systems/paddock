@@ -1,6 +1,6 @@
 # 0008. Who tells the person when something waits and the window is closed, and by what channel
 
-Status: **draft** (2026-11-14), waiting for the owner. Refs #335 (goal clause G7). This file records options and a recommendation only; nothing is built. If accepted, the build is a separate task.
+Status: **accepted** (2026-11-14, owner: Q1 (a), Q2 toast with sound and bell fallback, Q3 both, Q4 yes). Refs #335 (goal clause G7). This file records the decision only; the watcher is built in a separate task.
 
 ## The question, in plain words
 
@@ -56,42 +56,34 @@ All are one shell command the watcher calls. Which one runs is chosen by what th
 
 Floor: the bell, which needs nothing. On WSL: a toast through `powershell.exe`, which reaches the Windows desktop with the window closed. On Linux: `notify-send` when present.
 
-## Recommendation
+## Decision
 
-**(a), with the toast on WSL and `notify-send` on Linux, falling back to the bell.** Reasons:
+The owner chose (a) and took the recommended answer to every question (2026-11-14):
 
-1. It is the only inside-herdr option that covers both halves of the Issue (a waiting approval and a stopped secretary) with the window closed, and it has one owner.
-2. It uses what Q3 already decided (rule, N = 10, never-reported rule) and nothing the README rules out.
-3. The mod (b) stays as it is; adding a sound there later is a small change and is not needed to close the Issue.
+1. **Who runs it.** A shell script in a kept terminal, started by `org-start`. Not a mod.
+2. **What a person sees and hears.** A desktop toast with the system's sound; when a toast cannot be raised, a terminal bell.
+3. **What it tells.** Both a waiting approval card (once per card) and the secretary's incident (Q3's rule). A card is an escalation, so this follows principle 6 ("people are interrupted by escalation").
+4. **Start and stop.** `org-start` starts it as a kept terminal named `watcher`; `org-down` stops it.
 
-What the watcher tells a person (all from one cooldown ledger, each at most once per item, then again after N minutes if still waiting):
+The watcher tells a person about three things, each at most once per item and again after N minutes if still waiting (one cooldown ledger):
 
 - an approval card waiting (`org-state.approvals`), with the task and question;
 - Q3's incident (a worker `blocked` and the secretary frozen for N minutes);
 - a terminal that never reported status (the `first_message.sent = false` case, and the N-minute timeout).
 
+## Why
+
+(a) is the only option inside herdr that covers both halves of the Issue (a waiting approval and a stopped secretary) with the window closed, and it has one owner. It uses what Q3 already decided (rule, N = 10, never-reported rule) and nothing the README rules out. (b) alone does not work with the window closed; (c-1) cannot see the secretary stop and would split the owner; (c-2) needs an install outside herdr. The mod stays as it is.
+
+## Costs accepted
+
+- One more resident terminal, one script and its test against a stubbed `hc`, a cooldown ledger, and changes to `org-start`, `org-suspend` and `org-down`.
+- The watcher lives in the core: if the core stops, it stops and nothing says so. A timer outside herdr is the later answer if that case matters.
+
 ## What is not measured
 
 - Nothing here was run: this work was done in a sandbox with no running core, no `herdr-app`, and no working Windows interop, so no toast was raised and no `hc` call made. The `hc` facts are taken from the documents cited.
-- Whether `powershell.exe` can raise a toast from a WSL process started by a kept terminal (no desktop session of its own) is **unmeasured**. It is the first thing the build task must probe, before choosing the toast; if it fails the WSL channel falls back to the bell and a sound.
+- Whether `powershell.exe` can raise a toast from a WSL process started by a kept terminal (no desktop session of its own) is **unmeasured**. It is the first thing the build task must probe (its first probe), before choosing the toast; if it fails the WSL channel falls back to the bell and a sound.
 - How long a healthy secretary keeps one status (N = 10 is a starting value, Q3).
 - Whether a poll every 30 seconds is cheap enough on a core with many terminals. `hc get` per blocked worker plus one for the secretary should be, but this is not measured.
 
-## Questions for the owner
-
-Each has a recommended answer (marked).
-
-1. **Who runs it?**
-   - **(a) A script in a kept terminal, started by `org-start` (recommended).**
-   - (b) A herdr-app mod only (does not work with the window closed).
-   - (c) Both: (a) plus a sound in the mod while the window is open.
-2. **What does a person see and hear?**
-   - **A desktop toast with the system's sound on WSL and Linux, and a terminal bell as the fallback (recommended).**
-   - Sound only, no text.
-   - Text in the terminal only.
-3. **Is a waiting approval card a reason to notify, or only the secretary's incident?**
-   - **Both: tell the person once per approval card that waits, and on the incident (recommended). A card is an escalation, so it follows principle 6 ("people are interrupted by escalation").**
-   - Only the incident.
-4. **Should `org-start` start the watcher by itself?**
-   - **Yes, as a kept terminal named `watcher`, and `org-down` ends it (recommended).**
-   - No, a person starts it when they want it.
