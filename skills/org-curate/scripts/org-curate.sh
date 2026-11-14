@@ -134,9 +134,15 @@ case "$cmd" in
     # 2. Candidate: one entry lists those files and has the trigger.
     [ -n "$(field "$p" pattern)" ] || bad 2 "no queue entry for $p in $queue"
     notes=$(field "$p" notes)
-    # compared by file name, so a note moved to raw/archive/ still matches its entry
-    nb=; for x in $notes; do nb="$nb ${x##*/}"; done
-    for f in $files; do case "$nb " in *" ${f##*/} "*) ;; *) bad 2 "the entry does not list ${f##*/}" ;; esac; done
+    # The evidence is what the entry recorded (later cycles may add notes to the pattern without
+    # changing a queued entry): its listed notes must exist and come from 3 or more different tasks.
+    files=; ntasks=$(
+      for x in $notes; do b=${x##*/}; f=raw/$b; [ -f "$k/$f" ] || f=raw/archive/$b
+        [ -f "$k/$f" ] || { echo "MISSING $b"; continue; }
+        sed -n "s/^Task:[[:space:]]*//p" "$k/$f" | head -1; done | sort -u)
+    case "$ntasks" in *MISSING*) bad 2 "the entry lists a note that does not exist: $(grep MISSING <<<"$ntasks" | head -1)" ;; esac
+    [ "$(grep -c . <<<"$ntasks")" -ge 3 ] || bad 2 "the entry lists notes from fewer than 3 different tasks"
+    files=; for x in $notes; do files="$files ${x##*/}"; done
     [ -n "$(field "$p" when)" ] || bad 2 "the entry has no trigger sentence"
     echo "org-curate: link 2 ok: queue entry lists the notes and the trigger"
     # 3. Decision: approved, with a decision date.

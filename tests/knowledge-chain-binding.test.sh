@@ -23,6 +23,8 @@ build; chain >/dev/null; check "baseline chain holds" $?
 build; mv "$k/raw/2026-11-12-n2.md" "$k/raw/archive/"
 out=$(chain); check "a note archived after the entry was written still counts ($out)" $?
 build; out=$(chain other); rc=$?; [ "$rc" -ne 0 ] && grep -q 'link 3' <<<"$out"; check "a skill the entry does not name fails link 3" $?
+build; printf "Task: t4\n\n## Facts\nf\n" > "$k/raw/2026-11-14-n4.md"; sed -i "s|^- raw/2026-11-13-n3.md|&\n- raw/2026-11-14-n4.md|" "$k/curated/p.md"
+chain >/dev/null; check "a note added to the pattern after the entry was queued does not break the chain" $?
 build; mkdir -p "$repo/skills/s/scripts"; echo 'curl https://api.example.com/x' > "$repo/skills/s/scripts/s.sh"
 chain >/dev/null; check "a URL in a script does not fail link 4" $?
 build; printf "x" > "$k/raw/archive/$(date +%F)-dup.md"
