@@ -19,7 +19,7 @@ Bash only, plus `git`, `gh` and `hc`. `--repo OWNER/NAME` is taken from a GitHub
 1. Pushes: `git push origin <branch>` from the worktree.
 2. Opens the PR: `gh pr create --repo <r> --head <branch> --base main --title ... --body-file ...` (or `--body`). `--pr N` reuses an open PR instead (a rerun after a failure).
 3. Finds the CI run of the pushed head: `gh run list --commit <sha>`, retrying while none exists yet (`PADDOCK_RUN_TRIES`, default 10, every `PADDOCK_RUN_SLEEP`, default 6 s; exit 7 when none appears).
-4. Watches it as a background child (measured once on a real core): `hc run --bg --rm --no-notify --name ci-<pr> -- gh run watch <run-id> --repo <r> --exit-status`, then `hc wait ci-<pr>`, and reads the integer `exit_code` from its one JSON line. A line without one (a kill sets `signal`) exits 8.
+4. Watches it as a background child (measured once on a real core): `hc run --bg --rm --no-notify --name ci-<pr> -- gh run watch <run-id> --repo <r> --exit-status`, then `hc wait ci-<pr>`, and reads the integer `exit_code` from its one JSON line. A line without one (a kill sets `signal`) exits 8. `hc wait` runs without `--timeout`, so it holds the caller only until hc's own check-in (about 180 s when measured); if CI still runs then, it exits 8 and the `ci-<pr>` child keeps watching.
 5. Appends one `ci_completed` line to `events/<YYYY-MM>/secretary.jsonl` through `bash scripts/org --as secretary ci_completed` (the secretary's folder, sequence and lock) ([decision 0004](../../docs/decisions/0004-records-documents-and-jsonl.md)), for a failed run too:
    `{"seq":1,"ts":"2026-11-10T01:02:03Z","kind":"ci_completed","from":"secretary","task_id":"t1","pr":42,"sha":"<head>","run_id":777,"exit_code":0,"conclusion":"success"}`
 6. Acts by the approval mode, then prints the outcome.
@@ -38,11 +38,15 @@ The mode is `--mode`, else `merge_approval_mode` in `org-config.md` (read with `
 | 5 | Push failed. | Report; nothing was opened. |
 | 6 | PR could not be created. | Report; the branch is pushed. |
 | 7 | No CI run for the head. | Check the repository has a workflow; rerun with `--pr`. |
-| 8 | Watch result unreadable (no `exit_code`). | Rerun with `--pr`. |
+| 8 | Watch result unreadable (no `exit_code`), usually CI still running at the check-in. | Go back to `org wait --children`; when the `ci-<pr>` child has ended, rerun with `--pr <n>` (it watches again). Never watch CI by hand. |
 | 9 | CI failed on the head (recorded). | Send the worker back with the failure; never merge. |
 | 10 | Merge refused: head moved after the watched run, or required checks not green. | Rerun with `--pr` so the new head is watched. |
 | 11 | `gh pr merge` failed. | Report. |
 | 12 | The events line could not be written. | Report; the CI result is in the output. |
+
+## Watching CI without holding the secretary
+
+While a shell call runs, the secretary takes no input: a card answer or a worker report waits behind it. So CI is watched only through this script's child (`hc wait ci-<pr>`) and `org wait --children`, never with `gh pr checks --watch` or a sleep loop by hand. When the secretary tells the person about the PR, it quotes the CI result this script printed (the `ci_completed` conclusion), never a worker's local test run.
 
 ## Assumptions (open points left open)
 
