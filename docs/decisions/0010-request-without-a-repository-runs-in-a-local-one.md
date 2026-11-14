@@ -1,6 +1,14 @@
 # 0010. A request that names no repository runs in a local repository made for it
 
-Status: **proposed** (2026-11-14). Refs #357. Nothing is decided until the owner answers the questions at the end. This file records options and a recommendation for each of the four points the Issue lists; it builds nothing.
+Status: **accepted** (2026-11-14, owner: all recommendations taken, decision board 2026-11-14T11:28Z). Refs #357. This file records the decision only; the build is a follow-up task (see "Decision"). Options and recommendations for the four points the Issue lists are kept below as the reasoning.
+
+## Decision
+
+1. **Place and unit.** `$PADDOCK_LOCAL_DIR`, default `~/paddock-local`, one repository per task named by the task id. A person who wants reuse adds a `projects.md` row and names it.
+2. **Result.** The worker's `report done` carries a summary and the worktree path; when the person agrees, the secretary fast-forwards the repository's `main` (`git merge --ff-only`). A push to a new remote only when the person asks.
+3. **Trust.** First measure with one probe whether trusting `$PADDOCK_LOCAL_DIR` covers a repository made inside it later. If it does, the person trusts the folder once per machine. If not, the secretary answers the dialog once per repository from the screen, never with a blind Enter. No script writes Claude Code's configuration.
+4. **Acceptance and PR.** `org-pull-request` is skipped; the task closes in `human` mode only; an `Acceptance-Test:` declaration is not accepted for such a task. The review gate stays, on the recorded base.
+5. **Build.** One follow-up task covers creating the repository (`git init`, empty first commit with an explicit author), delegating to it, and the close path (ff-only merge, `org-close`). The trust probe is that task's first step.
 
 ## The question, in plain words
 
@@ -79,10 +87,6 @@ There is no `origin`, no CI and no PR. Proposed handling:
 - Whether a repository made with `git init` plus one empty commit works through every `org-delegate` step (worktree, settings, review gate base) with no `origin`: expected from the code, **not run**.
 - How the `acceptance` declaration behaves on a repository with no CI: by reading `acceptance-check.sh` it never runs there, **not run**.
 
-## Questions for the owner
+## Owner's answers (2026-11-14)
 
-1. **Place and unit.** `~/paddock-local`, one repository per task, reuse through `projects.md`? (recommended)
-2. **Result.** Summary and path in the report, plus a fast-forward into the repository's `main` when the person agrees; a remote only when asked? (recommended)
-3. **Trust.** The secretary answers once per repository from the screen, after one probe of whether trusting the folder is enough? Or may a script write the trust flag into Claude Code's configuration (c)?
-4. **Acceptance and PR.** Skipped, `human` only, no acceptance declarations for such a task? (recommended)
-5. **Scope of the build.** One task covering `git init` + delegate + close, or the repository creation first and the close path after?
+All five questions were answered as recommended: place and unit, result, trust (probe first, then the secretary answers once if the folder is not enough; option (c) rejected), acceptance and PR, and one build task for create, delegate and close.
