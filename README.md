@@ -15,6 +15,7 @@ Run these from your own login shell, never from inside an agent (Bash only for n
 - To start the secretary and install the prototype-1 mod (`org-agents`), run `bash skills/org-start/scripts/org-start.sh` ([skill](skills/org-start/SKILL.md)).
 - To renew the secretary's context, run `bash skills/secretary-handover/scripts/secretary-handover.sh` once the secretary has written its handover ([skill](skills/secretary-handover/SKILL.md)).
 - To pause and come back: [`org-suspend`](skills/org-suspend/SKILL.md) records the state and leaves terminals alive, [`org-resume`](skills/org-resume/SKILL.md) prints a plan (and relaunches workers with `--apply`), and [`org-down`](skills/org-down/SKILL.md) ends only the terminals carrying a `task_id` label (the secretary too with `--secretary`) and stops your core only with `--stop-core`.
+- To be told outside the window (a toast with sound, else a bell) of a waiting approval card, a stopped secretary or a terminal with no status: [`org-watch`](skills/org-watch/SKILL.md), a read-only shell loop meant to run as a kept terminal named `watcher` ([decision 0008](docs/decisions/0008-who-tells-the-person-outside-the-window.md)).
 
 The secretary is always started with `--cwd` set to this folder (by `org-start` and by the handover script), and its template says so, so it finds `scripts/org` and the skill scripts from any starting folder.
 
@@ -32,7 +33,7 @@ The secretary runs these skills itself:
 Not built yet, though the predecessor relied on them ([inventory](docs/design/predecessor-inventory.md) rows in brackets):
 
 - Growth through skills and knowledge: the curator, its raw and curated notes, and the queue of skill candidates (SK-7, SK-8, REG-4, GT-11, all kept, none written). There is no curator template.
-- Notifications to a person outside the window: the attention watcher (NTF-1, kept, not written) and the incident check when the secretary does not move ([Q3](docs/design/open-questions.md#q3-incident-threshold-when-the-secretary-does-not-move): the rule is decided, who runs it is open).
+- Starting and ending the watcher from `org-start` and `org-down` ([decision 0008](docs/decisions/0008-who-tells-the-person-outside-the-window.md)): [`org-watch`](skills/org-watch/SKILL.md) is written and tested, but run it by hand until then.
 - The organization settings files `org-config.md` and `projects.md` ([Q14](docs/design/open-questions.md#q14-where-do-organization-settings-and-registries-live), decided): `org config` ([#193](https://github.com/suisya-systems/paddock/issues/193)) changes them: `set` for `merge_approval_mode` (read by `org-pull-request`) and `conversation_language` (ends the secretary's launch task in `org-start` and `secretary-handover`), and `project add`, `set` and `drop` for the table `--project <name>` reads; the other values are not settings yet and the scripts use their defaults and `PADDOCK_*` variables.
 - The optional features: conveyor, work discovery, metrics and defense reports ([Q15](docs/design/open-questions.md#q15-which-of-the-predecessors-optional-organization-features-carry-over), open).
 
