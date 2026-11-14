@@ -26,7 +26,7 @@ Never paddock itself as `--repo` (the probe exits 6). It starts no `claude` and 
 | `2-merge-after-update` | `org-pull-request --pr N --mode acceptance` on the updated head: exit 0, PR `MERGED` |
 | `settings-paddock-*` | INFO only: records the required checks and strictness on paddock's `main` (classic protection and rulesets) |
 
-Not covered here: `PADDOCK_ORG` in a real worker session. That is [the worker probe](#worker-probe) below.
+`PADDOCK_ORG` in a real worker session is covered by [the worker probe](#worker-probe) below.
 
 ## Worker probe
 
@@ -46,7 +46,25 @@ It pushes two side branches of the scratch repository (never its `main`, which m
 | `worker-protected-stop` | in the worker, `--base <side branch adding .claude/skills/...>` exits 4, names the path, `HEAD` does not move |
 | `host-control` | the same range on the host with `PADDOCK_ORG` unset exits 0 and merges |
 
-Result: not run yet.
+Host runs on 2026-11-14 against `happy-ryo/paddock-proto2-scratch`.
+
+**Run 1 (FAIL, before the fix).** `delegate`, `report-done`, `in-box`, `worker-env` and `host-control` PASS. `worker-merge` and `worker-protected-stop` FAIL: the worker reported `ok-rc=5 prot-rc=5`. `org-update-branch` ran `git fetch origin` first and a worker cannot fetch (the sandbox's network allowlist refuses GitHub, [worker-github-access](worker-github-access.md)), so it exited 5 before the protected-path check. The skill's worker check could not be reached from a worker.
+
+**Fix.** In a worker (`PADDOCK_ORG` set) a failed fetch no longer stops `org-update-branch`; it goes on with the `origin/<base>` the secretary fetched. Without one it exits 5 and says to ask the secretary. The secretary's behaviour is unchanged. `tests/org-update-branch-worker-fetch.test.sh` covers it.
+
+**Run 2 (all PASS, probe exit 0, after the fix).**
+
+| RESULT | Outcome |
+| --- | --- |
+| `delegate`, `report-done`, `in-box` | PASS (done after 12 s) |
+| `worker-env` | PASS: `env=set` |
+| `worker-merge` | PASS: exit 0, `HEAD` moved, `origin/<ok branch>` in the branch |
+| `worker-protected-stop` | PASS: exit 4, path named, `HEAD` unchanged |
+| `host-control` | PASS |
+
+The worker's plain `git fetch origin` output was kept, cut at 160 characters: `warning: unable to access '.../.gitmodules': Permission denied fatal: unable to access 'https://github.com/happy-ryo/paddoc`. The cut falls before the reason, so the 403 text of the earlier measurement was not seen again in this run; the fetch did fail in the worker.
+
+What this measured: `PADDOCK_ORG` is set in a real worker session, the worker check stops a range that touches `.claude/skills/` (exit 4, branch unchanged), and a plain range merges in the worker sandbox. Not measured: a push of the merged branch from a worker (workers do not push).
 
 ## Result
 
@@ -70,4 +88,4 @@ What this measured: `gh pr checks --required` under branch protection, the squas
 What it left open:
 
 - paddock's own `main`, at the time of the probe, required neither `acceptance` nor up-to-date branches, so `acceptance` mode there was not guarded by the settings this probe relied on. The probe only records the state. Afterwards, on 2026-11-14, the owner set the protection on paddock's `main`: required check `acceptance`, branches up to date before merging, enforced for admins ([acceptance-check](acceptance-check.md#settings-only-the-owner-can-make)). That setting itself was made by the owner and not re-read by the probe.
-- `PADDOCK_ORG` in a real worker session was not covered.
+- `PADDOCK_ORG` in a real worker session: covered afterwards by [the worker probe](#worker-probe).
