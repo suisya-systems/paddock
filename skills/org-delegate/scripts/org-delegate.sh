@@ -291,6 +291,10 @@ bash "$org" --as secretary report start --task "$id" --to secretary \
 mark_blocked() { bash "$org" --as secretary report blocked --task "$id" --to secretary "$1" >/dev/null 2>&1; }
 
 # 5. Launch with the task in the launch (decision 0002), labelled so a renewed secretary finds it.
+. "$(dirname "${BASH_SOURCE[0]}")/work-entry.sh"
+since=${PADDOCK_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
+rs=$state/resend/$id # what exit 10 saves; a leftover of an earlier task with this id is dropped
+rm -f "$rs/message" "$rs/entry"; rmdir "$rs" 2>/dev/null
 brief="Your org id is $name. Your task id is $id.
 
 $task"
@@ -303,45 +307,31 @@ if ! out=$(hc run --bg --outlive-parent --name "$name" --cwd "$wt" --label "task
   fi
   die 5 "hc run failed: ${out:0:300}. $name may exist or its state is unknown, so nothing was removed: terminal $name, worktree $wt, branch $branch (project $project). Check 'hc get $name'."
 fi
-if ! printf '%s' "$out" | tr -d '\n' | grep -Eq '"sent": *true' \
-  && ! po=$(bash "$root/skills/org-escalation/scripts/org-escalation.sh" prompt --task "$id" \
-       --then-send "$(awk 'n >= 2 { print; next } /^---$/ { n++ }' "$root/templates/worker.md")
+first="$(awk 'n >= 2 { print; next } /^---$/ { n++ }' "$root/templates/worker.md")
 
-$brief" 2>&1); then
+$brief"
+if ! printf '%s' "$out" | tr -d '\n' | grep -Eq '"sent": *true' \
+  && ! po=$(bash "$root/skills/org-escalation/scripts/org-escalation.sh" prompt --task "$id" --then-send "$first" 2>&1); then
   # Q13, L-N3: a worker with no first message is at a dialog or never started. Only the
   # folder-trust dialog (the policy list) is answered, after a screen read, and the first message
   # sent again as hc would have sent it (the template body, a blank line, the brief; as org-start
   # does for the secretary). Anything else is left as it is.
   [ -z "${po:-}" ] || echo "$po" >&2
+  # Saved for org-escalation answer yes (and resend.sh): the first message, and the work entry --title asks for.
+  { mkdir -p "$rs" && printf '%s' "$first" > "$rs/message" \
+    && { [ -z "${havetitle:-}" ] || work_entry_json "$id" "$title" "$since" "$wt" "$task" > "$rs/entry"; }; } 2>/dev/null \
+    || echo "org-delegate: could not save the first message in $rs; the secretary resends it by hand" >&2
   mark_blocked "Delegation stalled: $name did not get its first message. Terminal, worktree $wt and branch $branch were left."
   echo "$out" >&2
-  die 10 "$name started but first_message.sent is not true. Read it with 'hc read $name'. If it shows the folder-trust dialog, $workers is not the trusted workers folder yet (Q13: a person accepts it once). If the template refused, check the read-only token file. Left as they are, nothing typed: terminal $name, worktree $wt, branch $branch."
+  die 10 "$name started but first_message.sent is not true. Read it with 'hc read $name'. If it shows the folder-trust dialog, the folder is not trusted yet: after the person's yes on the trust card, org-escalation answer sends the task and writes the work entry (saved in $rs). If the template refused, check the read-only token file. Left as they are, nothing typed: terminal $name, worktree $wt, branch $branch."
 fi
 
 [ -z "${po:-}" ] || echo "org-delegate: $name was at the folder-trust dialog; answered it and sent the task again (${po//$'\n'/ })"
 echo "org-delegate: worker=$name worktree=$wt branch=$branch"
 
 # 6. with --title, the work entry goes into org-state after the launch (a failed
-# launch leaves no entry). Strings are JSON-escaped; the entry is added at the end of "work" by a
-# scan that skips string contents, so braces and brackets in the task do not matter.
+# launch leaves no entry; see work-entry.sh).
 if [ -n "${havetitle:-}" ]; then
-  esc() { printf '%s\n' "$1" | tr -d '\000-\010\013\014\016-\037' \
-    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e "s/$(printf '\t')/\\\\t/g" -e "s/$(printf '\r')/\\\\r/g" \
-    | awk 'NR>1{printf "%s","\\n"} {printf "%s",$0}'; }
-  since=${PADDOCK_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
-  entry="{\"task_id\":\"$id\",\"title\":\"$(esc "$title")\",\"since\":\"$since\",\"worktree\":\"$(esc "$wt")\",\"task\":\"$(esc "$task")\"}"
-  ENTRY=$entry bash "$org" --as secretary doc update org-state --record work_added --task "$id" --text "$entry" -- awk '
-    { s = s $0 "\n" }
-    END {
-      e = ENVIRON["ENTRY"]
-      if (s ~ /^[ \t\n]*(null)?[ \t\n]*$/) { printf "{\"work\":[%s],\"approvals\":[]}", e; exit }
-      if (!match(s, /"work": *\[/)) {
-        p = index(s, "{"); r = substr(s, p + 1)
-        printf "%s\"work\":[%s]%s%s", substr(s, 1, p), e, (r ~ /^[ \t\n]*\}/ ? "" : ","), r; exit }
-      a = RSTART + RLENGTH; n = length(s); q = 0; d = 1
-      for (i = a; i <= n; i++) { c = substr(s, i, 1)
-        if (q) { if (c == "\\") i++; else if (c == "\"") q = 0; continue }
-        if (c == "\"") q = 1; else if (c == "[") d++; else if (c == "]" && --d == 0) break }
-      printf "%s%s%s%s", substr(s, 1, i - 1), (substr(s, a, i - a) ~ /[^ \t\n]/ ? "," : ""), e, substr(s, i) }' >/dev/null 2>&1 \
+  work_entry_add "$org" "$id" "$(work_entry_json "$id" "$title" "$since" "$wt" "$task")" \
     || die 13 "$name runs, but the org-state entry could not be written (bash scripts/org --as secretary doc update org-state); add the work entry by hand"
 fi
