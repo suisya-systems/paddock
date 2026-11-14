@@ -38,7 +38,7 @@ The mode is `--mode`, else `merge_approval_mode` in `org-config.md` (read with `
 | 5 | Push failed. | Report; nothing was opened. |
 | 6 | PR could not be created. | Report; the branch is pushed. |
 | 7 | No CI run for the head. | Check the repository has a workflow; rerun with `--pr`. |
-| 8 | Watch result unreadable (no `exit_code`), usually CI still running at the check-in. | Go back to `org wait --children`; when the `ci-<pr>` child has ended, rerun with `--pr <n>` (it watches again). Never watch CI by hand. |
+| 8 | Watch result unreadable (no `exit_code`): the watcher did not start, was killed, or (message holds `"reason":"timeout"`) CI still ran at the check-in. | Timeout: go back to `org wait --children`; when the `ci-<pr>` child has ended, rerun with `--pr <n>` (it watches again). Otherwise rerun with `--pr <n>` now. Never watch CI by hand. |
 | 9 | CI failed on the head (recorded). | Send the worker back with the failure; never merge. |
 | 10 | Merge refused: head moved after the watched run, or required checks not green. | Rerun with `--pr` so the new head is watched. |
 | 11 | `gh pr merge` failed. | Report. |
