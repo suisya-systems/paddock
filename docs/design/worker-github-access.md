@@ -182,7 +182,7 @@ Review point (owner): a developer in a company organization often cannot grant t
 
 **D, the local mirror.** A worker holds no GitHub credential. The [worker template](../../templates/worker.md) keeps `GH_CONFIG_DIR` an empty folder, removes the four GitHub token variables and passes no `GH_TOKEN`; the worker reads `origin/*` as the secretary fetched it, and asks the secretary (mailbox, "base is stale") when it needs a newer base. The record of the decision, the reasons and the remaining risks is [Q20](open-questions.md#q20-how-is-a-workers-github-access-held-to-read-only). Measured support: the "Measured" table in D and `worker-git-risks.sh` (the shared `.git` risks; [#323](https://github.com/suisya-systems/paddock/issues/323) removed the shared-config writes).
 
-Still open after the decision: the stale-base request through the real mailbox is not measured; [#324](https://github.com/suisya-systems/paddock/issues/324) (a leftover `config.lock` placeholder after a killed worker); an unauthenticated refusal from GitHub itself was not seen (the sandbox's network allowlist refused first).
+Still open after the decision: the stale-base request through the real mailbox is not measured; [#324](https://github.com/suisya-systems/paddock/issues/324) (a leftover `config.lock` placeholder after a killed worker) is handled by org-close, org-down and org-resume, which remove it after the kill only when no process of the worker or of another worker of the clone runs (the `/proc` scan is tested with stubs, not against a real killed worker); an unauthenticated refusal from GitHub itself was not seen (the sandbox's network allowlist refused first).
 
 ## Recommendation (2026-11-13; adopted as the Decision above)
 

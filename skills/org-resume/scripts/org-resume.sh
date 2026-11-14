@@ -70,11 +70,13 @@ launch() {
   done
   return 1
 }
-# end <name> <id>: kill and remove a terminal, only if it carries this task_id.
+# end <name> <id> <worktree>: kill and remove a terminal, only if it carries this task_id; then (Issue #324) remove
+# the 0-byte read-only config.lock it may have left in the clone's shared .git, if no command of the worker runs.
 end() {
   [ "$(term_label "$1")" = "$2" ] || return 0
   hc kill "$1" >/dev/null 2>&1 || true # ponytail: an already finished terminal may refuse the kill
   hc rm "$1" >/dev/null 2>&1 || die 5 "hc rm $1 failed"
+  sweep_config_lock "$3"
 }
 
 cur=$(paddock_terminals) || die 5 "cannot reach the herdr core (hc ls failed)"
@@ -106,12 +108,12 @@ while IFS=$'\t' read -r kind id wt head dirty task title; do
   task=$(printf '%s' "$task" | awk '{ o = ""; for (i = 1; i <= length($0); i++) { c = substr($0, i, 1)
     if (c == "\\") { n = substr($0, ++i, 1); o = o (n == "n" ? "\n" : n == "t" ? "\t" : n == "r" ? "\r" : n == "\"" || n == "\\" || n == "/" ? n : "\\" n) } else o = o c }
     printf "%s", o }')
-  [ "$st" = none ] && end "$name" "$id"
+  [ "$st" = none ] && end "$name" "$id" "$wt"
   if launch "$cont_t" "$name" "$wt" "$id" "$task"; then
     echo "$id: resumed with $cont_t as $name"
   else
     echo "$id: $cont_t did not come up; falling back to a fresh worker"
-    end "$name" "$id"
+    end "$name" "$id" "$wt"
     if launch "$fresh_t" "$name" "$wt" "$id" "$task"; then echo "$id: started a fresh worker as $name"
     else echo "$id: fresh worker did not come up; read it with 'hc read $name'" >&2; failed=1; fi
   fi

@@ -17,7 +17,8 @@ Without `--drop` (the worker finished):
 
 1. Needs a `done` record for the task, written by `w-<task_id>` and addressed to `secretary`. A `done` sent to anyone else does not count, and nothing is ended.
 2. Needs the terminal `w-<task_id>` to carry the label `task_id=<task_id>`. A terminal without it, or with another task's label, is never touched.
-3. `hc kill`, then `hc rm`, then removes the `work` entry of the task from `org-state` (its `approvals` are left alone).
+3. `hc kill`, then `hc rm`, then (after both) the 0-byte read-only `config.lock` that Claude Code's sandbox leaves in the clone's shared `.git` when a worker is killed mid-command ([Issue #324](https://github.com/suisya-systems/paddock/issues/324)) is removed, but only if no process has its cwd in the ended worker's worktree (it waits up to `PADDOCK_LOCK_WAIT` seconds, default 10, for a killed command to end), none has it in another linked worktree of the same clone, and the file is a regular, 0-byte, not writable file. Otherwise it stays and the output says why. What was removed is printed and appended to `removed-locks.log` in the state folder. A process whose sandbox still has the clone's `.git` mounted (`/proc/*/mountinfo`), a process of the same user that cannot be inspected, or a caller whose own sandbox has that mount, also keeps it. Without `/proc` nothing is removed.
+4. Removes the `work` entry of the task from `org-state` (its `approvals` are left alone).
 
 The worktree and branch stay: [org-pull-request](../org-pull-request/SKILL.md) works from them.
 

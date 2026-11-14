@@ -150,4 +150,21 @@ close >/dev/null; [ $? -eq 2 ]; check "no --task exits 2" $?
 close --task 'Bad Id' >/dev/null; [ $? -eq 2 ]; check "bad task id exits 2" $?
 close --task t1 --nope >/dev/null; [ $? -eq 2 ]; check "unknown argument exits 2" $?
 bash "$script" --help 2>&1 | grep -qi usage; check "--help prints usage" $?
+
+# Issue #324: the killed worker's leftover 0-byte read-only config.lock placeholder is removed, only when safe.
+lock=$proj/.git/config.lock
+placeholder() { rm -f "$lock"; : > "$lock"; chmod 444 "$lock"; }
+export PADDOCK_LOCK_WAIT=1
+rm -f "$lock"; reset; delegate t1; worker_report t1; placeholder
+out=$(close --task t1); rc=$?
+[ "$rc" -eq 0 ] && [ ! -e "$lock" ] && grep -q "$lock" <<<"$out" && grep -q "$lock" "$PADDOCK_STATE_DIR/removed-locks.log"; check "close removes the leftover placeholder and records it ($out)" $?
+rm -f "$lock"; reset; delegate t1; worker_report t1; placeholder
+( cd "$workers/t1" && exec bash -c 'until [ -f "$1" ]; do sleep 0.1; done' _ "$tmp/rel" ) & hp=$!
+out=$(close --task t1); rc=$?
+[ "$rc" -eq 0 ] && [ -e "$lock" ] && grep -qi 'still running' <<<"$out"; check "a process still in the worker's worktree: lock stays and is reported ($out)" $?
+: > "$tmp/rel"; wait "$hp" 2>/dev/null
+rm -f "$lock"; reset; delegate t1; worker_report t1; echo x > "$proj/.git/config.lock"; chmod 444 "$lock"
+close --task t1 >/dev/null
+[ -s "$lock" ]; check "a lock with content stays" $?
+rm -f "$lock"
 exit $fail
