@@ -22,7 +22,7 @@ allow_templates='templates/secretary.md'
 # files org-start installs.
 allow_script_files='scripts/org
 skills/org-suspend/scripts/lib.sh skills/org-suspend/scripts/org-suspend.sh
-skills/org-delegate/scripts/project.sh skills/org-escalation/scripts/org-escalation.sh skills/org-watch/scripts/org-watch.sh
+skills/org-delegate/scripts/project.sh skills/org-delegate/scripts/resend.sh skills/org-escalation/scripts/org-escalation.sh skills/org-watch/scripts/org-watch.sh
 templates/secretary.md templates/worker.md templates/curator.md templates/worker-settings.json layouts/paddock.json
 skills/org-curate/scripts skills/org-curate/scripts/org-curate.sh
 mods/org-agents/main.js mods/org-agents/mod.json mods/org-cockpit/main.js mods/org-cockpit/mod.json'
