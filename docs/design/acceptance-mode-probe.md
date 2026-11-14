@@ -1,6 +1,6 @@
 # Acceptance-mode probe
 
-Status: written, not yet run on a host (Issue #330, goal clause G2). [org-pull-request](../../skills/org-pull-request/SKILL.md) in `acceptance` mode and [org-update-branch](../../skills/org-update-branch/SKILL.md) were only tested against stubs and a local bare repository. This probe runs them against a real repository whose `main` requires the `acceptance` check and up-to-date branches. The settings the owner still has to make in paddock itself are in [acceptance-check](acceptance-check.md#settings-only-the-owner-can-make).
+Status: run on a host on 2026-11-14, all steps PASS ([Result](#result)); Issue #330, goal clause G2. [org-pull-request](../../skills/org-pull-request/SKILL.md) in `acceptance` mode and [org-update-branch](../../skills/org-update-branch/SKILL.md) were only tested against stubs and a local bare repository. This probe runs them against a real repository whose `main` requires the `acceptance` check and up-to-date branches. The settings the owner still has to make in paddock itself are in [acceptance-check](acceptance-check.md#settings-only-the-owner-can-make).
 
 ## Run
 
@@ -30,4 +30,24 @@ Not covered: `PADDOCK_ORG` in a real worker session.
 
 ## Result
 
-Not run yet.
+Host run on 2026-11-14 against the throwaway repository of Prototype 3, with `--set-protection`; the probe exited 0.
+
+| RESULT | Outcome |
+| --- | --- |
+| `settings-acceptance-required` | PASS (`contexts=acceptance`) |
+| `settings-up-to-date` | PASS |
+| `settings-enforce-admins` | INFO (`true`) |
+| `1-green-merge` | PASS: exit 0, PR 8 `MERGED`, `ci_completed` with `exit_code` 0 |
+| `3-stale-base-refused` | PASS: exit 11, PR 7 `OPEN`, merge state `BEHIND` |
+| `2-update-branch` | PASS: exit 0, new `origin/main` and the old head both in the branch |
+| `2-push-no-force` | PASS: a plain push was accepted |
+| `3-stale-head-refused` | PASS: exit 1, PR 7 `OPEN` |
+| `2-merge-after-update` | PASS: exit 0, PR 7 `MERGED` |
+| `settings-paddock-protection`, `settings-paddock-rules` | INFO: paddock's `main` has no branch protection (404 "Branch not protected") and no ruleset |
+
+What this measured: `gh pr checks --required` under branch protection, the squash merge pinned with `--match-head-commit`, and a real push after `org-update-branch` all behave as the skills assume. A stale base is refused at the merge itself (exit 11), not by `gh pr checks --required`. The probe left the throwaway's protection on.
+
+What it left open:
+
+- paddock's own `main` does not require `acceptance` or up-to-date branches, so in paddock `acceptance` mode is not guarded by the settings this probe relied on. Setting them is the owner's decision ([acceptance-check](acceptance-check.md#settings-only-the-owner-can-make)); this probe only records the state.
+- `PADDOCK_ORG` in a real worker session was not covered.
