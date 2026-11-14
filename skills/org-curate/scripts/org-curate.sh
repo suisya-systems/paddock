@@ -31,11 +31,13 @@ queue=$k/skill-candidates.md
 # the notes are the "- raw/<file>" lines. Nothing is printed for a curated note without a one-sentence
 # "When:" line. Tasks are the "Task:" lines of the notes.
 gate() {
-  local c=$1 w f tasks n files=
+  local c=$1 w f b tasks n files=
   w=$(sed -n 's/^When:[[:space:]]*//p' "$c" | head -1)
   [ -n "$w" ] && ! grep -qE '[.!?][[:space:]]+[^[:space:]]' <<<"$w" && [ "${#w}" -le 300 ] || return 1
   tasks=
   while IFS= read -r f; do
+    # a note that moved to raw/archive/ is still found by its file name
+    b=${f##*/}; f=raw/$b; [ -f "$k/$f" ] || f=raw/archive/$b
     [ -f "$k/$f" ] || continue
     files="$files $f"
     tasks="$tasks
@@ -131,12 +133,15 @@ case "$cmd" in
     # 2. Candidate: one entry lists those files and has the trigger.
     [ -n "$(field "$p" pattern)" ] || bad 2 "no queue entry for $p in $queue"
     notes=$(field "$p" notes)
-    for f in $files; do case " $notes " in *" $f "*) ;; *) bad 2 "the entry does not list $f" ;; esac; done
+    # compared by file name, so a note moved to raw/archive/ still matches its entry
+    nb=; for x in $notes; do nb="$nb ${x##*/}"; done
+    for f in $files; do case "$nb " in *" ${f##*/} "*) ;; *) bad 2 "the entry does not list ${f##*/}" ;; esac; done
     [ -n "$(field "$p" when)" ] || bad 2 "the entry has no trigger sentence"
     echo "org-curate: link 2 ok: queue entry lists the notes and the trigger"
     # 3. Decision: approved, with a decision date.
     [ "$(field "$p" status)" = approved ] || bad 3 "the entry's status is '$(field "$p" status)', not approved"
     grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' <<<"$(field "$p" decided)" || bad 3 "the entry has no decision date"
+    [ "$(field "$p" skill)" = "$s" ] || bad 3 "the approved entry is for skill '$(field "$p" skill)', not '$s'"
     echo "org-curate: link 3 ok: approved on $(field "$p" decided)"
     # 4. Skill: folder from the template, self-contained, rationale names the raw notes.
     d=$repo/skills/$s
@@ -146,7 +151,7 @@ case "$cmd" in
     [ -f "$d/references/rationale.md" ] || bad 4 "$d/references/rationale.md is missing"
     for f in $files; do grep -qF "$(basename "$f")" "$d/references/rationale.md" || bad 4 "rationale.md does not name $(basename "$f")"; done
     # The same two rules as tests/skill-selfcontained.test.sh (the full test covers the real skills/).
-    if grep -rnE '(^|[^A-Za-z0-9_&/-])#[0-9]+([^0-9A-Za-z-]|$)|https?://|/(issues|pull)/[0-9]+|\b(Issue|PR) ?[0-9]+' "$d" >/dev/null; then
+    if grep -rnE --include='*.md' '(^|[^A-Za-z0-9_&/-])#[0-9]+([^0-9A-Za-z-]|$)|https?://|/(issues|pull)/[0-9]+|\b(Issue|PR) ?[0-9]+' "$d" >/dev/null; then
       bad 4 "an Issue number or URL in $d"
     fi
     echo "org-curate: link 4 ok: skills/$s"

@@ -26,7 +26,7 @@ The state folder is `$PADDOCK_STATE_DIR` (default `~/.local/state/paddock`). You
    ```
 
    Anything beyond the two gates is your judgment; write it in the entry, not in the gate.
-4. A note that is not yet a candidate is **kept** in `raw/` and read again at the next start. Only a note that a curated note has fully absorbed, or that a merged skill came from, moves to `raw/archive/` (archived notes still count toward the gates). Delete nothing.
+4. A note that is not yet a candidate is **kept** in `raw/` and read again at the next start. Only a note that a curated note has fully absorbed, or that a merged skill came from, moves to `raw/archive/` (archived notes still count toward the gates; the scripts find a note by its file name in either folder, so leave the `raw/...` paths in curated notes and queue entries as they are). Delete nothing.
 5. Run `bash skills/org-curate/scripts/org-curate.sh finish`, then report to the secretary: how many notes you read, which patterns are now candidates, which are close to qualifying and what they lack.
 
 You create no skill. Only the owner's approval turns a candidate into one, and the secretary asks for it; a skill is then made from `templates/skill/` in a pull request.
