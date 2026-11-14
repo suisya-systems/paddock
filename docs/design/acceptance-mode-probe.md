@@ -49,5 +49,5 @@ What this measured: `gh pr checks --required` under branch protection, the squas
 
 What it left open:
 
-- paddock's own `main` does not require `acceptance` or up-to-date branches, so in paddock `acceptance` mode is not guarded by the settings this probe relied on. Setting them is the owner's decision ([acceptance-check](acceptance-check.md#settings-only-the-owner-can-make)); this probe only records the state.
+- paddock's own `main`, at the time of the probe, required neither `acceptance` nor up-to-date branches, so `acceptance` mode there was not guarded by the settings this probe relied on. The probe only records the state. Afterwards, on 2026-11-14, the owner set the protection on paddock's `main`: required check `acceptance`, branches up to date before merging, enforced for admins ([acceptance-check](acceptance-check.md#settings-only-the-owner-can-make)). That setting itself was made by the owner and not re-read by the probe.
 - `PADDOCK_ORG` in a real worker session was not covered.
