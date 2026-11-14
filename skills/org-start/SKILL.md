@@ -25,6 +25,12 @@ Bash only. There is no `.ps1` yet: the pwsh path could not be tested, so it is n
 
 It never runs `hc server stop` or `hc server restart`.
 
+## First-run check (`--check`, decision 0007)
+
+First-run setup is a person's one-time job per machine, outside the round (G1 covers a round only). `bash skills/org-start/scripts/org-start.sh --check [--project DIR]...` is the one command that lists what is left. It prints `ok <step>: ...` or `TODO <step>: <exact fix>` for every step (hc, agent-shell, claude, notes, core-path, and trust for each `--project` clone), and `skip core-path: <why>` when there is no core yet or `/proc` is not readable. It is read-only: no hc call, nothing placed, no secretary; it never writes the core's config and never restarts the core. Exit 0 only when no TODO is left, 1 otherwise, 2 for a bad argument. A clean host reaches `org-start: ready` after the person's actions, with `--check` clean: `notes = false` in the core config, the core started from a login shell that has hc's folder on PATH, and each project clone trusted once with `claude`.
+
+The core PATH check reads `/proc/<core pid>/environ` of the running core, not the PATH of the shell that runs org-start (the Run 6 case). Linux and WSL only: elsewhere the normal run skips it silently and `--check` says so. The checks live in `first-run-checks.sh` and are shared with `prototype-3.sh prepare` and `prototype-3-setup.sh`.
+
 ## Folders
 
 Defaults are `$XDG_CONFIG_HOME` (else `~/.config`), or `%APPDATA%` when set, plus `herdr-core/templates` and `herdr-app/mods`. On WSL, when `herdr-app` is not on `PATH` or is a Windows `.exe`, the app's folders are the Windows user's `.config/herdr-app` (found with `cmd.exe` and `wslpath`), since herdr-app for Windows reads them there. Override with `PADDOCK_CORE_TEMPLATES_DIR` and `PADDOCK_APP_MODS_DIR`. The org script and the worker role files go to `$XDG_DATA_HOME` (else `~/.local/share`) plus `paddock/bin`, or `PADDOCK_BIN_DIR`. These default paths are not verified on every platform. `PADDOCK_SECRETARY_NAME` changes the secretary's terminal name (default `secretary`); the template keeps its name. It exists so a probe can run beside a real secretary.
@@ -35,7 +41,7 @@ A worker holds no GitHub credential and org-start asks the person for none (the 
 
 ## Exit codes
 
-0 ready, 2 bad argument, 3 `hc` not found, 4 run inside an agent, 5 core unreachable or `hc run` failed, 6 files could not be placed, 7 no status yet (the message gives the terminal's exit code and last output line, and names a missing `claude`), 8 the core's notes are not off, 9 `claude` not found from org-start's shell (its absolute path is recorded in `claude-path` beside the org script, and the templates start it by that path; the same is done for `codex` in `codex-path`, which the review gate reads when its PATH lacks it).
+0 ready, 2 bad argument, 3 `hc` not found, 4 run inside an agent, 5 core unreachable or `hc run` failed, 6 files could not be placed, 7 no status yet (the message gives the terminal's exit code and last output line, and names a missing `claude`), 8 the core's notes are not off, 9 `claude` not found from org-start's shell (its absolute path is recorded in `claude-path` beside the org script, and the templates start it by that path; the same is done for `codex` in `codex-path`, which the review gate reads when its PATH lacks it), 10 `hc` is not on the running core's PATH (restart herdr from a login shell that has it).
 
 ## After it runs
 

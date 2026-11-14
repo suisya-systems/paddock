@@ -21,6 +21,10 @@ The base may be merged into the branch after the test commit (nobody can force-p
 
 No trailer: the job passes and prints `ACCEPTANCE: none`. The last line of the log is always `ACCEPTANCE: pass`, `none` or `fail`; tests are in [`tests/acceptance-check.test.sh`](../../tests/acceptance-check.test.sh).
 
+## Telling the organization's landing gate about it
+
+[`.github/acceptance-check`](../../.github/acceptance-check) holds one line, `acceptance`: the name of the job above. When it is present on the base branch, the organization's landing gate accepts that check as the test-first evidence, instead of asking for a separate red CI run at the test commit (Issue #265). [`tests/acceptance-check-config.test.sh`](../../tests/acceptance-check-config.test.sh) checks that the file has exactly one non-empty line and that the job it names exists in the workflow. Rename the job and the file together.
+
 ## How it differs from the predecessor
 
 - The job runs the declared tests at both commits itself, so one check on the head expresses "failed at the test commit, passed at head". The question Q11 left open (can required checks express a failure at another commit) does not arise, and the secretary no longer has to push the test commit alone first.
