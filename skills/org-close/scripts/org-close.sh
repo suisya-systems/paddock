@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# org-close: end a finished or failed worker in one call (Issue #184). Needs only bash,
+# org-close: end a finished or failed worker in one call. Needs only bash,
 # coreutils, awk, git and hc. See ../SKILL.md. Run it from the secretary.
 set -u
 export LC_ALL=C
@@ -73,7 +73,7 @@ if [ -n "$have" ]; then
   hc kill "$name" >/dev/null 2>&1 || die 5 "hc kill $name failed; nothing else was done"
   hc rm "$name" >/dev/null 2>&1 || die 5 "hc rm $name failed (killed); run it again"
 fi
-# Issue #324: the killed worker may have left Claude Code's 0-byte read-only config.lock in the clone's shared .git.
+# The killed worker may have left Claude Code's 0-byte read-only config.lock in the clone's shared .git.
 sweep_config_lock "$wt"
 
 # 3. --drop: the worktree, then the branch if it is unused.
@@ -97,7 +97,7 @@ TASK=$task bash "$org" --as secretary doc update org-state --record work_removed
   END {
     t = ENVIRON["TASK"]
     if (!match(s, /"work": *\[/)) { printf "%s", s; exit }
-    # Issue #182: the entries are cut out with a scan that skips string contents, so a "]" or
+    # The entries are cut out with a scan that skips string contents, so a "]" or
     # braces inside a task or title do not end an entry or the array.
     a = RSTART + RLENGTH; n = length(s); q = 0; ob = 0; out = ""
     for (i = a; i <= n; i++) { c = substr(s, i, 1)

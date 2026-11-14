@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# org-delegate: one command from the secretary to a running worker (Issue #62).
+# org-delegate: one command from the secretary to a running worker.
 # Needs only bash, coreutils, git and hc. See ../SKILL.md. Run it from the secretary.
 set -u
 
@@ -28,7 +28,7 @@ brief file into the worktree (rules: --append-system-prompt-file in the template
   --allow-write  an absolute path (or ~/...) the worker may also write; repeatable.
                  Goes to sandbox.filesystem.allowWrite in the worker's own --settings file,
                  <state folder>/settings/<id>.json, beside the worker's own files.
-  --secret-block the strong read block for secret-looking files in the worktree (Issue #165; off by default, L-K1):
+  --secret-block the strong read block for secret-looking files in the worktree (off by default, L-K1):
                  on (.env, .env.*, credentials*, *.pem), off, or comma-separated patterns that replace those.
                  Default: the secret-block column of the project's row in projects.md. Programs in the worker
                  lose these files too; see SKILL.md.
@@ -80,7 +80,7 @@ fi
 [ -n "$task" ] || die 2 "the task text is empty: give --task or --task-file"
 [ -z "${havetitle:-}" ] || [ -n "${title//[[:space:]]/}" ] || die 2 "--title is empty"
 [ -n "$branch" ] || branch=work/$id
-# Issue #186: a --project without a "/" is a name in projects.md; its path and base come from the row.
+# a --project without a "/" is a name in projects.md; its path and base come from the row.
 case "$project" in
   */*|.|..) ;;
   *) . "$(dirname "${BASH_SOURCE[0]}")/project.sh"
@@ -92,7 +92,7 @@ case "$project" in
      [ -n "${havesecret:-}" ] || secret=$project_secret ;;
 esac
 [ -n "$base" ] || base=main
-# Issue #165: the strong read block. secret is empty/off (none), on (defaults) or comma-separated patterns.
+# the strong read block. secret is empty/off (none), on (defaults) or comma-separated patterns.
 sp=()
 case "${secret:-}" in
   ''|off|no) ;;
@@ -120,7 +120,7 @@ workers=${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}
 wt=$workers/$id
 case "$workers" in /*) ;; *) die 2 "PADDOCK_WORKERS_DIR must be an absolute path: $workers" ;; esac
 [ "${#sp[@]}" -eq 0 ] || case "$workers" in *[\"\\]*|*[[:cntrl:]]*) die 2 "secret-block writes the worktree path into JSON: PADDOCK_WORKERS_DIR has a quote, backslash or control character" ;; esac
-# L-N2 (Issue #155): the worker's sandbox denies the core's socket folder. The folder is per user
+# L-N2: the worker's sandbox denies the core's socket folder. The folder is per user
 # ($XDG_RUNTIME_DIR/herdr-core on Linux), so the shared settings file cannot name it: it goes in the
 # per-task file below. Source: PADDOCK_CORE_SOCKET_DIR, else the folder of the socket the core gives
 # this terminal. Without one, stop: a worker without this deny is what L-N2 forbids.
@@ -145,7 +145,7 @@ fi
 git -C "$project" rev-parse --verify -q "$base^{commit}" >/dev/null || die 6 "base $base is not a commit in $project"
 [ ! -e "$wt" ] && [ ! -L "$wt" ] || die 6 "$wt already exists; remove it (git worktree remove) or pick another task id"
 mkdir -p "$workers" || die 6 "cannot create $workers"
-# Issue #263: git fails ("failed to read .git/worktrees/<n>/commondir") when worktree add, remove or config
+# git fails ("failed to read .git/worktrees/<n>/commondir") when worktree add, remove or config
 # runs in one repository while another does, so delegates started together take turns here. The lock is
 # the folder <git-common-dir>/paddock-worktree.lock holding the file pid, which the holder creates itself
 # (set -C is O_EXCL; mkdir alone is not trusted, see lock_take in scripts/org). A lock whose pid is dead
@@ -171,7 +171,7 @@ wt_lock() {
   done
 }
 wt_unlock() { rm -f "$wtlk/pid"; rmdir "$wtlk" 2>/dev/null; }
-# Issue #323 (after #320): a live worker's sandbox leaves a 0-byte read-only <git-common-dir>/config.lock for the whole
+# a live worker's sandbox leaves a 0-byte read-only <git-common-dir>/config.lock for the whole
 # of every command it runs, so any git config write in the shared .git can fail for minutes. This script writes none:
 # --no-track stops `worktree add` from recording an upstream (nothing reads it: the review gate takes its base from
 # the file below, and no org script reads branch.<b>.merge), and the base the review gate needs is a file in the
@@ -182,7 +182,7 @@ wt_lock
 newbranch=; git -C "$project" rev-parse --verify -q "refs/heads/$branch" >/dev/null 2>&1 || newbranch=1
 git -C "$project" worktree add -q --no-track -b "$branch" "$wt" "$base" >/dev/null 2>&1; added=$?
 basefail=
-# Issue #177: the review gate reads the base back, so a worker on a non-main base is reviewed against it.
+# the review gate reads the base back, so a worker on a non-main base is reviewed against it.
 if [ "$added" = 0 ]; then
   { mkdir -p "$state/bases" && printf '%s\n' "$base" > "$state/bases/$id.tmp" && mv -f "$state/bases/$id.tmp" "$state/bases/$id"; } 2>/dev/null || basefail=1
 fi
@@ -220,7 +220,7 @@ sf=$wt/.claude/settings.local.json
 fs="\"denyRead\":[\"$sockdir\"],\"denyWrite\":[\"$sockdir\"]"
 perm=
 if [ "${#sp[@]}" -gt 0 ]; then
-  # Read deny for the Read tool, absolute denyRead for programs (sandbox). No allowRead for examples: measured, the sandbox does not honour it over denyRead (Issue #165).
+  # Read deny for the Read tool, absolute denyRead for programs (sandbox). No allowRead for examples: measured, the sandbox does not honour it over denyRead.
   rd= dr=
   for p in "${sp[@]}"; do
     rd="$rd${rd:+,}\"Read(**/$p)\""; dr="$dr,\"$wt/$p\",\"$wt/**/$p\""
@@ -228,7 +228,7 @@ if [ "${#sp[@]}" -gt 0 ]; then
   perm="\"permissions\":{\"deny\":[$rd,\"Read(!**/*.example)\"]},"
   fs="\"denyRead\":[\"$sockdir\"$dr],\"denyWrite\":[\"$sockdir\"]"
 fi
-# Issue #160, #164: the worker's allowWrite goes in its own --settings file, not here. The worker
+# the worker's allowWrite goes in its own --settings file, not here. The worker
 # settings set sandbox.allowUnsandboxedCommands false, which makes the sandbox admin-required, and
 # Claude Code then ignores the allowWrite of .claude/settings.local.json (vendor docs; the deny
 # entries here still apply). That file is the shared worker settings plus the worker's own files in
@@ -245,7 +245,7 @@ for p in ${allow[@]+"${allow[@]}"}; do list="$list,\"$p\""; done
 tpl=$(cat "$root/templates/worker-settings.json") || fail_undone 6 "cannot read templates/worker-settings.json"
 [ "$(grep -c '"allowWrite": \[\]' <<<"$tpl")" = 1 ] \
   || fail_undone 6 "templates/worker-settings.json must hold exactly one empty \"allowWrite\": [] to fill in"
-# Issue #177: the review CLI starts its own sandbox, which cannot start inside the worker sandbox, so the two
+# the review CLI starts its own sandbox, which cannot start inside the worker sandbox, so the two
 # argument-free gate calls (diff, --design) run outside it: exact strings, no wildcard, the path quoted and not,
 # in excludedCommands and (the same strings) in permissions.allow. The worker cannot choose what runs outside:
 # the base is the one recorded above and the design file a fixed path. A call with a redirect, a cd or a command
@@ -266,7 +266,7 @@ xr="\"excludedCommands\": [$ex]" ar="\"allow\": [$al]"
 tpl=${tpl/'"excludedCommands": []'/"$xr"}; tpl=${tpl/'"allow": []'/"$ar"}
 { mkdir -p "$state/settings" && printf '%s\n' "${tpl/"$old"/"$new"}" > "$ws.tmp" && mv -f "$ws.tmp" "$ws"; } 2>/dev/null \
   || fail_undone 6 "cannot write the worker's settings file $ws"
-# Issue #189: caches go to the sandbox temporary folder of the worker. Claude Code does not expand $TMPDIR in a
+# caches go to the sandbox temporary folder of the worker. Claude Code does not expand $TMPDIR in a
 # settings env value (measured on 2.1.322), so write the path out; the sandbox's TMPDIR is /tmp/claude-<uid>.
 ct=/tmp/claude-$(id -u)
 json="{${perm}\"sandbox\":{\"filesystem\":{$fs}},\"env\":{\"npm_config_cache\":\"$ct/npm-cache\",\"UV_CACHE_DIR\":\"$ct/uv-cache\",\"PIP_CACHE_DIR\":\"$ct/pip-cache\"}}"
@@ -274,7 +274,7 @@ printf '%s\n' "$json" | hc file write "$sf" >/dev/null 2>&1 \
   || fail_undone 5 "hc file write failed for $sf; the worktree and branch were removed"
 { [ -f "$sf" ] && [ ! -L "$sf" ] && [ "$(cd "$wt/.claude" && pwd -P)" = "$(cd "$wt" && pwd -P)/.claude" ]; } \
   || fail_undone 6 "$sf is not a plain file inside the worktree after the write"
-# Issue #299: what is placed on purpose is ignored by version control, so staging everything does not commit it.
+# what is placed on purpose is ignored by version control, so staging everything does not commit it.
 # A .gitignore inside .claude/ (the shared info/exclude is not the worktree's to write) naming the settings file and itself.
 # A base that tracks its own .claude/.gitignore keeps it.
 gi=$wt/.claude/.gitignore
@@ -308,7 +308,7 @@ if ! printf '%s' "$out" | tr -d '\n' | grep -Eq '"sent": *true' \
        --then-send "$(awk 'n >= 2 { print; next } /^---$/ { n++ }' "$root/templates/worker.md")
 
 $brief" 2>&1); then
-  # Q13, L-N3 (Issue #260): a worker with no first message is at a dialog or never started. Only the
+  # Q13, L-N3: a worker with no first message is at a dialog or never started. Only the
   # folder-trust dialog (the policy list) is answered, after a screen read, and the first message
   # sent again as hc would have sent it (the template body, a blank line, the brief; as org-start
   # does for the secretary). Anything else is left as it is.
@@ -321,7 +321,7 @@ fi
 [ -z "${po:-}" ] || echo "org-delegate: $name was at the folder-trust dialog; answered it and sent the task again (${po//$'\n'/ })"
 echo "org-delegate: worker=$name worktree=$wt branch=$branch"
 
-# 6. Issue #182: with --title, the work entry goes into org-state after the launch (a failed
+# 6. with --title, the work entry goes into org-state after the launch (a failed
 # launch leaves no entry). Strings are JSON-escaped; the entry is added at the end of "work" by a
 # scan that skips string contents, so braces and brackets in the task do not matter.
 if [ -n "${havetitle:-}" ]; then

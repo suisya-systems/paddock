@@ -70,7 +70,7 @@ launch() {
   done
   return 1
 }
-# end <name> <id> <worktree>: kill and remove a terminal, only if it carries this task_id; then (Issue #324) remove
+# end <name> <id> <worktree>: kill and remove a terminal, only if it carries this task_id; then remove
 # the 0-byte read-only config.lock it may have left in the clone's shared .git, if no command of the worker runs.
 end() {
   [ "$(term_label "$1")" = "$2" ] || return 0
