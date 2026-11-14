@@ -278,8 +278,8 @@ finish_resend() {
   o=$(bash "$root/skills/org-delegate/scripts/resend.sh" "$1" 2>&1); rc=$?
   [ "$rc" -ne 0 ] || { echo "RESENT w-$1"; return 0; }
   bash "$self" ask --task "$1" --question "Trust was answered, but the first message or work entry of w-$1 is not finished: finish it?" \
-    --background "$(clean "$o" | cut -c1-500)" --if-yes "The secretary runs resend.sh $1 and removes this card." \
-    --if-no "The terminal is left as it is." >/dev/null 2>&1 || echo "org-escalation: the card could not be recorded" >&2
+    --background "$(clean "$o" | cut -c1-500)" --if-yes "The secretary tries again to send the first message and write the work entry." \
+    --if-no "The saved first message is dropped; the terminal is left as it is." >/dev/null 2>&1 || echo "org-escalation: the card could not be recorded" >&2
   die "$rc" "$o"
 }
 
@@ -367,6 +367,16 @@ case $cmd in
       hc keys "$w" "$key" >/dev/null 2>&1 || die 8 "hc keys $key failed on $w; entry $id kept"
       ( update remove "$id" ) || die 9 "answered $w but entry $id could not be removed; run: remove --id $id"
       echo "RELAYED $id $key -> $w"; exit 0
+    fi
+    if [ -d "$(rdir "$wtask")" ]; then
+      # The card finish_resend raised (the worker has no first message, so it asked nothing): yes tries again, no leaves the terminal.
+      ( update remove "$id" ) || die 9 "entry $id could not be removed; run: remove --id $id"
+      case $(printf '%s' "$t" | tr 'A-Z' 'a-z' | tr -d ' ') in
+        yes) finish_resend "$wtask"; exit 0 ;;
+        no) rm -f "$(rdir "$wtask")/message" "$(rdir "$wtask")/entry"; rmdir "$(rdir "$wtask")" 2>/dev/null
+            echo "DROPPED $id: w-$wtask is left as it is"; exit 0 ;;
+        *) die 2 "entry $id is a resend card: the answer is yes or no; entry removed, nothing sent (run resend.sh $wtask)" ;;
+      esac
     fi
     secretary send_message "w-$wtask" "Answer to your question ($id): $t" >/dev/null \
       || die 8 "the answer could not be put in the mailbox of w-$wtask; entry $id kept"
