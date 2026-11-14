@@ -74,7 +74,8 @@ case "$cmd" in
     done
     mkdir -p "$k/raw" || die 2 "cannot create $k/raw"
     f=$k/raw/$(date +%F)-$topic.md
-    [ -e "$f" ] && die 4 "$f already exists; it is never overwritten"
+    # names are looked up in both folders by file name, so one that is archived counts as taken
+    { [ -e "$f" ] || [ -e "$k/raw/archive/${f##*/}" ]; } && die 4 "${f##*/} already exists (raw/ or raw/archive/); it is never overwritten"
     ( set -C; printf 'Task: %s\n\n%s\n' "$task" "$body" > "$f" ) 2>/dev/null || die 4 "$f already exists"
     echo "org-curate: saved $f"
     ;;
