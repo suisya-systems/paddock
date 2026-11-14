@@ -31,7 +31,7 @@ Nothing is recorded and no worker starts unless every step passed. There is no r
 
 | Code | Meaning | What the secretary does |
 | --- | --- | --- |
-| 0 | Cloned and recorded, or already recorded. The name is on stdout. | Ask for the trust card (below), then `org-delegate --project <name>`. |
+| 0 | Cloned and recorded, or already recorded. The name is on stdout. | `org-delegate --project <name>`; when its first worker stops at the folder-trust dialog, ask for the trust card (below). |
 | 2 | Bad argument, bare name, other host, relative `PADDOCK_PROJECTS_DIR`. | Ask the person for `OWNER/NAME`. |
 | 3 | `git` not found. | Report to the person. |
 | 4 | Not found, or the login has no access (stderr has the cause). | Tell the person; if they must act (`gh auth login`), add an approval entry. Do not delegate. |
@@ -42,7 +42,7 @@ Nothing is recorded and no worker starts unless every step passed. There is no r
 
 ## The first worker and the trust card
 
-A fresh clone has `.git/paddock-trust-pending`. The first worker on it stops at Claude Code's folder-trust dialog, because the repository's own `.claude/settings.json` can carry hooks that run once it is trusted, and the person never looked at this code. So [org-escalation](../org-escalation/SKILL.md) `prompt` does **not** answer that dialog for such a clone: it prints `PROMPT=<the dialog>` and exits 3. The secretary then asks the person once, on an approval card: `ask --task <task_id> --question "<one sentence: trust the folder of OWNER/NAME?>" --prompt "<that text>"` with the background, what yes and no lead to, and a recommendation, in the conversation language. On yes, `answer --id <id> --text yes --then-send "<the task text>"` moves the cursor to "Yes, I trust this folder", presses enter once, deletes the marker (later workers on this clone are not held) and sends the first message the dialog stopped. On no it presses esc and keeps the marker. Nothing is written to `~/.claude.json`, and the answer is never given automatically.
+A fresh clone has `.git/paddock-trust-pending`. The first worker on it stops at Claude Code's folder-trust dialog, because the repository's own `.claude/settings.json` can carry hooks that run once it is trusted, and the person never looked at this code. So [org-escalation](../org-escalation/SKILL.md) `prompt` does **not** answer that dialog for such a clone: it prints `PROMPT=<the dialog>` and exits 3. The secretary then asks the person once, on an approval card: `ask --task <task_id> --question "<one sentence: trust the folder of OWNER/NAME?>" --prompt "<that text>"` with the background, what yes and no lead to, and a recommendation, in the conversation language. On yes, `answer --id <id> --text yes --then-send "<brief>"` (the brief is the first message org-delegate sent: its two id lines, a blank line, then the task text) moves the cursor to "Yes, I trust this folder", presses enter once, deletes the marker (later workers on this clone are not held) and sends the first message the dialog stopped. On no it presses esc and keeps the marker. Nothing is written to `~/.claude.json`, and the answer is never given automatically.
 
 ## Upstream
 

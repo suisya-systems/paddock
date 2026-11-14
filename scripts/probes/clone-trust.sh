@@ -49,6 +49,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 case "$repo" in */*/*|*/|/*|*/) die 2 "--repo must be OWNER/NAME" ;; */*) ;; *) die 2 "--repo must be OWNER/NAME" ;; esac
+[ -n "$T" ] || T=$(date -u +%m%d%H%M)
+case "$T" in *[!a-z0-9]*|"") die 2 "--task-id may hold only a-z and 0-9" ;; esac
 for c in git bash awk mktemp; do command -v "$c" >/dev/null 2>&1 || die 3 "$c not found on PATH"; done
 ROOT=$(pwd)
 CLONE="$ROOT/skills/org-clone/scripts/org-clone.sh"
@@ -56,8 +58,6 @@ CLONE="$ROOT/skills/org-clone/scripts/org-clone.sh"
 GHBIN=$(command -v gh 2>/dev/null)
 [ -n "$noworker" ] || for c in hc claude; do command -v "$c" >/dev/null 2>&1 || die 3 "$c not found on PATH (run inside a terminal that hc launched, or use --no-worker)"; done
 
-[ -n "$T" ] || T=$(date -u +%m%d%H%M)
-case "$T" in *[!a-z0-9]*|"") die 2 "--task-id may hold only a-z and 0-9" ;; esac
 ID=p362-$T; W=w-$ID; WAIT=${PADDOCK_PROBE_WAIT:-120}
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/probe362.XXXXXX") || die 6 "cannot make a temp folder"
 NAME=${repo#*/}
