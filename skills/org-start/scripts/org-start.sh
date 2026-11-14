@@ -166,7 +166,7 @@ pt=$(cd -P "$templates" && pwd) && pb=$(cd -P "$orgbin" && pwd) || die 6 "cannot
 case "$pb/" in "$pt"/*) die 2 "PADDOCK_BIN_DIR must not be the templates folder or inside it: $orgbin" ;; esac
 cp -f "$root/templates/secretary.md" "$templates/secretary.md" || die 6 "cannot copy the secretary template"
 cp -f "$root/templates/worker.md" "$templates/worker.md" || die 6 "cannot copy the worker template"
-# Decision 0009: the curator the secretary starts with `hc run --bg --name curator curator`.
+# Decision 0009: the curator, which the secretary starts with `org-curate.sh start` (it writes the curator's settings file first).
 cp -f "$root/templates/curator.md" "$templates/curator.md" || die 6 "cannot copy the curator template"
 # The org commands, and the worker's rules and settings files its template command names
 # (Q10, Q12): a worker may read this folder and may not write it (worker-settings.json).

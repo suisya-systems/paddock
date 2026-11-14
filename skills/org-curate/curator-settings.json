@@ -1,0 +1,56 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(hc:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh issue:*)",
+      "Bash(gh release:*)",
+      "Bash(gh workflow:*)",
+      "Bash(gh api:*)",
+      "Read(~/.config/gh/hosts.yml)",
+      "Read(~/.config/herdr-core/**)",
+      "Read(~/.config/herdr-app/**)",
+      "Read(~/.local/state/herdr-core/**)",
+      "Edit(~/.config/herdr-core/**)",
+      "Edit(~/.config/herdr-app/**)",
+      "Edit(~/.local/state/herdr-core/**)",
+      "Edit(~/.local/share/paddock/**)",
+      "Edit(~/.claude/settings.json)",
+      "Edit(.claude/settings*.json)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^(Edit|Write|MultiEdit|NotebookEdit)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "s=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}; p=$(grep -o '\"\\(file\\|notebook\\)_path\" *: *\"[^\"]*\"' | head -n 1 | sed 's/^[^:]*: *\"//; s/\"$//'); case \"$p\" in ''|*\\\\*) echo \"org: refused: the file tool's path is missing or has a JSON escape, so the hook cannot check it against the curator's knowledge folder\" >&2; exit 2 ;; \"~/\"*) p=$HOME/${p#\"~/\"} ;; esac; case \"$(realpath -m -- \"$p\")/\" in \"$(realpath -m -- \"$s/knowledge\")\"/*) exit 0 ;; esac; echo \"org: refused: the curator writes only $s/knowledge\" >&2; exit 2"
+          }
+        ]
+      }
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "excludedCommands": [],
+    "filesystem": {
+      "allowWrite": [],
+      "denyRead": [
+        "~/.config/gh/hosts.yml",
+        "~/.local/state/herdr-core",
+        "~/.config/herdr-app"
+      ],
+      "denyWrite": [
+        "~/.config/herdr-core",
+        "~/.config/herdr-app",
+        "~/.local/state/herdr-core",
+        "~/.local/share/paddock"
+      ]
+    }
+  }
+}

@@ -15,9 +15,13 @@ Usage: org-curate.sh <command> [options]
   candidates                                    print the patterns of knowledge/curated/ that pass
                                                 both gates and are not in the queue yet
   finish                                        touch knowledge/last-curated (end of a curator cycle)
+  settings                                      write the curator's per-run settings file,
+                                                <state>/settings/curator.json, and print its path
+  start                                         write it, then start the curator (hc run)
   chain --pattern <p> --skill <s> [--repo <dir>] check links 1 to 4 of the acceptance chain
 
-Environment: PADDOCK_STATE_DIR (default $XDG_STATE_HOME/paddock).
+Environment: PADDOCK_STATE_DIR (default $XDG_STATE_HOME/paddock); settings and start need the core's
+socket folder (PADDOCK_CORE_SOCKET_DIR, else the folder of HC_TERMINAL_SOCKET).
 Exit codes: 0 ok, 1 a check failed, 2 bad argument or note, 4 the note file already exists.
 USAGE
 }
@@ -93,7 +97,7 @@ case "$cmd" in
     n=$((n + 0)); m=$((m + 0))
     echo "org-curate: $n unreviewed raw notes, $m pending candidates"
     if [ "$n" -ge 5 ] || [ "$m" -ge 5 ]; then
-      echo "org-curate: start the curator: hc run --bg --name curator curator (it reads every kept note)"
+      echo "org-curate: start the curator: bash skills/org-curate/scripts/org-curate.sh start (it reads every kept note)"
     fi
     ;;
 
@@ -163,6 +167,41 @@ case "$cmd" in
     fi
     echo "org-curate: link 4 ok: skills/$s"
     echo "org-curate: chain links 1 to 4 hold for $p"
+    ;;
+
+  settings|start)
+    # The curator's write limit is held by its own --settings file, as a worker's is by
+    # org-delegate's per-task file: ../curator-settings.json with allowWrite naming knowledge/
+    # and the curator's own mail files (scripts/org own_files), the core's socket folder denied, and
+    # PADDOCK_STATE_DIR pinned. Written to <state>/settings/curator.json, outside what it allows.
+    root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+    if [ -n "${PADDOCK_CORE_SOCKET_DIR:-}" ]; then sock=$PADDOCK_CORE_SOCKET_DIR
+    elif [ -n "${HC_TERMINAL_SOCKET:-}" ]; then sock=$(dirname "$HC_TERMINAL_SOCKET")
+    else die 2 "cannot tell the core's socket folder: run from a core terminal (HC_TERMINAL_SOCKET) or set PADDOCK_CORE_SOCKET_DIR"; fi
+    for p in "$state" "$sock"; do
+      case "$p" in /*) ;; *) die 2 "not an absolute path: $p" ;; esac
+      case "$p" in *[\"\\]*|*[[:cntrl:]]*) die 2 "a path with a quote, backslash or control character cannot go into the settings: $p" ;; esac
+    done
+    tpl=$(cat "$(dirname "${BASH_SOURCE[0]}")/../curator-settings.json") || die 2 "cannot read curator-settings.json beside scripts/"
+    for x in '"allowWrite": []' '"denyRead": [' '"denyWrite": ['; do
+      [ "$(grep -cF "$x" <<<"$tpl")" = 1 ] || die 2 "curator-settings.json must hold exactly one $x"
+    done
+    mkdir -p "$k" || die 2 "cannot create $k"
+    own=$(PADDOCK_STATE_DIR=$state bash "$root/scripts/org" --as secretary own_files curator 2>&1) \
+      || die 2 "cannot create the curator's own files: $own"
+    list="\"$k\""
+    while IFS= read -r p; do list="$list,\"$p\""; done <<<"$own"
+    tpl=${tpl/'"allowWrite": []'/"\"allowWrite\": [$list]"}
+    tpl=${tpl/'"denyRead": ['/"\"denyRead\": [\"$sock\","}
+    tpl=${tpl/'"denyWrite": ['/"\"denyWrite\": [\"$sock\","}
+    tpl="{\"env\": {\"PADDOCK_STATE_DIR\": \"$state\"},${tpl#\{}"
+    cs=$state/settings/curator.json
+    { mkdir -p "$state/settings" && printf '%s\n' "$tpl" > "$cs.tmp" && mv -f "$cs.tmp" "$cs"; } 2>/dev/null \
+      || die 2 "cannot write $cs"
+    if [ "$cmd" = settings ]; then echo "$cs"; exit 0; fi
+    self=$root/skills/org-curate/scripts/org-curate.sh
+    hc run --bg --name curator curator "Your org-curate script is $self: run it as bash $self candidates and bash $self finish." \
+      || die 2 "hc run of the curator failed"
     ;;
 
   *) usage >&2; exit 2 ;;
