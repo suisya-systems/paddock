@@ -1,6 +1,6 @@
 # Prototype 3
 
-Status: prototype, a host run (Issue #243). Run 1 on 2026-11-11: the loop stopped at the worker's first report, before the card was answered; four stops are filed. Run 2, the same day after #244 to #247: 20 of 21 steps pass and the person's only action was Yes on the card; one step fails because the gate keeps no result record ([Result](#result)). Run 3 on 2026-11-12, on `main` at `31adf37`: stopped by the owner during setup, before the request was sent; G1 is not met ([Run 3](#run-3)). [Prototype 2](prototype-2.md) ran the loop once on 2026-11-10. Since then most parts of that loop were replaced, each tested and measured alone. This prototype runs the same loop again on a clean checkout of today's `main`, with all of them together: the runbook sends one request to the secretary, a worker does one small task with an acceptance test first, asks one question that the person answers on the card, has its diff reviewed by a second model through the gate, and finishes; a pull request exists at the end and passes the acceptance job. Its goal clause is G1 (ledger, 2026-11-12): a request alone (here sent by the runbook) gets a worker going, approvals on screen, and a PR, with today's `main`.
+Status: prototype, a host run (Issue #243). Run 1 on 2026-11-11: the loop stopped at the worker's first report, before the card was answered; four stops are filed. Run 2, the same day after #244 to #247: 20 of 21 steps pass and the person's only action was Yes on the card; one step fails because the gate keeps no result record ([Result](#result)). Run 3 on 2026-11-12, on `main` at `31adf37`: stopped by the owner during setup, before the request was sent; G1 is not met ([Run 3](#run-3)). Run 9 on 2026-11-14, on `main` at `c741201` (Issue #327): every step passes, the owner's only action was Yes on the card, and no touch was noted; G1 is met again ([Run 9](#run-9)). [Prototype 2](prototype-2.md) ran the loop once on 2026-11-10. Since then most parts of that loop were replaced, each tested and measured alone. This prototype runs the same loop again on a clean checkout of today's `main`, with all of them together: the runbook sends one request to the secretary, a worker does one small task with an acceptance test first, asks one question that the person answers on the card, has its diff reviewed by a second model through the gate, and finishes; a pull request exists at the end and passes the acceptance job. Its goal clause is G1 (ledger, 2026-11-12): a request alone (here sent by the runbook) gets a worker going, approvals on screen, and a PR, with today's `main`.
 
 Nothing in the product changes for this prototype. It adds this document, the host runbook [`scripts/probes/prototype-3.sh`](../../scripts/probes/prototype-3.sh), the fixture workflow [`scripts/probes/prototype-3-acceptance.yml`](../../scripts/probes/prototype-3-acceptance.yml) and the runbook's guard test. Every stop found by the run becomes an Issue.
 
@@ -453,3 +453,43 @@ Touches, failed steps and other things noted (none is a `RESULT` FAIL):
 Run 7's rows 4 and 6 (#306, #307) did not repeat: the question was whole, and the worker's done report was not refused (it quotes the gate's last line).
 
 Not exercised by this run: a review finding handled by the worker; the gate's rounds beyond round 1; a second approval answered on the screen. #243 was closed after Run 7.
+
+### Run 9
+
+Run 2026-11-14 (UTC) on `main` at `c741201` (after #355, #358, #361, #363), task `p3-202611141323`, the same throwaway repository (Issue #327). It is the first round since Run 8 (`835dd1c`) in which the delegation and credential changes ran together: org-delegate writes no shared git config and keeps the base in `<state>/bases/<id>` (#323, #325), takes turns for `git worktree add` (#263, #316), waits out a `.git/config.lock` placeholder (#320, #322), and the worker holds no GitHub credential (Q20 D, #277, #326). The owner was present and clicked. **G1 is met again, with no stop**: every `RESULT` line is PASS, the owner's only action was Yes on the card, and no touch was noted. Versions: hc 0.1.18, herdr-app 0.1.15, Claude Code 2.1.325, codex-cli 0.157.0 (the one on the core's `PATH`, which the gate used; the `codex-cli` precondition check saw a different install, 0.163.0, the one `org-start` recorded in `codex-path`), GitHub CLI 2.96.0. `notes = false` and `conversation_language = ja` were in force. Pull request: PR #9 in the throwaway repository (`acceptance` run 43599760655: `ACCEPTANCE: pass`); it was closed and its branch deleted after the run. The record comes from `evidence/summary.txt` and the watch log of the run folder.
+
+`RESULT` lines: every step is PASS: `preconditions` (`main` clean at `c741201`; the scratch repository's `origin/main` has the acceptance job), `notes-off`, `project-trust`, `codex-cli`, `1-secretary`, `1-placed-files` (8 files), `2-request`, `3-own-settings`, `3-worktree`, `4-work-entry`, `4-worker`, `4-worker-report`, `5-blocked`, `5-approval`, `6-card-answer`, `7-secretary-read`, `7-forwarded`, `7-approval-removed`, `8-test-commit` (`c9565728`, declares `tests/paddock-proto3.test.sh` and changes only it), `8-review` (`codex_round_passed`, diff round 1 of 3), `8-done`, `8-secretary-read`, `9-pull-request`, `9-ci-record` (run exit 0), `9-acceptance`, and `10-no-touch` (no touch noted, no prompt seen). The branch has two commits: the test alone (with the `Acceptance-Test` trailer; it exited 1 at that commit) and then `paddock-proto3.txt` (`e44f8e7`). The worker's run was delegated on `origin/main` as base.
+
+Times (UTC; the request was sent at 13:23:58):
+
+| What | When | Delay |
+| --- | --- | --- |
+| `run_started` by the secretary, `work_added` | 13:24:10, 13:24:12 | 12 s, 14 s |
+| `run_started` by the worker (`4-worker`) | 13:24:21 | 23 s |
+| `run_blocked` | 13:24:32 | 11 s after `run_started` |
+| `approval_asked` (the card) | 13:24:47 | 15 s after `run_blocked` |
+| `ANSWER yes` in the person's file (the click) | 13:25:15 | 28 s after the card |
+| Secretary's `ack`, answer forwarded, `approval_removed` | 13:25:20, 13:25:26, 13:25:26 | 5 s, 11 s |
+| Worker's `ack` of the answer | 13:25:30 | 4 s after the forward |
+| `codex_round_started`, `codex_round_passed` | 13:25:36, 13:25:54 | the review took 18 s |
+| `run_completed` by the worker | 13:25:59 | 33 s after the forward (the review's share is 18 s) |
+| `ci_completed` (exit 0) | 13:26:32 | 33 s after `run_completed` |
+
+Request to the acceptance result: 2 min 34 s, of which the 28 s between the card and the click are the owner's. The time the pull request was created is not in the evidence.
+
+What the owner saw on the card: the question in Japanese and whole ("ワーカーがリポジトリ直下に paddock-proto3.txt を追加してよいですか？"), with the background, what happens on yes and on no, the recommendation and the reason.
+
+What the run shows about the changes since Run 8: with them all in place the worker was started in its own worktree with its own settings file, asked, got the answer, committed twice, passed the gate and reported, with no hand step and no prompt. The evidence is the absence of a stop, not a trace of each path: it does not record that the worktree turn-taking or the `.git/config.lock` wait was entered, and the worker's `run_completed` says push and the pull request were not its part (it holds no GitHub credential; the pull request came from the secretary's side).
+
+Touches, failed steps and other things noted (none is a `RESULT` FAIL):
+
+| # | Step | What happened | Cause | Issue |
+| --- | --- | --- | --- | --- |
+| 1 | 0 | The night before, the owner added `notes = false` to the core's `config.toml` and restarted the core; `org-start --check` was all ok. The secretary's agent removed the finished terminals a previous probe had left (`hc rm`) before `prepare`. | `prepare` only reports `notes`; nothing sets it, and old terminals are cleaned by hand. | #264 (existing) |
+| 2 | 1, 6 | The layout was switched by the secretary agent (claude-org) from WSL, with the owner present (the run's note); the runbook sent the request with `hc send`. | Host steps are still run by hand. | none |
+| 3 | 8 | The worker did not run `scripts/acceptance-check.sh`: the sandbox blocks `git worktree add`, and the worker said so in its `run_completed` text. The acceptance job ran it in CI. | The script needs a second worktree. | none (the CI job is the gate) |
+| 4 | 0, 8 | There are two codex installs: the `PATH` one (0.157.0) ran the review, while the precondition check and `org-start`'s `codex-path` point at another (0.163.0) in a temporary fnm folder. | The check and the gate do not look at the same codex, and `codex-path` points into a temporary folder. | #364 |
+
+The Touches table names no hand step other than those tracked by an open Issue, or accepted in an earlier run (row 3, as Run 8's row 4). Row 4 was filed as #364 after the run.
+
+Not exercised by this run: a review finding handled by the worker; the gate's rounds beyond round 1; a second approval answered on the screen. #327 is closed by this record.
