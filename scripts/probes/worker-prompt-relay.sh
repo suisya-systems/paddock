@@ -6,10 +6,10 @@
 # Run from the repo root, on a host where herdr core (hc) and claude run, outside any agent's
 # sandbox (the secretary hands it to the person, or runs it with the person's consent):
 #   sh scripts/probes/worker-prompt-relay.sh
-# Takes about 5-8 minutes, no manual step. Needs: hc, claude (logged in, auto mode available to
-# the account), git, POSIX sh. Starts four terminals w-p260a, w-p260r, w-p260n, w-p260t and two
-# temporary templates (p260-auto, p260-default); the cleanup trap kills and removes them all.
-# Side effects: cases B and C add one approval each to org-state (question text starts with
+# Takes about 8-12 minutes, no manual step. Needs: hc, claude (logged in, auto mode available to
+# the account), git, POSIX sh. Starts six terminals w-p260a, w-p260r, w-p260n, w-p260t, w-p260ay, w-p260an and three
+# temporary templates (p260-auto, p260-auto-ask, p260-default); the cleanup trap kills and removes them all.
+# Side effects: cases B, C, E and F add one approval each to org-state (question text starts with
 # "p260 probe") and remove it again; case D's launch makes Claude Code record trust for a
 # temporary folder in ~/.claude.json, as any accepted dialog does.
 #
@@ -22,6 +22,10 @@
 #                        would refuse every real prompt; see the ponytail note in the script)
 #   relay-yes      PASS  answer yes exited 0 (RELAYED) and the command then ran (file exists)
 #   relay-no       PASS  answer no exited 0 and the command did not run (file absent)
+#   auto-relay-*   PASS  the same checks as relay-*, on an auto-mode terminal started with an ask
+#                        rule for "touch" (Issue #370): the prompt auto mode still shows, answered yes
+#                        (file exists) and no (file absent). "never blocked" in the output means auto
+#                        mode did not prompt for the ask rule either; the screen is printed
 #   trust          PASS  prompt exited 0 with POLICY folder-trust and the first message arrived
 # Paste the whole output into the issue.
 
@@ -29,23 +33,23 @@ set -u
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 ESC="$ROOT/skills/org-escalation/scripts/org-escalation.sh"
 TPL_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/herdr-core/templates"
-NAMES="w-p260a w-p260r w-p260n w-p260t"
+NAMES="w-p260a w-p260r w-p260n w-p260t w-p260ay w-p260an"
 
 for n in $NAMES; do
   hc get "$n" >/dev/null 2>&1 && { echo "RESULT precondition-failed: terminal $n already exists"; exit 1; }
 done
-for t in p260-auto p260-default; do
+for t in p260-auto p260-auto-ask p260-default; do
   [ -e "$TPL_DIR/$t.md" ] && { echo "RESULT precondition-failed: $TPL_DIR/$t.md exists; remove it first"; exit 1; }
 done
 
 WORK=$(mktemp -d) || exit 1
-mkdir -p "$WORK/a" "$WORK/r" "$WORK/n" "$WORK/t" "$TPL_DIR" || exit 1
+mkdir -p "$WORK/a" "$WORK/r" "$WORK/n" "$WORK/t" "$WORK/ay" "$WORK/an" "$TPL_DIR" || exit 1
 . "$(dirname "$0")/claude-link.sh"
 claude_link_save
 cleanup() {
   claude_link_restore
   for n in $NAMES; do hc kill "$n" >/dev/null 2>&1; hc rm "$n" >/dev/null 2>&1; done
-  rm -f "$TPL_DIR/p260-auto.md" "$TPL_DIR/p260-default.md"
+  rm -f "$TPL_DIR/p260-auto.md" "$TPL_DIR/p260-auto-ask.md" "$TPL_DIR/p260-default.md"
   echo "== left for you to look at or delete: $WORK"
 }
 trap cleanup EXIT INT TERM
@@ -54,6 +58,20 @@ cat > "$TPL_DIR/p260-auto.md" <<'T'
 ---
 description: probe 260, auto permission mode (temporary)
 command: claude --permission-mode auto
+---
+Probe 260. Do only what the task says.
+T
+# Issue #370: an explicit ask rule is the one prompt the vendor docs say auto mode still shows
+# ("Explicit ask rules still force a prompt", code.claude.com/docs/en/permission-modes; the
+# classifier cannot clear a matching action, docs/en/auto-mode-config). The worker settings carry no
+# ask rule, so this settings file adds the one the probe needs: a touch command.
+cat > "$WORK/ask.json" <<'J'
+{"permissions": {"ask": ["Bash(touch *)"]}}
+J
+cat > "$TPL_DIR/p260-auto-ask.md" <<T
+---
+description: probe 260/370, auto permission mode with an ask rule (temporary)
+command: claude --permission-mode auto --settings $WORK/ask.json
 ---
 Probe 260. Do only what the task says.
 T
@@ -88,19 +106,19 @@ else
   echo "RESULT auto-prompts: INFO none (state $s); the screen's last lines:"; printf '%s\n' "$scr" | tail -n 25
 fi
 
-relay() { # relay <task> <dir> <yes|no>: start, reach a Bash prompt, record it, answer
-  t=$1; w=w-$1; f=$2/p260-$3.txt
-  hc run --bg --name "$w" --cwd "$2" p260-default >/dev/null 2>&1 || { echo "hc run $w failed"; return 1; }
+relay() { # relay <task> <dir> <yes|no> [template] [result prefix]: start, reach a Bash prompt, record it, answer
+  t=$1; w=w-$1; f=$2/p260-$3.txt; tpl=${4:-p260-default}; pre=${5:-}
+  hc run --bg --name "$w" --cwd "$2" "$tpl" >/dev/null 2>&1 || { echo "hc run $w failed"; return 1; }
   ready "$w" || { echo "-- $w: no prompt after 90 s"; hc read "$w" 2>&1 | tail -n 15; }
   sleep 3; hc send "$w" "Probe task. Run exactly this shell command with your Bash tool and nothing else: touch $f" >/dev/null 2>&1
   wait_state "$w" blocked 90 || { echo "-- $w never blocked; state $(state_of "$w")"; hc read "$w" 2>&1 | tail -n 15; }
   out=$(bash "$ESC" prompt --task "$t" 2>&1); rc=$?
   p=$(printf '%s\n' "$out" | sed -n 's/^PROMPT=//p')
   if [ "$3" = yes ]; then
-    if [ "$rc" -eq 3 ] && [ -n "$p" ]; then echo "RESULT relay-prompt: PASS"; else echo "RESULT relay-prompt: FAIL rc=$rc $out"; fi
+    if [ "$rc" -eq 3 ] && [ -n "$p" ]; then echo "RESULT ${pre}relay-prompt: PASS"; else echo "RESULT ${pre}relay-prompt: FAIL rc=$rc $out"; fi
     sleep 3; p2=$(bash "$ESC" prompt --task "$t" 2>&1 | sed -n 's/^PROMPT=//p')
-    if [ -n "$p" ] && [ "$p" = "$p2" ]; then echo "RESULT relay-stable: PASS"; else
-      echo "RESULT relay-stable: FAIL"; echo "first : $p"; echo "second: $p2"; fi
+    if [ -n "$p" ] && [ "$p" = "$p2" ]; then echo "RESULT ${pre}relay-stable: PASS"; else
+      echo "RESULT ${pre}relay-stable: FAIL"; echo "first : $p"; echo "second: $p2"; fi
   fi
   id=$(bash "$ESC" ask --task "$t" --question "p260 probe: let $w run touch?" --prompt "$p" \
          --background "Probe for Issue #260; answered by the probe itself." --if-yes "The file is made." \
@@ -112,16 +130,20 @@ relay() { # relay <task> <dir> <yes|no>: start, reach a Bash prompt, record it, 
   fi
   sleep 8
   case $3 in
-    yes) if [ "$arc" -eq 0 ] && [ -e "$f" ]; then echo "RESULT relay-yes: PASS ($a)"; else
-           echo "RESULT relay-yes: FAIL rc=$arc ($a), file $( [ -e "$f" ] && echo exists || echo absent )"; fi ;;
-    no)  if [ "$arc" -eq 0 ] && [ ! -e "$f" ]; then echo "RESULT relay-no: PASS ($a)"; else
-           echo "RESULT relay-no: FAIL rc=$arc ($a), file $( [ -e "$f" ] && echo exists || echo absent )"; fi ;;
+    yes) if [ "$arc" -eq 0 ] && [ -e "$f" ]; then echo "RESULT ${pre}relay-yes: PASS ($a)"; else
+           echo "RESULT ${pre}relay-yes: FAIL rc=$arc ($a), file $( [ -e "$f" ] && echo exists || echo absent )"; fi ;;
+    no)  if [ "$arc" -eq 0 ] && [ ! -e "$f" ]; then echo "RESULT ${pre}relay-no: PASS ($a)"; else
+           echo "RESULT ${pre}relay-no: FAIL rc=$arc ($a), file $( [ -e "$f" ] && echo exists || echo absent )"; fi ;;
   esac
   [ -z "$id" ] || bash "$ESC" remove --id "$id" >/dev/null 2>&1
   echo "-- $w after the answer: state $(state_of "$w")"; hc read "$w" 2>&1 | tail -n 8
 }
 echo "== B. relay yes"; relay p260r "$WORK/r" yes
 echo "== C. relay no";  relay p260n "$WORK/n" no
+echo "== E. relay yes on an auto-mode terminal (ask rule)"
+relay p260ay "$WORK/ay" yes p260-auto-ask auto-
+echo "== F. relay no on an auto-mode terminal (ask rule)"
+relay p260an "$WORK/an" no p260-auto-ask auto-
 
 echo "== D. folder-trust (a fresh git repository, which shows the dialog)"
 git init -q "$WORK/t" && git -C "$WORK/t" -c user.name=p -c user.email=p@p.invalid commit -q --allow-empty -m init
