@@ -213,6 +213,59 @@ update() { # update <mode> <id>: re-read, apply, set (scripts/org retries on a v
     || die 5 "org-state was not written ($1 $2)"
 }
 
+# The policy list (L-N3): the only prompts answered without the person, each by its whole option
+# lines, never with a "Do you want" question on the screen. Keys as org-start: read, down,
+# read again, enter only with the cursor on the expected line. These helpers use $w (the terminal)
+# and, in pick, $policy.
+# opt <screen> <line ERE>: the line is an option line of its own (cursor or not, numbered or not).
+opt() { printf '%s\n' "$1" | grep -Eq "^ *(❯ *)?([0-9]\\. *)?$2 *\$"; }
+# policy_of <screen>: the policy entry the screen shows, or nothing. Never with a "Do you want" question.
+policy_of() {
+  ! printf '%s\n' "$1" | grep -q 'Do you want' || return 0
+  # folder-trust: comes before Claude Code reports any status, so a terminal with a status (a tool
+  # prompt is blocked) never matches. No status = hc get answered for the terminal and its status is
+  # null or absent; a failed lookup is not "no status".
+  local j nostatus=
+  j=$(hc get --json "$w" 2>/dev/null) || j=
+  case $j in *'"name"'*) printf '%s' "$j" | tr -d '\n' | grep -Eq '"status": *\{' || nostatus=1 ;; esac
+  if [ -n "$nostatus" ] && opt "$1" 'No, exit' && opt "$1" 'Yes, I trust this folder'; then echo folder-trust
+  # auto-mode-setup: Claude Code's "Teach auto mode about your environment?" (Yes / Not now /
+  # Don't show again), shown once to an auto-mode worker; answered "Don't show again" (owner).
+  elif printf '%s\n' "$1" | grep -Eq '^ *Teach auto mode about your environment\? *$' \
+       && opt "$1" 'Not now' && opt "$1" "Don't show again"; then echo auto-mode-setup
+  fi
+}
+# pick <target line ERE> <max downs>: before every key, a fresh read must succeed and still show the
+# same policy entry; enter only with the cursor on the target line. Anything else: return 1, no key.
+pick() {
+  local n=0 s
+  while :; do
+    s=$(hc read "$w" 2>/dev/null) || return 1
+    [ "$(policy_of "$s")" = "$policy" ] || return 1
+    if printf '%s\n' "$s" | grep -Eq "^ *❯ *([0-9]\\. *)?$1 *\$"; then
+      hc keys "$w" enter >/dev/null 2>&1 || die 8 "hc keys enter failed on $w"; return 0
+    fi
+    [ "$n" -lt "$2" ] || return 1
+    hc keys "$w" down >/dev/null 2>&1; sleep 1; n=$((n + 1))
+  done
+}
+# trust_marker <task_id>: prints the marker org-clone leaves in the git folder of a fresh clone
+# (paddock-trust-pending) when the worktree $PADDOCK_WORKERS_DIR/<task_id> belongs to such a clone.
+trust_marker() {
+  local c; c=$(git -C "${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}/$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  [ -e "$c/paddock-trust-pending" ] && printf '%s\n' "$c/paddock-trust-pending"
+}
+# send_first: once $w reports a status, send --then-send text (the first message the dialog stopped).
+send_first() {
+  local i=0
+  until hc get --json "$w" 2>/dev/null | tr -d '\n' | grep -Eq '"status": *\{'; do
+    i=$((i + 1)); [ "$i" -lt "${PADDOCK_PROMPT_TRIES:-30}" ] || die 12 "$w reports no status after the dialog; the first message was not sent"
+    sleep 1
+  done
+  hc send "$w" "$then_send" >/dev/null 2>&1 || die 12 "hc send to $w failed; the first message was not sent"
+  echo "SENT $w"
+}
+
 case $cmd in
   ask)
     valid_id "$task" || die 2 "ask needs --task <task_id> (lowercase letters, digits, _ and -)"
@@ -263,6 +316,24 @@ case $cmd in
       w=w-$wtask
       case $(printf '%s' "$t" | tr 'A-Z' 'a-z' | tr -d ' ') in yes) key=enter ;; no) key=esc ;;
         *) die 2 "entry $id is a worker's prompt: the answer is yes or no; nothing pressed" ;; esac
+      # The folder-trust dialog comes before any status, so it is not "blocked": yes moves the cursor to
+      # "Yes, I trust this folder" as the policy does (the default is "No, exit"), once the person said so.
+      scr=$(hc read "$w" 2>/dev/null) || die 10 "cannot read the screen of $w; nothing pressed, entry $id kept"
+      policy=$(policy_of "$scr")
+      if [ "$policy" = folder-trust ]; then
+        [ "$(psum "$(block "$scr")")" = "$sum" ] \
+          || die 10 "the screen of $w no longer shows the prompt recorded in $id; nothing pressed, entry kept. Read it with prompt --task $wtask"
+        if [ "$key" = esc ]; then hc keys "$w" esc >/dev/null 2>&1 || die 8 "hc keys esc failed on $w; entry $id kept"
+        else
+          pick 'Yes, I trust this folder' 1 \
+            || die 10 "$w: the folder-trust dialog did not stay on a fresh read with the cursor reaching 'Yes, I trust this folder'; nothing confirmed, entry $id kept"
+          m=$(trust_marker "$wtask") && rm -f "$m" # the person trusted this clone: later workers are not held
+        fi
+        ( update remove "$id" ) || die 9 "answered $w but entry $id could not be removed; run: remove --id $id"
+        echo "RELAYED $id $key -> $w"
+        [ "$key" = esc ] || [ -z "${then_send+set}" ] || send_first
+        exit 0
+      fi
       hc get --json "$w" 2>/dev/null | tr -d '\n' | grep -Eq '"status": *\{[^{}]*"state": *"blocked"' \
         || die 10 "$w is not blocked on a prompt; nothing pressed, entry $id kept (sweep or remove it)"
       scr=$(hc read "$w" 2>/dev/null) || die 10 "cannot read the screen of $w; nothing pressed, entry $id kept"
@@ -291,42 +362,13 @@ case $cmd in
     valid_id "$task" || die 2 "prompt needs --task <task_id>"
     w=w-$task
     scr=$(hc read "$w" 2>/dev/null) || die 11 "cannot read the screen of $w; nothing pressed"
-    # The policy list (L-N3): the only prompts answered without the person, each by its whole option
-    # lines, never with a "Do you want" question on the screen. Keys as org-start: read, down,
-    # read again, enter only with the cursor on the expected line.
-    # opt <screen> <line ERE>: the line is an option line of its own (cursor or not, numbered or not).
-    opt() { printf '%s\n' "$1" | grep -Eq "^ *(❯ *)?([0-9]\\. *)?$2 *\$"; }
-    # policy_of <screen>: the policy entry the screen shows, or nothing. Never with a "Do you want" question.
-    policy_of() {
-      ! printf '%s\n' "$1" | grep -q 'Do you want' || return 0
-      # folder-trust: comes before Claude Code reports any status, so a terminal with a status (a tool
-      # prompt is blocked) never matches. No status = hc get answered for the terminal and its status is
-      # null or absent; a failed lookup is not "no status".
-      local j nostatus=
-      j=$(hc get --json "$w" 2>/dev/null) || j=
-      case $j in *'"name"'*) printf '%s' "$j" | tr -d '\n' | grep -Eq '"status": *\{' || nostatus=1 ;; esac
-      if [ -n "$nostatus" ] && opt "$1" 'No, exit' && opt "$1" 'Yes, I trust this folder'; then echo folder-trust
-      # auto-mode-setup: Claude Code's "Teach auto mode about your environment?" (Yes / Not now /
-      # Don't show again), shown once to an auto-mode worker; answered "Don't show again" (owner).
-      elif printf '%s\n' "$1" | grep -Eq '^ *Teach auto mode about your environment\? *$' \
-           && opt "$1" 'Not now' && opt "$1" "Don't show again"; then echo auto-mode-setup
-      fi
-    }
-    # pick <target line ERE> <max downs>: before every key, a fresh read must succeed and still show the
-    # same policy entry; enter only with the cursor on the target line. Anything else: return 1, no key.
-    pick() {
-      local n=0 s
-      while :; do
-        s=$(hc read "$w" 2>/dev/null) || return 1
-        [ "$(policy_of "$s")" = "$policy" ] || return 1
-        if printf '%s\n' "$s" | grep -Eq "^ *❯ *([0-9]\\. *)?$1 *\$"; then
-          hc keys "$w" enter >/dev/null 2>&1 || die 8 "hc keys enter failed on $w"; return 0
-        fi
-        [ "$n" -lt "$2" ] || return 1
-        hc keys "$w" down >/dev/null 2>&1; sleep 1; n=$((n + 1))
-      done
-    }
     policy=$(policy_of "$scr")
+    # A fresh clone made by org-clone for a repository a request named: its folder-trust dialog is the
+    # person's to answer (card, then answer), never the policy's (decision 0011).
+    if [ "$policy" = folder-trust ] && trust_marker "$task" >/dev/null; then
+      echo "org-escalation: $w is in a fresh clone made for a named repository: its folder-trust dialog is not answered automatically. Ask the person (ask --task $task --prompt <the PROMPT= text>); answer --text yes presses it" >&2
+      policy=
+    fi
     case $policy in
       folder-trust) pick 'Yes, I trust this folder' 1 \
         || die 10 "$w: the folder-trust dialog did not stay on a fresh read with the cursor reaching 'Yes, I trust this folder'; nothing confirmed. Read it with hc read $w" ;;
@@ -336,13 +378,7 @@ case $cmd in
     if [ -n "$policy" ]; then
       echo "POLICY $policy $w"
       [ -n "${then_send+set}" ] || exit 0
-      i=0
-      until hc get --json "$w" 2>/dev/null | tr -d '\n' | grep -Eq '"status": *\{'; do
-        i=$((i + 1)); [ "$i" -lt "${PADDOCK_PROMPT_TRIES:-30}" ] || die 12 "$w reports no status after the dialog; the first message was not sent"
-        sleep 1
-      done
-      hc send "$w" "$then_send" >/dev/null 2>&1 || die 12 "hc send to $w failed; the first message was not sent"
-      echo "SENT $w"; exit 0
+      send_first; exit 0
     fi
     b=$(block "$scr"); [ -n "${b//[ ]/}" ] || die 11 "the screen of $w is empty; nothing pressed"
     echo "PROMPT=$b"; exit 3 ;;
