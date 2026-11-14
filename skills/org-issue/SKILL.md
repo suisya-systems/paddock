@@ -5,7 +5,7 @@ description: Open a GitHub issue from sections and a goal clause, with the depen
 
 # org-issue
 
-Issue [#72](https://github.com/suisya-systems/paddock/issues/72). The triage parser reads dependency references only from the same line as the keyword (`Blocked by` / `Depends on` / `Requires`); references under a heading were silently treated as unblocked. This script builds the body, so the line is always right. The secretary runs it from a shell in its own terminal. Bash only, plus `gh`.
+Opens an issue whose body the triage parser can read. The parser reads dependency references only from the same line as the keyword (`Blocked by` / `Depends on` / `Requires`); references under a heading were silently treated as unblocked. This script builds the body, so the line is always right. The secretary runs it from a shell in its own terminal. Bash only, plus `gh`.
 
 ```sh
 bash skills/org-issue/scripts/org-issue.sh --repo OWNER/NAME --kind build --title "<English title>" \
@@ -23,7 +23,7 @@ bash skills/org-issue/scripts/org-issue.sh --repo OWNER/NAME --kind build --titl
 | `build` | `--why` `--done` | Why, Definition of done, Goal clause |
 | `followup` | `--seen` `--ask` | What was seen, Ask, Goal clause |
 
-`--goal` is the Goal clause, one line: the clause number and its heading. The same headings are in [`.github/ISSUE_TEMPLATE/issue.md`](../../.github/ISSUE_TEMPLATE/issue.md), for a person who writes an issue on GitHub; `tests/org-issue.test.sh` checks they match.
+`--goal` is the Goal clause, one line: the clause number and its heading. The issue template in `.github/ISSUE_TEMPLATE/issue.md` carries the same headings for a person who writes an issue on GitHub; `tests/org-issue.test.sh` checks they match.
 
 ## Dependencies
 

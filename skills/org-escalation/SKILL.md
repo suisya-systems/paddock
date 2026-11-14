@@ -5,7 +5,7 @@ description: Record a worker's question or blocked status as an org-state.approv
 
 # org-escalation
 
-Implements inventory row [SK-5](../../docs/design/predecessor-inventory.md) and Issue #66. The secretary runs it from a shell in its own terminal. Bash only, plus `awk`, `sed`, `tr` and `scripts/org` (which needs `hc` for documents).
+Records a worker's question for the person and forwards the answer. Why it is built this way: [references/rationale.md](references/rationale.md). The secretary runs it from a shell in its own terminal. Bash only, plus `awk`, `sed`, `tr` and `scripts/org` (which needs `hc` for documents).
 
 ```sh
 bash skills/org-escalation/scripts/org-escalation.sh prompt --task <task_id> [--then-send "<text>"]
@@ -21,17 +21,17 @@ bash skills/org-escalation/scripts/org-escalation.sh sweep
 ## The flow
 
 1. A worker reports a question, or a `blocked` status, to the secretary through the mailbox. The secretary answers what it can itself. What it cannot decide goes on:
-2. `ask` adds `{"id","task_id","question","asked_at"}` to `org-state.approvals` ([shape](../../docs/design/prototype-1.md)). The id is `<task_id>-<UTC yyyymmddThhmmssZ>`; the script prints `APPROVAL_ID=<id>`. The mod shows the entry as a card. `question` is one sentence, at most 400 bytes; control characters become spaces. Every entry is answered through the secretary ([architecture 7.1](../../docs/design/architecture.md#71-approvals)); `--answer-in` is gone (Issue #260) and exits 2.
-   The card is all the person sees when deciding, so write the context with it (Issue #258): `--background` (why this is asked, one or two sentences, at most 600 bytes), `--if-yes` and `--if-no` (what each answer leads to, at most 300 bytes each), and `--recommend yes|no` with `--why` (your recommendation and its reason, at most 400 bytes; one without the other exits 2). They are kept in the entry as `background`, `if_yes`, `if_no`, `recommend` and `why`. Each is optional to the script, but leave one out only when it truly does not apply: the card names every one that is missing ("Not written: ..."). An empty or too long value exits 2 and writes nothing; control characters become spaces.
+2. `ask` adds `{"id","task_id","question","asked_at"}` to `org-state.approvals`. The id is `<task_id>-<UTC yyyymmddThhmmssZ>`; the script prints `APPROVAL_ID=<id>`. The mod shows the entry as a card. `question` is one sentence, at most 400 bytes; control characters become spaces. Every entry is answered through the secretary; `--answer-in` is gone and exits 2.
+   The card is all the person sees when deciding, so write the context with it: `--background` (why this is asked, one or two sentences, at most 600 bytes), `--if-yes` and `--if-no` (what each answer leads to, at most 300 bytes each), and `--recommend yes|no` with `--why` (your recommendation and its reason, at most 400 bytes; one without the other exits 2). They are kept in the entry as `background`, `if_yes`, `if_no`, `recommend` and `why`. Each is optional to the script, but leave one out only when it truly does not apply: the card names every one that is missing ("Not written: ..."). An empty or too long value exits 2 and writes nothing; control characters become spaces.
 3. The person answers, in conversation with the secretary or from the card.
 4. `answer` sends `Answer to your question (<approval_id>): <text>` to `w-<task_id>` with `scripts/org send_message`, then removes the entry. Nothing is typed into the worker ([decision 0002](../../docs/decisions/0002-org-mailbox-not-hc-send.md)).
 
-## A worker's prompt (L-N3, Issue #260)
+## A worker's prompt
 
 A worker runs in auto mode, so few prompts appear. A prompt or dialog that does appear is answered only after a fresh read of the screen matched it; keys never go to a worker any other way (the secretary's hook refuses `hc keys` and a forced `hc send` typed by hand).
 
 - `prompt --task <t>` reads `hc read w-<t>`. **The policy list** is what the secretary may answer without the person; it is fixed in the script and changes only by a reviewed commit. It holds two entries, each recognised by whole option lines and never with a "Do you want" question on the screen; before every key the script reads the screen again and stops (exit 10, nothing more pressed) if the read fails or the screen no longer shows the same entry; it moves the cursor with `down` and presses `enter` only with the cursor on the expected line:
-  - `folder-trust`: Claude Code's folder-trust dialog, only on a terminal that reports no status yet (the dialog comes before any status; a tool prompt is `blocked`), with "No, exit" and "Yes, I trust this folder" as option lines (numbered or not; the host shows them unnumbered). Answer: "Yes, I trust this folder" (the default is "No, exit"), as org-start does for the secretary (#254).
+  - `folder-trust`: Claude Code's folder-trust dialog, only on a terminal that reports no status yet (the dialog comes before any status; a tool prompt is `blocked`), with "No, exit" and "Yes, I trust this folder" as option lines (numbered or not; the host shows them unnumbered). Answer: "Yes, I trust this folder" (the default is "No, exit"), as org-start does for the secretary.
   - `auto-mode-setup` (owner, 2026-11-12): Claude Code's "Teach auto mode about your environment?" dialog (options Yes / Not now / Don't show again; text from Claude Code 2.1.322, not yet seen on a host). Answer: "Don't show again".
   The script prints `POLICY <entry> w-<t>` and exits 0. With `--then-send <text>` it waits for the terminal to report a status and sends the text with `hc send` (org-delegate passes the brief, which the dialog stopped). Any other screen: `PROMPT=<the dialog's non-empty lines, on one line>`, exit 3, nothing pressed.
 - `ask ... --lang <code>`: the person reads the card, so its text is in the conversation language and `--lang` (`ja`, `en`) sets the language of the card's fixed words; without it the card is English.
@@ -56,7 +56,7 @@ ANSWER <approval_id> <text>
 
 `answer` sends first and removes second. A failed send keeps the entry (exit 8); a failed removal after the send exits 9 and says to run `remove`, so the worker is never left without its answer.
 
-After the send, a worker whose status is `idle` (it ended its turn and will not read its mailbox) gets one `hc send --if idle` telling it to run `check_messages` ([Issue #282](https://github.com/suisya-systems/paddock/issues/282)). A working worker is not interrupted; a refused nudge does not change the exit code.
+After the send, a worker whose status is `idle` (it ended its turn and will not read its mailbox) gets one `hc send --if idle` telling it to run `check_messages`. A working worker is not interrupted; a refused nudge does not change the exit code.
 
 ## Exit codes
 
@@ -83,4 +83,4 @@ After the send, a worker whose status is `idle` (it ended its turn and will not 
 
 ## Not measured
 
-Tested against a stubbed `hc` (documents only) and the real `scripts/org` in a throwaway state folder (`tests/org-escalation.test.sh`). Not run on a host: a real `doc.get` / `doc.set` of an `org-state` that the mod is displaying, the card (Issue #65) sending `ANSWER ...`, and a worker reading the answer from its mailbox.
+Tested against a stubbed `hc` (documents only) and the real `scripts/org` in a throwaway state folder (`tests/org-escalation.test.sh`). Not run on a host: a real `doc.get` / `doc.set` of an `org-state` that the mod is displaying, the card sending `ANSWER ...`, and a worker reading the answer from its mailbox.

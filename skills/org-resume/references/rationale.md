@@ -1,0 +1,7 @@
+# Why org-resume is built this way
+
+- **Plan first, act on `--apply`.** A resume can relaunch a worker in a worktree that changed while the core was down. Printing the git comparison (`HEAD` unchanged or moved, uncommitted files, worktree missing) lets the person or the secretary decide; without `--apply` nothing is launched, killed or removed.
+- **`claude --continue` first, a fresh worker as the fallback.** Continuing keeps the worker's conversation, which is worth trying; but it can fail (transcripts off, none saved), so a failed continue ends that terminal and starts a fresh worker with the same task, worktree and label. Which one resumed is visible in the output.
+- **No suspend record is still a resume.** A crash or an unplanned core stop leaves only the `work` entries of `org-state`. The script resumes from them, says so, and lists what it could not restore (the git comparison, recorded names and states).
+- **The leftover `config.lock`.** A worker killed mid-command leaves an empty read-only placeholder in the clone's shared `.git`; if it stays, the next git config write in that clone is blocked or delayed. It is removed right after the dead terminal is ended, only when nothing could be using it (no process in that or another linked worktree of the clone, no sandbox still mounting `.git`, a regular empty read-only file). Anything uncertain keeps it and says why.
+- **Only the worker side is rebuilt.** The secretary comes back through org-start and its handover; resuming never touches live workers or unlabelled terminals, and never stops the core.

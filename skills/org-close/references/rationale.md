@@ -1,0 +1,6 @@
+# Why org-close is built this way
+
+- **Only a `done` addressed to the secretary counts, and only a terminal with the task's label is ended.** A report sent to someone else, or a terminal that belongs to another task or to the person, must never end a worker by accident.
+- **The worktree and branch stay on a normal close.** The pull-request step works from them; `--drop` is the only path that removes them, because then the work is abandoned.
+- **The leftover `config.lock`.** Claude Code's sandbox leaves a 0-byte read-only placeholder `config.lock` in the clone's shared `.git` when a worker is killed in the middle of a command. If it stays, the next `git config` write in that clone (a delegate, a branch operation) is blocked or delayed. It is removed only when nothing could still be using it: no process has its cwd in an ended or other linked worktree of the clone, no sandbox still mounts the clone's `.git`, and the file is a regular, empty, read-only file. Anything uncertain keeps the file and says why; a wrongly removed lock is worse than a stale one.
+- **The `work` entries are cut out by a scan that skips string contents.** A `]` or a brace inside a task or title would otherwise end an entry early and corrupt the state document.

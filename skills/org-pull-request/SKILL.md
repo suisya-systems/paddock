@@ -5,7 +5,7 @@ description: Push a finished worker branch, open the PR, watch its CI as a backg
 
 # org-pull-request
 
-Implements inventory row [SK-6](../../docs/design/predecessor-inventory.md). The secretary runs it once a worker has reported done, from a shell in its own terminal (unlike [org-start](../org-start/SKILL.md), it is meant to run inside an agent).
+Pushes a finished worker branch and opens its PR. Why it is built this way: [references/rationale.md](references/rationale.md). The secretary runs it once a worker has reported done, from a shell in its own terminal (unlike [org-start](../org-start/SKILL.md), it is meant to run inside an agent).
 
 ```sh
 bash skills/org-pull-request/scripts/org-pull-request.sh \
@@ -19,12 +19,12 @@ Bash only, plus `git`, `gh` and `hc`. `--repo OWNER/NAME` is taken from a GitHub
 1. Pushes: `git push origin <branch>` from the worktree.
 2. Opens the PR: `gh pr create --repo <r> --head <branch> --base main --title ... --body-file ...` (or `--body`). `--pr N` reuses an open PR instead (a rerun after a failure).
 3. Finds the CI run of the pushed head: `gh run list --commit <sha>`, retrying while none exists yet (`PADDOCK_RUN_TRIES`, default 10, every `PADDOCK_RUN_SLEEP`, default 6 s; exit 7 when none appears).
-4. Watches it as measured in [MON-12](../../docs/design/predecessor-inventory.md) ([probe](../../scripts/probes/ci-watch-child.sh)): `hc run --bg --rm --no-notify --name ci-<pr> -- gh run watch <run-id> --repo <r> --exit-status`, then `hc wait ci-<pr>`, and reads the integer `exit_code` from its one JSON line. A line without one (a kill sets `signal`) exits 8.
-5. Appends one `ci_completed` line to `events/<YYYY-MM>/secretary.jsonl` through `bash scripts/org --as secretary ci_completed` (Issue #168: the secretary's folder, sequence and lock) ([decision 0004](../../docs/decisions/0004-records-documents-and-jsonl.md)), for a failed run too:
+4. Watches it as a background child (measured once on a real core): `hc run --bg --rm --no-notify --name ci-<pr> -- gh run watch <run-id> --repo <r> --exit-status`, then `hc wait ci-<pr>`, and reads the integer `exit_code` from its one JSON line. A line without one (a kill sets `signal`) exits 8.
+5. Appends one `ci_completed` line to `events/<YYYY-MM>/secretary.jsonl` through `bash scripts/org --as secretary ci_completed` (the secretary's folder, sequence and lock) ([decision 0004](../../docs/decisions/0004-records-documents-and-jsonl.md)), for a failed run too:
    `{"seq":1,"ts":"2026-11-10T01:02:03Z","kind":"ci_completed","from":"secretary","task_id":"t1","pr":42,"sha":"<head>","run_id":777,"exit_code":0,"conclusion":"success"}`
 6. Acts by the approval mode, then prints the outcome.
    - `human`: prints `PR_URL=...` and that the person decides; merges nothing. Exit 0.
-   - `acceptance`: there is no local gate ([Q11](../../docs/design/open-questions.md#q11-what-happens-to-the-predecessors-python-gates-and-generators), decided (d); inventory [GT-1](../../docs/design/predecessor-inventory.md)). The check is the repository's CI as a required status check: the `acceptance` job ([acceptance-check](../../docs/design/acceptance-check.md)). The script only checks that the PR head (`gh pr view --json headRefOid`) still equals the watched sha and that `gh pr checks --required --watch` (it waits for other workflows of the head still running) is green, then runs `gh pr merge <n> --squash --match-head-commit <sha>`. No `--admin`, no `--auto`.
+   - `acceptance`: there is no local gate. The check is the repository's CI as a required status check: the `acceptance` job. The script only checks that the PR head (`gh pr view --json headRefOid`) still equals the watched sha and that `gh pr checks --required --watch` (it waits for other workflows of the head still running) is green, then runs `gh pr merge <n> --squash --match-head-commit <sha>`. No `--admin`, no `--auto`.
 
 The mode is `--mode`, else `merge_approval_mode` in `org-config.md` (read with `org config get merge_approval_mode`; change it with `org config set`), else `human`. Any other value means `human`.
 
@@ -46,9 +46,9 @@ The mode is `--mode`, else `merge_approval_mode` in `org-config.md` (read with `
 
 ## Assumptions (open points left open)
 
-- Approval mode lives in `org-config.md` (Q14), not in `org-state`.
+- Approval mode lives in `org-config.md`, not in `org-state`.
 - The events folder is `scripts/org`'s: `$PADDOCK_STATE_DIR/events`, default `${XDG_STATE_HOME:-~/.local/state}/paddock/events`. The writer id is `secretary`, and `seq` is `scripts/org`'s for that id: one more than the highest so far, taken under the per-id lock, so it never repeats a number a reader has acknowledged. Lines carry `kind`, `writer`, `task_id` (when given), `pr`, `sha`, `run_id`, `exit_code` and `conclusion` beyond `seq` and `ts` (`ts` follows `$PADDOCK_NOW` when set).
-- The base branch is `--base`, else the base in the `--project <name>` row of `projects.md` (same file and columns as [org-delegate](../org-delegate/SKILL.md); only the base is read, since `--worktree` is the worker's), else `main`. An unknown name or a missing file exits 2 before the branch is sent anywhere. The title and body are written by the secretary in English. With `--task-id` and no `--pr`, the script also reads the task's last diff-review record in the `codex-gate` history (`codex_round_passed` / `codex_round_failed`); unless it is passed, or there is none, it appends "Second-model review did not run" and that record to the body it sends (the body file is not changed), so a body written without it still says so (Issue #300). The secretary still writes the worker's gate line in the body and in its report.
+- The base branch is `--base`, else the base in the `--project <name>` row of `projects.md` (same file and columns as [org-delegate](../org-delegate/SKILL.md); only the base is read, since `--worktree` is the worker's), else `main`. An unknown name or a missing file exits 2 before the branch is sent anywhere. The title and body are written by the secretary in English. With `--task-id` and no `--pr`, the script also reads the task's last diff-review record in the `codex-gate` history (`codex_round_passed` / `codex_round_failed`); unless it is passed, or there is none, it appends "Second-model review did not run" and that record to the body it sends (the body file is not changed), so a body written without it still says so. The secretary still writes the worker's gate line in the body and in its report.
 - `--task-id` may hold only letters, digits, `.`, `_` and `-` (it goes into a JSON line); anything else exits 2 before the push.
 - Known limit: when a head has several runs (for example both `push` and `pull_request` workflows), only the newest one found is watched and recorded. In `human` mode "CI green" means that run; in `acceptance` mode the required checks cover the rest.
 - Known limit: the final line "Merged" means `gh pr merge` succeeded. On a branch with a merge queue that only enqueues the PR; the script does not query the merge state afterwards. This repository has no merge queue.
@@ -57,4 +57,4 @@ The mode is `--mode`, else `merge_approval_mode` in `org-config.md` (read with `
 
 ## Not measured
 
-Everything is tested against stubbed `hc` and `gh` and a local bare repository as origin (`tests/org-pull-request.test.sh`). Not run on a host: a real push, `gh pr create`, `gh run list --commit` right after a push (how long until a run exists), a failed `gh run watch` through `hc wait` (expect `exit_code` 1, not measured in MON-12 either), `gh pr checks --required` with branch protection, `gh pr merge --match-head-commit`, and a real `merge_approval_mode` in `org-state`. A host probe follows separately.
+Everything is tested against stubbed `hc` and `gh` and a local bare repository as origin (`tests/org-pull-request.test.sh`). Not run on a host: a real push, `gh pr create`, `gh run list --commit` right after a push (how long until a run exists), a failed `gh run watch` through `hc wait` (expect `exit_code` 1; not measured), `gh pr checks --required` with branch protection, `gh pr merge --match-head-commit`, and a real `merge_approval_mode` in `org-state`. A host probe follows separately.
