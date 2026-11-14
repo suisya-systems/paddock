@@ -152,8 +152,6 @@ EOF
   # Role file paths, read from the worker template now (Issue #129 moved them once; read, do not assume).
   echo "== worker template names these role files (checked again by watch once org-start has placed them):"
   grep -Eo -- '--(append-system-prompt-file|settings) "[^"]*"' "$ROOT/templates/worker.md" | sed 's/^/   /'
-  { [ -s "${PADDOCK_WORKER_GH_TOKEN_FILE:-$cfg/../paddock/worker-gh-token}" ] \
-    && echo "RESULT worker-token: PASS (file exists, not read)" || echo "RESULT worker-token: FAIL (no read-only token file; see skills/org-start/SKILL.md, Worker token)"; } | tee -a "$RUN/prepare.txt"
   tee "$RUN/steps.txt" <<EOF
 
 == Run $T prepared ($RUN). Do these in order:

@@ -46,14 +46,16 @@ seccmd=$(cmdline "$sec"); prefix=${seccmd% sh -c *}
 [ -n "$(grep -o -- '-u [A-Z_]*' <<<"$seccmd")" ]; check "secretary's env -u list is not empty" $?
 # Issue #155: the worker also removes the core's variables (L-N2); the secretary keeps them (it runs hc).
 core=$(printf -- '-u %s\n' HC_SESSION HC_SOCKET HC_SCOPE HC_TERMINAL_ID HC_TERMINAL_SOCKET)
-[ -n "$cmd" ] && [ "$(grep -o -- '-u [A-Z_]*' <<<"$cmd" | sort)" = "$( { grep -o -- '-u [A-Z_]*' <<<"$seccmd"; printf '%s\n' "$core"; } | sort)" ]; check "env -u list is the secretary's plus the core variables" $?
+# Issue #277: the worker also removes the four GitHub token variables (it holds no credential; the person's must not reach it).
+gh=$(printf -- '-u %s\n' GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN)
+[ -n "$cmd" ] && [ "$(grep -o -- '-u [A-Z_]*' <<<"$cmd" | sort)" = "$( { grep -o -- '-u [A-Z_]*' <<<"$seccmd"; printf '%s\n%s\n' "$core" "$gh"; } | sort)" ]; check "env -u list is the secretary's plus the core variables and the GitHub token variables" $?
 
 # 5. The command names the GH variables, the rules file, the settings file, the token file.
 grep -q 'GH_CONFIG_DIR=' <<<"$cmd"; check "command sets GH_CONFIG_DIR" $?
-grep -q 'GH_TOKEN=' <<<"$cmd"; check "command sets GH_TOKEN" $?
+! grep -q 'GH_TOKEN=' <<<"$cmd"; check "command sets no GH_TOKEN (Q20 decision D)" $?
 grep -q -- '--append-system-prompt-file .*worker-rules\.md' <<<"$cmd"; check "command passes worker-rules.md with --append-system-prompt-file" $?
 grep -q 'worker-settings\.json' <<<"$cmd" && grep -q -- '--settings' <<<"$cmd"; check "command passes worker-settings.json with --settings" $?
-grep -q 'worker-gh-token' <<<"$cmd" && grep -q 'PADDOCK_WORKER_GH_TOKEN_FILE' <<<"$cmd"; check "command names the token file and its override" $?
+! grep -q 'worker-gh-token\|PADDOCK_WORKER_GH_TOKEN_FILE' <<<"$cmd"; check "command names no token file" $?
 [ -f "$tpl" ] && ! grep -Eq 'ghp_|github_pat_' "$tpl"; check "no token value in the template" $?
 
 # 6. The command, run through sh with a stub claude.
@@ -72,21 +74,15 @@ chmod +x "$stub/claude"
 cfg=$tmp/cfg; mkdir -p "$cfg/paddock"
 launch() { # launch <out file> [extra env...]; runs the header command as hc would, through sh
   local out=$1; shift
-  env -u APPDATA -u PADDOCK_WORKER_GH_TOKEN_FILE -u PADDOCK_CORE_TEMPLATES_DIR -u PADDOCK_BIN_DIR \
+  env -u APPDATA -u PADDOCK_CORE_TEMPLATES_DIR -u PADDOCK_BIN_DIR \
       XDG_CONFIG_HOME="$cfg" XDG_DATA_HOME="$tmp/data" PATH="$stub:$PATH" CLAUDE_OUT="$out" \
       CLAUDE_CODE_SESSION_ID=abc CLAUDE_CODE_CHILD_SESSION=1 GH_TOKEN=person-write-token "$@" \
       sh -c "$cmd" 2>&1
 }
-# 6a. Token file missing: the launch fails with a message naming the path; claude never runs.
-rm -f "$cfg/paddock/worker-gh-token" "$tmp/o1"
-msg=$([ -n "$cmd" ] && launch "$tmp/o1"); rc=$?
-[ -n "$cmd" ] && [ "$rc" -ne 0 ] && [ ! -e "$tmp/o1" ]; check "missing token file fails the launch, claude not started" $?
-grep -q "$cfg/paddock/worker-gh-token" <<<"$msg"; check "the failure message names the token path" $?
-# 6b. Token file present: default path.
-printf 'read-only-token-value\n' > "$cfg/paddock/worker-gh-token"
+# 6a. No token file anywhere: the launch works, and the person's GH_TOKEN (set by launch) does not reach claude.
 msg=$([ -n "$cmd" ] && launch "$tmp/o2"); rc=$?
-[ "$rc" -eq 0 ] && [ -f "$tmp/o2" ]; check "token file present: claude is started" $?
-grep -qx 'GH_TOKEN=read-only-token-value' "$tmp/o2" 2>/dev/null; check "GH_TOKEN is the token file's content, not the person's" $?
+[ "$rc" -eq 0 ] && [ -f "$tmp/o2" ]; check "no token file: claude is started" $?
+grep -qx 'GH_TOKEN=unset' "$tmp/o2" 2>/dev/null; check "the person's GH_TOKEN does not reach claude" $?
 gd=$(sed -n 's/^GH_CONFIG_DIR=//p' "$tmp/o2" 2>/dev/null)
 [ -n "$gd" ] && [ -d "$gd" ] && [ -z "$(ls -A "$gd")" ] && [ "$gd" != "$HOME/.config/gh" ]; check "GH_CONFIG_DIR is an existing empty directory" $?
 [ -n "$cmd" ] && launch "$tmp/o3" >/dev/null
@@ -96,12 +92,9 @@ td=$tmp/data/paddock/bin # Issue #129: beside the org script, not in the core te
 grep -qx "ARG:--append-system-prompt-file" "$tmp/o2" 2>/dev/null && grep -qx "ARG:$td/worker-rules.md" "$tmp/o2"; check "claude gets the rules file from the paddock bin folder" $?
 grep -qx "ARG:--settings" "$tmp/o2" 2>/dev/null && grep -qx "ARG:$td/worker-settings.json" "$tmp/o2"; check "claude gets the settings file from the paddock bin folder" $?
 # 6c. Overrides.
-printf 'other-token\n' > "$tmp/tok"; mkdir -p "$tmp/bdir"
-[ -n "$cmd" ] && launch "$tmp/o4" PADDOCK_WORKER_GH_TOKEN_FILE="$tmp/tok" PADDOCK_BIN_DIR="$tmp/bdir" >/dev/null
-grep -qx 'GH_TOKEN=other-token' "$tmp/o4" 2>/dev/null && grep -qx "ARG:$tmp/bdir/worker-rules.md" "$tmp/o4" && grep -qx "ARG:$tmp/bdir/worker-settings.json" "$tmp/o4"; check "PADDOCK_* overrides move the token file and the rules and settings folder" $?
-: > "$tmp/empty"
-[ -n "$cmd" ] && launch "$tmp/o5" PADDOCK_WORKER_GH_TOKEN_FILE="$tmp/empty" >/dev/null; rc=$?
-[ -n "$cmd" ] && [ "$rc" -ne 0 ] && [ ! -e "$tmp/o5" ]; check "an empty token file also fails the launch" $?
+mkdir -p "$tmp/bdir"
+[ -n "$cmd" ] && launch "$tmp/o4" PADDOCK_BIN_DIR="$tmp/bdir" >/dev/null
+grep -qx "ARG:$tmp/bdir/worker-rules.md" "$tmp/o4" 2>/dev/null && grep -qx "ARG:$tmp/bdir/worker-settings.json" "$tmp/o4"; check "PADDOCK_BIN_DIR moves the rules and settings folder" $?
 
 # 7. Rules file and template body: English, the held lines are stated.
 for f in "$tpl" "$rules"; do
@@ -128,7 +121,7 @@ js 'process.exit(/herdr-app/.test(t(s.sandbox.filesystem&&s.sandbox.filesystem.d
 js 'process.exit(/herdr-core/.test(t(s.sandbox.filesystem&&s.sandbox.filesystem.denyWrite))?0:1)'; check "sandbox denyWrite covers herdr-core (L-N1)" $?
 js 'process.exit(!("defaultMode" in (s.permissions||{}))?0:1)'; check "settings sets no defaultMode (ignored there, Q10)" $?
 
-# 9. org-start places the template with the secretary template, the rules and settings in the bin folder, and warns when the token is missing.
+# 9. org-start places the template with the secretary template, the rules and settings in the bin folder.
 hcstub=$tmp/hcbin; mkdir -p "$hcstub"
 cat > "$hcstub/hc" <<'EOF3'
 #!/bin/sh
@@ -146,25 +139,19 @@ printf '#!/bin/sh\n' > "$hcstub/claude"; chmod +x "$hcstub/claude" # Issue #268:
 xdg=$tmp/xdg; mkdir -p "$xdg"
 startrun() { # startrun [extra env...]
   env -u APPDATA -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID \
-      -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u PADDOCK_WORKER_GH_TOKEN_FILE \
+      -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN \
       STUB="$tmp/stubstate" PATH="$hcstub:$PATH" XDG_CONFIG_HOME="$xdg" \
       PADDOCK_CORE_CONFIG_DIR="$here/tests/fixtures/core-notes-off" PADDOCK_CORE_TEMPLATES_DIR="$tmp/placed" PADDOCK_APP_MODS_DIR="$tmp/mods" PADDOCK_BIN_DIR="$tmp/placed-bin" PADDOCK_READY_TRIES=2 \
       "$@" bash "$start" 2>&1
 }
 out=$(startrun); rc=$?
-[ "$rc" -eq 0 ]; check "org-start still exits 0 when the token file is missing" $?
+[ "$rc" -eq 0 ]; check "org-start exits 0 with no token file" $?
 [ -f "$tpl" ] && cmp -s "$tpl" "$tmp/placed/worker.md"; check "org-start placed worker.md" $?
 for f in worker-rules.md worker-settings.json; do # Issue #129: beside the org script, not with the templates
   [ -f "$here/templates/$f" ] && cmp -s "$here/templates/$f" "$tmp/placed-bin/$f" && [ ! -e "$tmp/placed/$f" ]; check "org-start placed $f in the bin folder, not the templates folder" $?
 done
 cmp -s "$sec" "$tmp/placed/secretary.md"; check "org-start still places secretary.md" $?
-grep -qi 'warn' <<<"$out" && grep -q "$xdg/paddock/worker-gh-token" <<<"$out"; check "missing token file: warning names the default path" $?
-mkdir -p "$xdg/paddock"; printf 'tok-secret-value\n' > "$xdg/paddock/worker-gh-token"
-out=$(startrun); rc=$?
-[ "$rc" -eq 0 ] && ! grep -qi 'warn' <<<"$out"; check "token file present: no warning" $?
-! grep -q 'tok-secret-value' <<<"$out"; check "org-start never prints the token" $?
-out=$(startrun PADDOCK_WORKER_GH_TOKEN_FILE="$tmp/nowhere"); rc=$?
-[ "$rc" -eq 0 ] && grep -qi 'warn' <<<"$out" && grep -q "$tmp/nowhere" <<<"$out"; check "override path is the one checked" $?
+! grep -qi 'token' <<<"$out"; check "org-start says nothing about a token" $?
 
 # 10. Docs and CI follow the template.
 ! grep -m1 '^Not in it' "$here/docs/design/prototype-1.md" | grep -qi 'the worker template'; check "prototype-1 no longer lists the worker template as not built" $?

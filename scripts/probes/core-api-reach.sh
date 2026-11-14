@@ -15,7 +15,7 @@
 # <trusted-git-project> is a git repository (with a branch `main`) that Claude Code already
 # trusts, so the new worktree raises no folder-trust dialog (Issue #133). If the dialog shows
 # anyway the probe prints "NEEDS-PERSON" and keeps the terminal; answer the dialog and rerun.
-# Needs a running core and secretary, hc, git, bash, the worker token file, and the workers
+# Needs a running core and secretary, hc, git, bash, and the workers
 # folder already trusted. Takes up to 180 s (PADDOCK_PROBE_WAIT to change).
 #
 # Where the paths come from (read at run time, nothing hard-coded here): templates/worker.md

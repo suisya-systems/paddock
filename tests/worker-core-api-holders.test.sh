@@ -38,8 +38,7 @@ cat > "$stub/claude" <<'EOF'
   echo "PADDOCK_ORG=${PADDOCK_ORG-unset}"; echo "GH_TOKEN=${GH_TOKEN-unset}"; } > "$CLAUDE_OUT"
 EOF
 chmod +x "$stub/claude"
-printf 'tok\n' > "$tmp/cfg/paddock/worker-gh-token"
-env -u APPDATA -u PADDOCK_WORKER_GH_TOKEN_FILE -u PADDOCK_BIN_DIR XDG_CONFIG_HOME="$tmp/cfg" \
+env -u APPDATA -u PADDOCK_BIN_DIR XDG_CONFIG_HOME="$tmp/cfg" \
   XDG_DATA_HOME="$tmp/data" PATH="$stub:$PATH" CLAUDE_OUT="$tmp/out" \
   HC_SESSION=s HC_SOCKET=/x/s.sock HC_SCOPE=scope HC_TERMINAL_ID=t9 HC_TERMINAL_SOCKET=/x/s.sock HC_OTHER=1 \
   sh -c "$cmd" >/dev/null 2>&1
@@ -47,8 +46,8 @@ env -u APPDATA -u PADDOCK_WORKER_GH_TOKEN_FILE -u PADDOCK_BIN_DIR XDG_CONFIG_HOM
 for v in $CORE_VARS; do
   ! grep -qx "NAME:$v" "$tmp/out" 2>/dev/null; check "claude does not get $v" $?
 done
-grep -qx "PADDOCK_ORG=$tmp/data/paddock/bin/org" "$tmp/out" 2>/dev/null && grep -qx 'GH_TOKEN=tok' "$tmp/out"
-check "the report path is intact: PADDOCK_ORG and the read-only GH_TOKEN still reach claude" $?
+grep -qx "PADDOCK_ORG=$tmp/data/paddock/bin/org" "$tmp/out" 2>/dev/null && grep -qx 'GH_TOKEN=unset' "$tmp/out"
+check "the report path is intact: PADDOCK_ORG still reaches claude and GH_TOKEN does not" $?
 
 # 2. org-delegate with a stub hc.
 cat > "$stub/hc" <<'EOF'

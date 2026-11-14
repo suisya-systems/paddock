@@ -69,7 +69,7 @@ ROOT=$(pwd)
 [ -f "$ROOT/scripts/org" ] && [ -f "$ROOT/templates/worker.md" ] || die 2 "run from the paddock repository root"
 ORG="$ROOT/scripts/org"
 HERE=$(cd "$(dirname "$0")" && pwd)
-SETUP="sh $HERE/prototype-3-setup.sh" # Issue #267: clones, the workers folder, the token, what a person must do
+SETUP="sh $HERE/prototype-3-setup.sh" # Issue #267: clones, the workers folder, what a person must do
 FIXTURE="$HERE/prototype-3-acceptance.yml" # beside this script: the run may call it from another checkout
 STATE=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
 RUNS=${XDG_STATE_HOME:-$HOME/.local/state}/paddock-proto3
@@ -201,8 +201,6 @@ EOF
   nl=$(grep -rhs -E '^[[:space:]]*notes[[:space:]]*=' "$cfg" 2>/dev/null | head -n 1)
   case "$nl" in *false*) echo "RESULT notes-off: PASS ($nl)" | tee -a "$RUN/prepare.txt" ;;
     *) echo "RESULT notes-off: FAIL (no 'notes = false' under $cfg; set it before the run, decision 0002; a note typed into the secretary counts as a touch)" | tee -a "$RUN/prepare.txt" ;; esac
-  { [ -s "${PADDOCK_WORKER_GH_TOKEN_FILE:-$cfg/../paddock/worker-gh-token}" ] \
-    && echo "RESULT worker-token: PASS (file exists, not read)" || echo "RESULT worker-token: FAIL (no read-only token file; run: $SETUP --repo $repo --project $project --paddock $ROOT; it prints the token page to open and the command that saves the token; see skills/org-start/SKILL.md, Worker token)"; } | tee -a "$RUN/prepare.txt"
   # Trust of the throwaway clone (Q13, reopened): workers are worktrees of it and take its trust. A first-worker dialog ends the run (host rule), so a person answers it once now.
   { if sh "$HERE/prototype-3-setup.sh" --check-trust "$project"; then
       echo "RESULT project-trust: PASS ($project is recorded as trusted)"

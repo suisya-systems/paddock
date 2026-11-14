@@ -1,10 +1,10 @@
 # Worker GitHub access without a hand-made token
 
-Status: comparison, 2026-11-13 (Issue #277, Refs #267). Nothing here is built and nothing is decided: the owner decides. The rule being met is [Q20](open-questions.md#q20-how-is-a-workers-github-access-held-to-read-only): a worker can fetch and pull, and holds nothing it can use to write; GitHub, not a rule the agent could bypass, refuses the write.
+Status: decided 2026-11-14 (Issue #277, Refs #267): the owner chose option D, the local mirror; see [Decision](#decision-2026-11-14-owner). The comparison below is kept as the record of why. The rule being met is [Q20](open-questions.md#q20-how-is-a-workers-github-access-held-to-read-only): a worker can read its base and commit, and holds nothing it can use to write; GitHub, not a rule the agent could bypass, refuses the write.
 
 **Premise check (2026-11-13).** Options are judged on what a Paddock worker does with GitHub: it fetches the base and commits; the secretary pushes, opens the PR and watches CI ([open-questions.md](open-questions.md) line 324). Weigh API reads only for a worker that would make them.
 
-**Today (Q20 (d)).** The person creates a fine-grained personal access token (PAT) with `contents:read` by hand on GitHub and saves it as `worker-gh-token`; the [worker template](../../templates/worker.md) sets `GH_TOKEN` from it and `GH_CONFIG_DIR` to an empty folder. Costs the owner named: the token is made by hand (GitHub has no API to create a fine-grained PAT; the docs only describe pre-filling the creation page), it expires and must be renewed by hand, and the repository list is chosen by hand on a web page. ([managing PATs](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens), read 2026-11-13.)
+**Before the decision (Q20 (d), until 2026-11-14).** The person creates a fine-grained personal access token (PAT) with `contents:read` by hand on GitHub and saved it as `worker-gh-token`; the worker template set `GH_TOKEN` from it and `GH_CONFIG_DIR` to an empty folder. Costs the owner named: the token is made by hand (GitHub has no API to create a fine-grained PAT; the docs only describe pre-filling the creation page), it expires and must be renewed by hand, and the repository list is chosen by hand on a web page. ([managing PATs](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens), read 2026-11-13.)
 
 **Feasibility marks.** *Verified by doc*: the quoted page says it. *Needs probe*: the page is silent or only summarized when read, or the claim is about how Paddock's pieces behave together. No probe was run for this document.
 
@@ -178,7 +178,13 @@ Review point (owner): a developer in a company organization often cannot grant t
 - **C** is no better than the PAT (a token from the second account needs the same approval) and adds an invitation that an organization may restrict.
 - **D** is the only option that no organization setting can stop. Its earlier cost, API reads (CI watching, pull request views), is not a cost in Paddock: the secretary does both (see D).
 
-## Recommendation
+## Decision (2026-11-14, owner)
+
+**D, the local mirror.** A worker holds no GitHub credential. The [worker template](../../templates/worker.md) keeps `GH_CONFIG_DIR` an empty folder, removes the four GitHub token variables and passes no `GH_TOKEN`; the worker reads `origin/*` as the secretary fetched it, and asks the secretary (mailbox, "base is stale") when it needs a newer base. The record of the decision, the reasons and the remaining risks is [Q20](open-questions.md#q20-how-is-a-workers-github-access-held-to-read-only). Measured support: the "Measured" table in D and `worker-git-risks.sh` (the shared `.git` risks; [#323](https://github.com/suisya-systems/paddock/issues/323) removed the shared-config writes).
+
+Still open after the decision: the stale-base request through the real mailbox is not measured; [#324](https://github.com/suisya-systems/paddock/issues/324) (a leftover `config.lock` placeholder after a killed worker); an unauthenticated refusal from GitHub itself was not seen (the sandbox's network allowlist refused first).
+
+## Recommendation (2026-11-13; adopted as the Decision above)
 
 Revised 2026-11-13 after the owner review of D's cost (see D). With the corrected premise, D has no cost that Paddock pays today, and it is the only option with no credential in the worker, no expiry, no key to guard and nothing for an organization to approve or switch off. So:
 
@@ -196,4 +202,4 @@ Probes for D are listed in its section. Probes for A, run only if A is pursued, 
 
 If a D probe fails (for example the worker cannot read the shared refs under its sandbox), fall back to A where installs are allowed, or to the manual token where an owner approves it; its cost is the person's time.
 
-**Not decided here.** The owner leans to D and the probes did not contradict it; the decision is still the owner's, between D and A. Before D is called settled: run the stale-base message through the real mailbox, and, only if wanted, record which paths a worker's commit and rebase write in the project clone. If A is chosen, whether the app's private key may be reachable by the worker (this is what makes the 1-hour expiry workable), together with the Q20 known limit.
+**Left open by the decision.** Run the stale-base message through the real mailbox and, only if wanted, record which paths a worker's commit and rebase write in the project clone. A (the GitHub App, with the question whether its private key may be reachable by the worker and the Q20 known limit) is revisited only when a worker role needs API reads or fetches from GitHub itself.

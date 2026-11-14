@@ -9,7 +9,7 @@
 # <trusted-git-project> is a git repository (with a branch `main`) that Claude Code already
 # trusts, so the new worktree raises no folder-trust dialog (Issue #133). If the dialog
 # shows anyway the probe prints "NEEDS-PERSON" and keeps the terminal; answer the dialog
-# and rerun. Needs a running core and secretary, hc, git, bash, the worker token file, and
+# and rerun. Needs a running core and secretary, hc, git, bash, and
 # the workers folder already trusted. Takes up to 180 s (PADDOCK_PROBE_WAIT to change).
 # It uses the real mailbox (${PADDOCK_STATE_DIR:-~/.local/state/paddock}): one record by the
 # secretary (org-delegate's own start) and two by the worker for task p58-<pid>. It creates

@@ -2,21 +2,16 @@
 # Prepares a host for the Prototype 3 runbook (Issue #267): the one named command for the steps
 # a person did by hand before `prepare` could pass.
 #
-#   sh scripts/probes/prototype-3-setup.sh --repo OWNER/NAME --project DIR [--paddock DIR] [--token-stdin]
+#   sh scripts/probes/prototype-3-setup.sh --repo OWNER/NAME --project DIR [--paddock DIR]
 #
 # It does, and a rerun repeats nothing:
 #   1. clones the throwaway repository OWNER/NAME to --project (gh repo clone), when DIR is missing;
 #   2. makes a clean paddock clone at --paddock (default ~/paddock-run) from PADDOCK_REPO_URL
 #      (default https://github.com/suisya-systems/paddock), or fast-forwards an existing clean one
 #      on main to origin/main. Run `prepare` from that clone;
-#   3. makes the workers folder (PADDOCK_WORKERS_DIR, default ~/paddock-workers);
-#   4. with --token-stdin, saves the read-only worker token (read from stdin, never printed, never
-#      an argument) as mode 600 at PADDOCK_WORKER_GH_TOKEN_FILE, else
-#      ${APPDATA:-${XDG_CONFIG_HOME:-~/.config}}/paddock/worker-gh-token. An existing file is kept.
+#   3. makes the workers folder (PADDOCK_WORKERS_DIR, default ~/paddock-workers).
 # It never writes ~/.claude.json and never touches GitHub beyond the clone.
 # What only a person can do it prints as TODO lines, each with the exact action:
-#   - the token: GitHub has no API for a fine-grained token, so it prints the creation page with
-#     the owner and Contents: read-only filled in (repositories are chosen by hand on that page);
 #   - the folder trust of the throwaway clone (Q13, reopened: trust follows the git repository, not
 #     the workers folder), unless the config under ~ (or CLAUDE_CONFIG_DIR) has it accepted.
 # Never the paddock repository itself as --repo.
@@ -46,11 +41,10 @@ trusted() {
       exit (substr(s, j, n - j + 1) ~ /"hasTrustDialogAccepted" *: *true/) ? 0 : 1 }'
 }
 
-repo= project= paddock=$HOME/paddock-run tokstdin=0
+repo= project= paddock=$HOME/paddock-run
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
-    --token-stdin) tokstdin=1; shift ;;
     --check-trust) [ $# -ge 2 ] || die 2 "$1 needs a value"; trusted "$2"; exit $? ;;
     --repo|--project|--paddock) [ $# -ge 2 ] || die 2 "$1 needs a value"
       case "$1" in --repo) repo=$2 ;; --project) project=$2 ;; *) paddock=$2 ;; esac; shift 2 ;;
@@ -95,27 +89,7 @@ workers=${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}
 mkdir -p "$workers" || die 6 "cannot make $workers"
 echo "ok   workers folder: $workers"
 
-# 4. The worker token (Q20): the same path prepare and org-start look at.
-tokf=${PADDOCK_WORKER_GH_TOKEN_FILE:-${APPDATA:-${XDG_CONFIG_HOME:-$HOME/.config}}/paddock/worker-gh-token}
-if [ -s "$tokf" ]; then
-  echo "ok   worker token: $tokf (kept, not read)"
-elif [ $tokstdin -eq 1 ]; then
-  tok=$(cat)
-  [ -n "$tok" ] || die 6 "nothing on stdin: the token file was not written"
-  (umask 077; mkdir -p "$(dirname "$tokf")" && printf '%s\n' "$tok" > "$tokf.new" && mv -f "$tokf.new" "$tokf") \
-    || die 6 "cannot write $tokf"
-  echo "ok   worker token: saved to $tokf (mode 600, not printed)"
-else
-  todo=1
-  owner=${repo%%/*}
-  echo "TODO worker-token: create a read-only fine-grained token and save it. Open:"
-  echo "  https://github.com/settings/personal-access-tokens/new?name=paddock-worker-read-only&description=Read+only+token+for+paddock+workers&target_name=$owner&expires_in=30&contents=read"
-  echo "  There choose 'Only select repositories' and pick $repo (and any other repository workers may fetch), then Generate token."
-  echo "  Save it (the value is read from stdin, not typed on the command line):"
-  echo "  sh $0 --repo $repo --project '$project' --paddock '$paddock' --token-stdin   # then paste the token, Enter, Ctrl-D"
-fi
-
-# 5. Folder trust of the throwaway clone (Q13): worktrees take the trust of their repository, and
+# 4. Folder trust of the throwaway clone (Q13): worktrees take the trust of their repository, and
 # only the person can answer the dialog.
 if trusted "$project"; then
   echo "ok   folder trust: $project is recorded as trusted"
