@@ -40,7 +40,7 @@ slug() {
   case $s in */*) ;; *) return 0 ;; esac
   case $s in */*/*|*/|/*|*[!A-Za-z0-9._/-]*) return 0 ;; esac
   case ${s%%/*} in ''|-*|*[!A-Za-z0-9-]*) return 0 ;; esac
-  case ${s#*/} in ''|.|..) return 0 ;; esac
+  case ${s#*/} in ''|.|..|*.partial) return 0 ;; esac # NAME.partial would collide with another clone's staging folder
   printf '%s' "$s"
 }
 
@@ -101,7 +101,8 @@ else
   mkdir -p "$dir/$owner" || die 8 "cannot create $dir/$owner"
   [ ! -e "$part" ] || rm -r "$part" # left by an earlier failed run of this script
   err=$(mktemp "${TMPDIR:-/tmp}/org-clone.XXXXXX") || die 8 "cannot create a temporary file"
-  if command -v gh >/dev/null 2>&1; then GIT_TERMINAL_PROMPT=0 gh repo clone "$want" "$part" >/dev/null 2>"$err"
+  # GH_HOST=github.com: a secretary with GH_HOST set to another host must not resolve OWNER/NAME there.
+  if command -v gh >/dev/null 2>&1; then GH_HOST=github.com GIT_TERMINAL_PROMPT=0 gh repo clone "$want" "$part" >/dev/null 2>"$err"
   else GIT_TERMINAL_PROMPT=0 git clone -q "https://github.com/$want.git" "$part" >/dev/null 2>"$err"; fi
   rc=$?
   if [ $rc -eq 0 ] && ! git -C "$part" rev-parse --git-dir >/dev/null 2>&1; then rc=1; echo "the clone is not a git repository" > "$err"; fi
