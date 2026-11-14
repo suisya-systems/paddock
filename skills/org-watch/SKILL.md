@@ -42,4 +42,4 @@ The first that works, per message:
 - A stopped core stops the watcher with it, and nothing says so.
 - The first-message-not-sent case of a launch is not visible to `hc get`; the N-minute no-status rule catches that terminal later.
 - A watcher started during a freeze waits N minutes before telling, since "unchanged" is what it saw itself.
-- Measured on the host (WSL2, powershell.exe 5.1): toasts from the person's shell and from a kept terminal by the absolute path reached the Windows notification centre (shown as from Windows PowerShell); by name from the kept terminal it was not found. Not confirmed: whether the sound played. Not measured: a long run, or a core with many terminals ([probe](../../scripts/probes/toast-from-kept-terminal.sh)).
+- Measured on the host (WSL2, powershell.exe 5.1): toasts from the person's shell and from a kept terminal by the absolute path reached the Windows notification centre (shown as from Windows PowerShell); by name from the kept terminal it was not found. Not confirmed: whether the sound played. Not measured: a long run, or a core with many terminals (`scripts/probes/toast-from-kept-terminal.sh`).
