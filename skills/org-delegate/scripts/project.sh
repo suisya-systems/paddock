@@ -1,6 +1,6 @@
-# Sourced by org-delegate and org-pull-request (Issue #186). Needs awk.
+# Sourced by org-delegate and org-pull-request. Needs awk.
 # project_lookup <name>: reads the row named <name> in projects.md and sets project_path, project_secret and
-# project_base (empty when the row or the table has no base or secret-block column, Issue #165). Returns 1 when there is no such row
+# project_base (empty when the row or the table has no base or secret-block column). Returns 1 when there is no such row
 # or its path is empty, 2 when the file is missing. The header row names the columns (name, path,
 # base; any order, other columns ignored). projects.md is in the paddock config folder (Q14);
 # PADDOCK_PROJECTS_FILE overrides it.

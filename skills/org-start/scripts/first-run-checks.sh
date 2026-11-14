@@ -1,5 +1,5 @@
 # First-run checks shared by org-start (and --check), prototype-3.sh prepare and prototype-3-setup.sh
-# (Issue #328, decision 0007). Source it (POSIX sh); it defines functions only and runs nothing.
+# (decision 0007). Source it (POSIX sh); it defines functions only and runs nothing.
 # Every check is read-only: it never writes the core's config (L-N1) and never calls hc.
 
 # fr_trusted DIR: is DIR itself recorded as trusted in the agent's config? Not a folder above it: trust
@@ -21,7 +21,7 @@ fr_trusted() {
       exit (substr(s, j, n - j + 1) ~ /"hasTrustDialogAccepted" *: *true/) ? 0 : 1 }'
 }
 
-# fr_notes_ok CONFDIR: Issue #264 (decision 0002). Only config.toml counts (the file the core reads), and
+# fr_notes_ok CONFDIR: (decision 0002) only config.toml counts (the file the core reads), and
 # only its top level: lines before the first [table] heading. On failure FR_NOTES_FIX holds the fix.
 fr_notes_ok() {
   awk '/^[[:space:]]*\[/{exit} /^[[:space:]]*notes[[:space:]]*=[[:space:]]*false([[:space:]#]|$)/{f=1} END{exit !f}' "$1/config.toml" 2>/dev/null && return 0
@@ -29,7 +29,7 @@ fr_notes_ok() {
   return 1
 }
 
-# fr_core_path: Issue #305. Every terminal takes the running core's PATH; without hc's folder on it the
+# fr_core_path: Every terminal takes the running core's PATH; without hc's folder on it the
 # hooks exit 127 and no approval card appears. Read from <proc>/<core pid>/environ (Linux and WSL only),
 # never from this shell's PATH (the Run 6 case) and with no hc call. PADDOCK_PROC_DIR replaces /proc in tests.
 # Returns 0 hc is on the core's PATH, 1 it is not (FR_PATH_FIX), 2 cannot tell (FR_PATH_WHY).

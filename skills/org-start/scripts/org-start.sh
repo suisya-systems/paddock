@@ -80,13 +80,13 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 cfg=${XDG_CONFIG_HOME:-$HOME/.config}
 [ -n "${APPDATA:-}" ] && cfg=$APPDATA # Windows (Git Bash)
 templates=${PADDOCK_CORE_TEMPLATES_DIR:-$cfg/herdr-core/templates}
-# Issue #328: the first-run checks (notes, core PATH, folder trust) are shared with prepare and setup.
+# the first-run checks (notes, core PATH, folder trust) are shared with prepare and setup.
 . "$(dirname "${BASH_SOURCE[0]}")/first-run-checks.sh"
-# Issue #264 (decision 0002): the core's child notes must be off. Never written here (the secretary may not
+# Decision 0002: the core's child notes must be off. Never written here (the secretary may not
 # write the core's config, L-N1).
 coreconf=${PADDOCK_CORE_CONFIG_DIR:-$cfg/herdr-core}
 
-if [ -n "$check" ]; then # Issue #328: every step, read-only; the first TODO does not hide the others
+if [ -n "$check" ]; then # every step, read-only; the first TODO does not hide the others
   todo=0
   ok() { echo "ok $1: $2"; }
   fix() { echo "TODO $1: $2"; todo=1; }
@@ -112,15 +112,15 @@ if [ -n "$check" ]; then # Issue #328: every step, read-only; the first TODO doe
 fi
 
 fr_notes_ok "$coreconf" || die 8 "herdr-core's notes are on: $FR_NOTES_FIX"
-# Issue #305, decision 0007: hc must be on the running core's PATH. Read from the core's own environment;
+# Decision 0007: hc must be on the running core's PATH. Read from the core's own environment;
 # silent where /proc is not readable (Linux and WSL only) or no core runs yet (the first hc starts one from here).
 fr_core_path || { [ $? -eq 2 ] || die 10 "$FR_PATH_FIX"; }
-# Issue #246: on WSL, herdr-app for Windows reads the Windows user's .config/herdr-app and sees this
+# on WSL, herdr-app for Windows reads the Windows user's .config/herdr-app and sees this
 # core as another machine (wsl). A herdr-app on PATH that is not an .exe is a Linux app: WSL's folder.
 app=$(command -v herdr-app 2>/dev/null); appcfg=$cfg/herdr-app; appmachine=
 # readlink only on a found app: some readlink builds answer "" with the current folder.
 case "${app:+$(readlink -f "$app" 2>/dev/null)}" in ""|*.exe) winapp=1 ;; *) winapp= ;; esac
-# Issue #270: a Linux herdr-app on PATH looks for the window at its own socket (HERDR_APP_HOME or
+# a Linux herdr-app on PATH looks for the window at its own socket (HERDR_APP_HOME or
 # ~/.config/herdr-app). The Windows window's socket is a file in the Windows user's folder, which WSL
 # cannot connect to but can see: when WSL has none and Windows has one, the Windows program is used.
 lsock=${HERDR_APP_HOME:-${HOME:-}/.config/herdr-app}/herdr-app.sock; wsock=
@@ -143,7 +143,7 @@ fi
 apppath() { if [ -n "$appmachine" ]; then wslpath -w "$1"; else printf '%s\n' "$1"; fi; } # a path herdr-app reads
 mods=${PADDOCK_APP_MODS_DIR:-$appcfg/mods}
 layouts=${PADDOCK_APP_LAYOUTS_DIR:-$(dirname "$mods")/layouts} # beside mods: an overridden mods folder never touches the real layouts
-# Issue #128: the org script goes where a worker may read it and may not write (see worker-settings.json).
+# the org script goes where a worker may read it and may not write (see worker-settings.json).
 orgbin=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}
 case "$orgbin" in /*) ;; *) die 2 "PADDOCK_BIN_DIR must be an absolute path: $orgbin" ;; esac
 tries=${PADDOCK_READY_TRIES:-15}
@@ -152,7 +152,7 @@ name=${PADDOCK_SECRETARY_NAME:-secretary} # terminal name only; the template sta
 # 1. Reuse the core (this starts one from this shell if none runs).
 hc ls >/dev/null 2>&1 || die 5 "cannot reach the herdr core (hc ls failed)"
 
-# Issue #268: a terminal takes PATH from the core's holder, which may lack claude's folder. Record the
+# a terminal takes PATH from the core's holder, which may lack claude's folder. Record the
 # absolute path found here; the templates exec it (and fall back to plain claude if the file is stale).
 claudebin=$(command -v claude 2>/dev/null)
 case "$claudebin" in /*) ;; *) die 9 "claude not found on PATH in this shell: put its folder on PATH (often ~/.local/bin) and run org-start again" ;; esac
@@ -166,19 +166,19 @@ pt=$(cd -P "$templates" && pwd) && pb=$(cd -P "$orgbin" && pwd) || die 6 "cannot
 case "$pb/" in "$pt"/*) die 2 "PADDOCK_BIN_DIR must not be the templates folder or inside it: $orgbin" ;; esac
 cp -f "$root/templates/secretary.md" "$templates/secretary.md" || die 6 "cannot copy the secretary template"
 cp -f "$root/templates/worker.md" "$templates/worker.md" || die 6 "cannot copy the worker template"
-# The org commands (Issue #60), and the worker's rules and settings files its template command names
-# (Q10, Q12): a worker may read this folder and may not write it (worker-settings.json, Issue #128).
-# Not in the templates folder: hc lists every *.md there as a template (Issue #129).
+# The org commands, and the worker's rules and settings files its template command names
+# (Q10, Q12): a worker may read this folder and may not write it (worker-settings.json).
+# Not in the templates folder: hc lists every *.md there as a template.
 for f in scripts/org scripts/second-model-review.sh scripts/hooks/premise-reminder.sh templates/secretary-settings.json templates/worker-rules.md templates/worker-settings.json; do
   cp -f "$root/$f" "$orgbin/${f##*/}" || die 6 "cannot copy $f to $orgbin"
 done
 printf '%s\n' "$claudebin" > "$orgbin/claude-path" || die 6 "cannot write $orgbin/claude-path"
-# Issue #298: same for the review gate's CLI, which often lives in a Node version manager's folder. Optional:
+# same for the review gate's CLI, which often lives in a Node version manager's folder. Optional:
 # without it the gate ends "unavailable" and prepare's codex-cli check says so. Drop a stale record.
 rm -f "$orgbin/codex-path" || die 6 "cannot remove the old $orgbin/codex-path"
 codexbin=$(command -v codex 2>/dev/null)
 case "$codexbin" in /*) printf '%s\n' "$codexbin" > "$orgbin/codex-path" || die 6 "cannot write $orgbin/codex-path" ;; esac
-# Copies an older org-start placed beside the templates (Issue #129).
+# Copies an older org-start placed beside the templates.
 rm -f "$templates/worker-rules.md" "$templates/worker-settings.json" \
   || die 6 "cannot remove the old worker-rules.md / worker-settings.json from $templates"
 
@@ -191,14 +191,14 @@ mkdir -p "$mods/org-agents" || die 6 "cannot create $mods/org-agents"
 cp -f "$root/mods/org-agents/main.js" "$root/mods/org-agents/mod.json" "$mods/org-agents/" \
   || die 6 "cannot copy the org-agents mod"
 
-# Issue #195: the screen. The cockpit mod and the layout go to the app's host too.
+# the screen. The cockpit mod and the layout go to the app's host too.
 mkdir -p "$mods/org-cockpit" "$layouts" || die 6 "cannot create $mods/org-cockpit or $layouts"
 cp -f "$root/mods/org-cockpit/main.js" "$root/mods/org-cockpit/mod.json" "$mods/org-cockpit/" \
   || die 6 "cannot copy the org-cockpit mod"
 # Keep the "secretary" prop (a secretary on another machine) the person put in the installed layout.
 # ponytail: the first prop found goes into every org-cockpit block; per-block props if they differ.
 keep=$(grep -Eo '"secretary"[[:space:]]*:[[:space:]]*"[^"]*"' "$layouts/paddock.json" 2>/dev/null | head -n 1)
-# Issue #246: when the app sees this core as another machine, the prop names this secretary there.
+# when the app sees this core as another machine, the prop names this secretary there.
 # The machine: PADDOCK_APP_MACHINE, else the one in the installed prop (a stale name is replaced), else wsl.
 machine=${PADDOCK_APP_MACHINE:-$(printf '%s' "$keep" | sed -n 's|.*:[[:space:]]*"\([^/"]*\)/.*|\1|p')}
 machine=${machine:-$appmachine}
@@ -214,7 +214,7 @@ if [ -n "$app" ]; then
   "$app" check "$(apppath "$mods/org-cockpit")" >/dev/null 2>&1 \
     || echo "org-start: warning: herdr-app check failed for $mods/org-cockpit (run it by hand to see why)" >&2
   echo "org-start: to open the screen: $(printf '%q' "$app") do layout.switch '{\"name\":\"paddock\"}'"
-  # Issue #270: switch now, and say which window sockets were looked for. A failure only warns.
+  # switch now, and say which window sockets were looked for. A failure only warns.
   sw=$("$app" do layout.switch '{"name":"paddock"}' 2>&1) \
     && echo "org-start: switched the screen to the paddock layout with $app" \
     || echo "org-start: warning: layout.switch failed: $sw" >&2
@@ -224,19 +224,19 @@ if [ -n "${WSL_DISTRO_NAME:-}" ] && [ -n "$wsock" ]; then
 fi
 
 # 3. Start the secretary unless one exists. Never stops or restarts the core.
-# Issue #192: a kept terminal that has finished still holds the name; remove it first.
+# a kept terminal that has finished still holds the name; remove it first.
 if hc get --json "$name" 2>/dev/null | grep -Eq '"state": *"finished"'; then
   hc rm "$name" >/dev/null 2>&1 || die 5 "hc rm $name failed (the finished secretary terminal)"
   echo "org-start: removed the finished $name terminal"
 fi
-# Q9, Issue #193: unless it is auto, the conversation language (org config) ends the launch task.
+# Q9: unless it is auto, the conversation language (org config) ends the launch task.
 lang=$(bash "$root/scripts/org" --as secretary config get conversation_language 2>/dev/null)
 task=; [ -z "$lang" ] || [ "$lang" = auto ] || task="Conversation language: $lang"
 started=
 if hc get "$name" >/dev/null 2>&1; then
   echo "org-start: $name already exists; not starting another"
 else
-  # Issue #130: --cwd, so the secretary finds scripts/org and skills/*/scripts from any starting folder.
+  # --cwd, so the secretary finds scripts/org and skills/*/scripts from any starting folder.
   hc run --bg --keep --name "$name" --cwd "$root" secretary ${task:+"$task"} || die 5 "hc run failed for the secretary"
   started=1
 fi
@@ -261,8 +261,8 @@ else
   echo "org-start: warning: hc run failed for $wname; nobody will be told outside the window" >&2
 fi
 
-# 4. Readiness: hc get shows a status object. (The CLAUDE_CODE_CHILD_SESSION check is probe #52.)
-# Issue #244: a new root shows Claude Code's folder-trust dialog and no status. Q13 (a) allows
+# 4. Readiness: hc get shows a status object.
+# a new root shows Claude Code's folder-trust dialog and no status. Q13 (a) allows
 # answering it once for the secretary's own root (never for a worktree): read, down, read again,
 # enter only with the cursor on "Yes" (the default is "No, exit"). The first message did not arrive:
 # hc sends the template body plus a blank line and the task, so both are sent again. Only for a
@@ -290,7 +290,7 @@ $task}" >/dev/null 2>&1 \
   fi
   i=$((i + 1)); sleep 1
 done
-# Issue #269: say why. The terminal's exit state and its last output line, from hc get --json / hc read.
+# say why. The terminal's exit state and its last output line, from hc get --json / hc read.
 info=$(hc get --json "$name" 2>/dev/null)
 code=$(printf '%s' "$info" | sed -n 's/.*"exit_code": *\(-\{0,1\}[0-9][0-9]*\).*/\1/p' | head -n 1)
 last=$(hc read "$name" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -n 1)

@@ -54,7 +54,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-if [ -n "$project" ]; then # Issue #186: only the row's base is used here (the worktree is the worker's)
+if [ -n "$project" ]; then # only the row's base is used here (the worktree is the worker's)
   . "$(dirname "${BASH_SOURCE[0]}")/../../org-delegate/scripts/project.sh"
   project_lookup "$project"; rc=$?
   [ "$rc" -ne 2 ] || die 2 "--project $project: projects.md does not exist (set PADDOCK_PROJECTS_FILE)"
@@ -82,7 +82,7 @@ sha=$(git -C "$wt" rev-parse HEAD) || die 2 "$wt is not a git worktree"
 # 1. push (from the worktree)
 git -C "$wt" push origin "$branch" >&2 || die 5 "git push origin $branch failed"
 
-# 1b. Issue #300: the task's last diff-review record in the codex-gate history. Unless it is
+# 1b. the task's last diff-review record in the codex-gate history. Unless it is
 # codex_round_passed (or there is none), the body itself says the review did not run, so a body
 # file written without that still carries it. Needs --task-id; a design review is not this review.
 if [ -z "$pr" ] && [ -n "$task" ]; then
@@ -121,7 +121,7 @@ while [ "$tries" -gt 0 ]; do
 done
 [ -n "$run" ] || die 7 "no CI run for $sha after ${PADDOCK_RUN_TRIES:-10} tries"
 
-# 3b. watch it as a child, then wait: measured in MON-12 (Issue #55).
+# 3b. watch it as a child, then wait: measured in MON-12.
 name=ci-$pr
 hc run --bg --rm --no-notify --name "$name" -- gh run watch "$run" --repo "$repo" --exit-status >/dev/null \
   || die 8 "hc run could not start the watcher $name"
@@ -129,8 +129,9 @@ res=$(hc wait "$name" 2>&1 | tr -d '\n')
 code=$(printf '%s' "$res" | sed -n 's/.*"exit_code": *\([0-9][0-9]*\).*/\1/p')
 [ -n "$code" ] || die 8 "no integer exit_code in the hc wait answer: $res"
 
-# 4. ci_completed through scripts/org (Issue #168): the secretary's folder, seq and lock.
-org=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/org
+# 4. ci_completed through scripts/org: the secretary's folder, seq and lock.
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+org=$root/scripts/org
 targs=(); [ -z "$task" ] || targs=(--task "$task")
 bash "$org" --as secretary ci_completed --pr "$pr" --sha "$sha" --run-id "$run" --exit-code "$code" "${targs[@]}" \
   || die 12 "the ci_completed line could not be written (scripts/org --as secretary ci_completed)"

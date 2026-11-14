@@ -2,7 +2,7 @@
 # org-escalation: the secretary's side of a worker's question or prompt. `ask` records an entry in
 # org-state.approvals; `answer` forwards the person's answer to the worker through the
 # mailbox (or, for a prompt, as one key after a fresh screen read) and removes the entry.
-# `prompt` answers a prompt in the policy list itself (L-N3, Issue #260). Needs bash, awk, sed and tr; the documents go through
+# `prompt` answers a prompt in the policy list itself (L-N3). Needs bash, awk, sed and tr; the documents go through
 # scripts/org (hc connect). See ../SKILL.md. Run it from the secretary.
 set -u
 export LC_ALL=C
@@ -63,7 +63,7 @@ USAGE
 # in $ESC_ENTRY. Exit 3 = the value is not a JSON object, 4 = id not found (add: id exists).
 if [ "${1:-}" = _edit ]; then
   mode=${2:-}; id=${3:-}
-  if [ "$mode" = setlang ]; then # $id is the code: set the top-level conversation_lang (Issue #284)
+  if [ "$mode" = setlang ]; then # $id is the code: set the top-level conversation_lang
     v=$(cat | tr -d '\n'); case $v in ''|null|[[:space:]]null*) printf '{"conversation_lang":"%s"}\n' "$id"; exit 0 ;; esac
     case $v in [[:space:]]*|'{'*) ;; *) exit 3 ;; esac
     case $v in *'"conversation_lang"'[[:space:]]:*|*'"conversation_lang":'*) printf '%s\n' "$v" | sed -E "s/\"conversation_lang\" *: *(null|\"[^\"]*\")/\"conversation_lang\":\"$id\"/" ;;
@@ -155,7 +155,8 @@ fi
 die() { code=$1; shift; echo "org-escalation: $*" >&2; exit "$code"; }
 
 self=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")
-org=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/scripts/org
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+org=$root/scripts/org
 secretary() { bash "$org" --as secretary "$@"; }
 
 valid_id() { case "$1" in ''|-*|*[!a-z0-9_-]*) return 1 ;; esac; }
@@ -166,7 +167,7 @@ jstr() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 psum() { printf '%s' "$1" | cksum | tr ' ' -; }
 # block <screen>: the dialog, on one line: its non-empty lines from the last rule line (only ─) to the end,
 # trailing blanks cut; with no rule line, the whole screen. What a prompt entry records and what answer
-# compares; the sum, not the text, so the document's escaping does not matter. The host check of #260 saw
+# compares; the sum, not the text, so the document's escaping does not matter. The host check saw
 # the transcript above the dialog change between two reads, so it is left out.
 # ponytail: a request taller than the screen is compared only where it shows; hc read --lines can widen it.
 dialog() { printf '%s\n' "$1" | sed 's/[[:space:]]*$//' | grep -v '^$' \
@@ -203,7 +204,7 @@ edit() { # edit <mode> <id> : run _edit on the current value; status 3 and 4 pas
   docval | bash "$self" _edit "$1" "$2"
 }
 update() { # update <mode> <id>: re-read, apply, set (scripts/org retries on a version conflict)
-  # Issue #77: the history line that lets `org rebuild` replay this change is written by the same
+  # the history line that lets `org rebuild` replay this change is written by the same
   # call, inside the document's lock. The task is the id without its UTC suffix
   # (the id is <task_id>-<UTC yyyymmddThhmmssZ>).
   local t k x; t=$(printf '%s' "$2" | sed 's/-[0-9]\{8\}T[0-9]\{6\}Z$//')
@@ -268,7 +269,7 @@ case $cmd in
       [ "$(psum "$(block "$scr")")" = "$sum" ] \
         || die 10 "the screen of $w no longer shows the prompt recorded in $id; nothing pressed, entry kept. Read it with prompt --task $wtask"
       # One cursor line in the dialog, and it is the one-time Yes as a whole line (not "Yes, and ...").
-      # The transcript above the dialog shows sent messages with the same ❯ (host check of #260).
+      # The transcript above the dialog shows sent messages with the same ❯ (host check).
       [ "$key" = esc ] || { [ "$(dialog "$scr" | grep -c '^ *❯')" = 1 ] \
         && dialog "$scr" | grep -Eq '^ *❯ *1\. Yes *$'; } \
         || die 10 "the cursor of $w is not on '1. Yes' alone; nothing pressed, entry $id kept"
@@ -278,7 +279,7 @@ case $cmd in
     fi
     secretary send_message "w-$wtask" "Answer to your question ($id): $t" >/dev/null \
       || die 8 "the answer could not be put in the mailbox of w-$wtask; entry $id kept"
-    # Issue #282: a worker that ended its turn never reads its mailbox. --if idle: a working worker
+    # a worker that ended its turn never reads its mailbox. --if idle: a working worker
     # is not interrupted (it reads the mail itself), and a refused nudge does not fail the answer.
     # ponytail: only status "idle"; a worker with no status or blocked is left to the secretary's wait.
     hc get --json "w-$wtask" 2>/dev/null | tr -d '\n' | grep -Eq '"status": *\{[^{}]*"state": *"idle"' \
@@ -291,7 +292,7 @@ case $cmd in
     w=w-$task
     scr=$(hc read "$w" 2>/dev/null) || die 11 "cannot read the screen of $w; nothing pressed"
     # The policy list (L-N3): the only prompts answered without the person, each by its whole option
-    # lines, never with a "Do you want" question on the screen. Keys as org-start (#254): read, down,
+    # lines, never with a "Do you want" question on the screen. Keys as org-start: read, down,
     # read again, enter only with the cursor on the expected line.
     # opt <screen> <line ERE>: the line is an option line of its own (cursor or not, numbered or not).
     opt() { printf '%s\n' "$1" | grep -Eq "^ *(❯ *)?([0-9]\\. *)?$2 *\$"; }
@@ -306,7 +307,7 @@ case $cmd in
       case $j in *'"name"'*) printf '%s' "$j" | tr -d '\n' | grep -Eq '"status": *\{' || nostatus=1 ;; esac
       if [ -n "$nostatus" ] && opt "$1" 'No, exit' && opt "$1" 'Yes, I trust this folder'; then echo folder-trust
       # auto-mode-setup: Claude Code's "Teach auto mode about your environment?" (Yes / Not now /
-      # Don't show again), shown once to an auto-mode worker; answered "Don't show again" (owner, #260).
+      # Don't show again), shown once to an auto-mode worker; answered "Don't show again" (owner).
       elif printf '%s\n' "$1" | grep -Eq '^ *Teach auto mode about your environment\? *$' \
            && opt "$1" 'Not now' && opt "$1" "Don't show again"; then echo auto-mode-setup
       fi

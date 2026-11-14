@@ -47,8 +47,7 @@ org_state_doc() {
 }
 # work_lines <doc>: a "work<TAB>id<TAB>worktree<TAB>head<TAB>dirty<TAB>task<TAB>title" line per work
 # entry that has a worktree, head and dirty read from the worktree now. Fails when the work array
-# or an entry in it is not closed. Entries are cut out with a scan that skips string contents
-# (Issue #182), so braces, brackets and commas inside a task or title do not end an entry.
+# or an entry in it is not closed. Entries are cut out with a scan that skips string contents, so braces, brackets and commas inside a task or title do not end an entry.
 # Fields are read with sed from the one entry; flat entries are assumed.
 work_lines() {
   local doc=$1 objs e id wt tk ti h d
@@ -76,7 +75,7 @@ work_lines() {
   done
 }
 
-# sweep_config_lock <worktree>...: Issue #324. Call it after the terminals of those workers are ended (hc kill, hc rm).
+# sweep_config_lock <worktree>...: call it after the terminals of those workers are ended (hc kill, hc rm).
 # Claude Code's sandbox leaves a 0-byte read-only <git-common-dir>/config.lock for the whole of every command a worker
 # runs, and it stays when the terminal is killed mid-command (measured 2026-11-14, docs/design/worker-github-access.md D);
 # every later git config write in that clone then fails. The file's attributes cannot tell a live command from a leftover,

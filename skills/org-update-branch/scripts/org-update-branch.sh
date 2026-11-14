@@ -45,7 +45,7 @@ git -C "$wt" rev-parse -q --verify "refs/remotes/origin/$base^{commit}" >/dev/nu
 
 if git -C "$wt" merge-base --is-ancestor "origin/$base" HEAD; then echo "already up to date with origin/$base"; exit 0; fi
 
-# The paths Claude Code's sandbox makes read-only in a worktree (measured in GT-3, Issue #50); a
+# The paths Claude Code's sandbox makes read-only in a worktree (measured in GT-3); a
 # merge over one of them stops the same way a rebase does. ponytail: a fixed list; read it from the
 # placed settings if the sandbox ever protects more.
 if [ -n "${PADDOCK_ORG:-}" ]; then

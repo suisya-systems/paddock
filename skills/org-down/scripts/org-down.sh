@@ -58,7 +58,7 @@ if term_json "$wn" | grep -Eq '"paddock_role": *"watcher"'; then
   hc rm "$wn" >/dev/null 2>&1 || die 5 "hc rm $wn failed; the core was not stopped"
   echo "org-down: ended $wn"
 fi
-# Issue #324: only after every worker is ended, so none of them counts as a live worker of its clone.
+# only after every worker is ended, so none of them counts as a live worker of its clone.
 [ "${#wts[@]}" -eq 0 ] || sweep_config_lock "${wts[@]}"
 
 # 3. The person's core is stopped only when asked.
