@@ -17,7 +17,10 @@ cmd=$(printf '%s\n' "$payload" | sed -n 's/.*"command" *: *"\(\([^"\\]\|\\.\)*\)
 text=$(printf '%s\n' "$cmd" | sed 's/\\n/\
 /g; s/\\t/	/g; s/\\"/"/g; s/\\\\/\\/g' | awk '
   # drop heredoc bodies: after a line with <<WORD (not <<<), skip up to the line that is WORD
-  n > 0 { l = $0; if (strip[q]) sub(/^\t+/, "", l); if (l == word[q]) { q++; if (q > n) n = 0 } ; next }
+  # an unquoted word (<<EOF) still runs $(...) and `...` in the body: keep those
+  n > 0 { l = $0; if (strip[q]) sub(/^\t+/, "", l); if (l == word[q]) { q++; if (q > n) n = 0; next }
+          if (!lit[q]) while (match(l, /\$\([^)]*\)|`[^`]*`/)) { print substr(l, RSTART, RLENGTH); l = substr(l, RSTART + RLENGTH) }
+          next }
   {
     print; s = $0
     while ((i = index(s, "<<")) > 0) {
@@ -25,14 +28,14 @@ text=$(printf '%s\n' "$cmd" | sed 's/\\n/\
       if (substr(pre, length(pre)) == "<" || substr(s, 1, 1) == "<") { sub(/^<+/, "", s); continue }
       d = 0; if (substr(s, 1, 1) == "-") { d = 1; s = substr(s, 2) }
       if (!match(s, /^[ \t]*["\047]?[A-Za-z_][A-Za-z0-9_]*["\047]?/)) continue
-      w = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH); gsub(/[ \t"\047]/, "", w)
+      w = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH); l = (w ~ /["\047]/); gsub(/[ \t"\047]/, "", w)
       if (n == 0) q = 1
-      n++; word[n] = w; strip[n] = d
+      n++; word[n] = w; strip[n] = d; lit[n] = l
     }
   }' | tr '\n' ';' | sed "s/-c[[:space:]]*'\([^']*\)'/-c \1/g; s/-c[[:space:]]*\"\([^\"]*\)\"/-c \1/g")
-# a command substitution runs even inside double quotes: keep it; a quoted single word (sleep "60") is
+# a command substitution runs even inside double quotes (not single): keep it; a quoted single word (sleep "60") is
 # an argument, not prose: unquote it; a quoted string with a space in it is text: cut it out
-subs=$(printf '%s\n' "$text" | grep -o '\$([^)]*)\|`[^`]*`' | tr '\n' ';')
+subs=$(printf '%s\n' "$text" | sed "s/'[^']*'//g" | grep -o '\$([^)]*)\|`[^`]*`' | tr '\n' ';')
 text="$(printf '%s\n' "$text" | sed -E "s/'([^'[:space:]]*)'/\\1/g; s/\"([^\"[:space:]]*)\"/\\1/g; s/'[^']*'/''/g; s/\"[^\"]*\"/\"\"/g");$subs"
 b='(^|[^[:alnum:]_.-])'   # a command word starts here
 # what a background terminal runs (hc run --bg ...) does not block: cut it out for the blocking checks
@@ -48,7 +51,7 @@ printf '%s\n' "$fg" | grep -Eq "${b}gh[[:space:]]+(pr[[:space:]]+checks[^;&|]*[[
 printf '%s\n' "$fg" | grep -Eq "${b}(while|until|for)[[:space:]].*${b}do([[:space:]]|;)(.*${b})?sleep([[:space:]]|;|$)" &&
   refuse "a polling loop blocks you: $wait_hint"
 # sleep: more than 5 seconds, a unit of minutes or more, or infinity
-printf '%s\n' "$fg" | grep -Eo "${b}sleep[[:space:]]+[^;&|)]*" | sed 's/.*sleep[[:space:]]*//' | tr ' \t' '\n\n' |
+printf '%s\n' "$fg" | grep -Eo "${b}sleep[[:space:]]+[^;&|)\`]*" | sed 's/.*sleep[[:space:]]*//' | tr ' \t' '\n\n' |
   awk '/^[0-9.]+s?$/ { if ($0 + 0 > 5) bad = 1; next } /^[0-9.]+[mhd]$/ || /^inf/ { bad = 1 } END { exit !bad }' &&
   refuse "a sleep over 5 seconds blocks you: $wait_hint"
 exit 0

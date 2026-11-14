@@ -37,6 +37,8 @@ refused 'result=`gh run watch 5`' 'CI watch'
 # the old refusal set, unchanged
 refused 'result="$(hc keys w-t1 enter)"' 'L-N3'
 refused 'hc keys "w-t1" enter' 'L-N3'
+refused $'cat <<EOF\n$(hc keys w-t1 enter)\nEOF' 'L-N3'
+refused $'cat <<EOF\nx `sleep 60` y\nEOF' 'sleep over'
 for c in 'hc keys w-t1 enter' '/usr/local/bin/hc keys t3 esc' 'hc send --force w-t1 yes' 'hc send w-t1 -f yes'; do
   refused "$c" 'L-N3'
 done
@@ -56,6 +58,8 @@ allowed 'bash skills/org-delegate/scripts/org-delegate.sh --task-id t2 --task "N
 allowed "git commit -m 'stop the secretary from a sleep 600 loop: while true; do sleep 9; done'"
 allowed 'cat <<< "sleep 60"'
 allowed 'echo "$HOME: no sleep 60 here, $(date)"'
+allowed "git commit -m 'Document why \$(sleep 60) blocks the secretary'"
+allowed $'cat <<\'EOF\'\n$(sleep 60) and `gh run watch` are text here\nEOF'
 # a heredoc ends at its word: a blocking call after it is still seen
 refused $'cat > f <<EOF\ntext\nEOF\nsleep 60' 'sleep over'
 exit $fail
