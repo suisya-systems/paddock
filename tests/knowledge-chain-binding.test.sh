@@ -30,4 +30,6 @@ chain >/dev/null; check "a URL in a script does not fail link 4" $?
 build; printf "x" > "$k/raw/archive/$(date +%F)-dup.md"
 printf "## Facts\nf\n\n## Judgment\nj\n\n## Grounds\ng\n\n## Where it applies\nw\n" | bash "$script" save --task t9 --topic dup >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 4 ] && [ ! -e "$k/raw/$(date +%F)-dup.md" ]; check "save refuses a name that exists in raw/archive" $?
+build; sed -i "s/^- \*\*when\*\*:.*/- **when**: Use it. Also then./" "$k/skill-candidates.md"
+out=$(chain); rc=$?; [ "$rc" -ne 0 ] && grep -q "link 2" <<<"$out"; check "a two-sentence trigger in the queue entry fails link 2" $?
 exit $fail

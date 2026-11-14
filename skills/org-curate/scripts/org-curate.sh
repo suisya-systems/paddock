@@ -143,7 +143,7 @@ case "$cmd" in
     case "$ntasks" in *MISSING*) bad 2 "the entry lists a note that does not exist: $(grep MISSING <<<"$ntasks" | head -1)" ;; esac
     [ "$(grep -c . <<<"$ntasks")" -ge 3 ] || bad 2 "the entry lists notes from fewer than 3 different tasks"
     files=; for x in $notes; do files="$files ${x##*/}"; done
-    [ -n "$(field "$p" when)" ] || bad 2 "the entry has no trigger sentence"
+    w=$(field "$p" when); [ -n "$w" ] && ! grep -qE "[.!?][[:space:]]+[^[:space:]]" <<<"$w" || bad 2 "the entry has no trigger, or it is more than one sentence"
     echo "org-curate: link 2 ok: queue entry lists the notes and the trigger"
     # 3. Decision: approved, with a decision date.
     [ "$(field "$p" status)" = approved ] || bad 3 "the entry's status is '$(field "$p" status)', not approved"
