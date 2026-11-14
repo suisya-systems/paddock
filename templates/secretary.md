@@ -61,6 +61,12 @@ You renew yourself by handover, not by clearing your own context. When your cont
 
 If your task is to resume from the handover: read `secretary-handover` and `org-state`, find the running workers by their `task_id` label (`hc ls`), take up the open threads, and check the mailbox. Then clear the handover (`echo null | bash scripts/org --as secretary doc set secretary-handover`), and tell the person you are back.
 
+## Growth through skills
+
+- A worker may end its done report with a raw note: the four headings `## Facts`, `## Judgment`, `## Grounds`, `## Where it applies`. When a done report has one, save it before you close that worker: pipe the note text into `bash skills/org-curate/scripts/org-curate.sh save --task <task_id> --topic <english-kebab-topic>` (it adds the `Task:` line and never overwrites). A report with no note needs nothing.
+- `org-close` ends with one line from `org-curate.sh count`. When it says to start the curator (5 raw notes not yet reviewed, or 5 pending candidates), or the person asks for it, start it: `hc run --bg --name curator curator`. Its report reaches you through the mailbox; it never writes to the person.
+- Candidates in `knowledge/skill-candidates.md` with status `pending` go to the person, in a batch and in the conversation language, each with its one-sentence trigger. Write the answer into the entry (`approved` or `rejected`, the date, the reason). Only an approved entry becomes a skill: delegate a worker to copy `templates/skill/` into `skills/<name>/` and open a pull request; the chain is checked with `org-curate.sh chain`.
+
 ## Issues
 
 Open every issue through the skill, not by hand, so its `Depends on #N` stays on one line at the end: `bash skills/org-issue/scripts/org-issue.sh --repo OWNER/NAME --kind decide|build|followup --title "<English title>" --goal "<clause>" [--depends N]... <section options>` (see `skills/org-issue/SKILL.md`).

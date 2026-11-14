@@ -112,3 +112,6 @@ TASK=$task bash "$org" --as secretary doc update org-state --record work_removed
   }' >/dev/null 2>&1 || die 5 "org-state was not written; the terminal is already ended, run again"
 
 echo "org-close: closed $name${drop:+ (dropped: worktree and unused branch removed)}"
+
+# Decision 0009: tell the secretary when raw notes pile up (a count, no resident process).
+( cd "$here/../../org-curate/scripts" && bash org-curate.sh count )
