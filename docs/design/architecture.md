@@ -105,7 +105,7 @@ The screen is not an admin console. It is drawn by herdr-app mods ([decision 000
 
 - Dark theme. No borders.
 - **Left**: one tile per worker, a live view of its terminal showing its last one or two lines and a status color.
-- **Center**: the secretary, large.
+- **Center**: the secretary, large. A worker peeked from its tile and kept takes the centre; "Back to the secretary", always above the tiles, puts every kept worker back to its tile and the secretary in the centre (Issue #389).
 - Only the secretary's questions to you float above the window.
 - A pending approval shows as a single card in the bottom right.
 - No tables. No charts.
