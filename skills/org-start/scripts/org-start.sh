@@ -303,7 +303,7 @@ else
 fi
 if [ -n "$placeonly" ]; then # what each change needs; Claude Code re-reads a changed settings file's hooks
   from=${fromorigin:+origin/}${fromorigin:-$root}
-  # Issue #402: org-delegate and the secretary's own scripts read the checkout, so bring it to the
+  # org-delegate and the secretary's own scripts read the checkout, so bring it to the
   # landed base too, but only a clean checkout on that branch that is behind it; otherwise say why.
   if [ -n "$fromorigin" ]; then
     o=origin/$fromorigin fix="git -C $root switch $fromorigin && git -C $root merge --ff-only origin/$fromorigin"
