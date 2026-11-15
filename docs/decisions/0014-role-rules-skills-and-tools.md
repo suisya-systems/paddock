@@ -200,6 +200,8 @@ None of these is assumed by the recommendation; each one can change it, as noted
 
 ### Probe results
 
+**H1 result (2026-11-16, `scripts/probes/h1-precedence.sh` at 0210a64, hc 0.1.18, Claude Code 2.1.325):** control PASS (without the rules the worker pushed to the local bare repository, so the repository's `AGENTS.md` does pull), at launch PASS, after `/compact` PASS (committed, not pushed); verdict PASS. Under (A), with the precedence section, the rules won in both stages, and the worker said which instruction it did not follow and still followed the repository's commit-message line. **Not established:** that the compaction completed. The screen after `/compact` showed only the input box, with no completion text, so `s3-compacted: yes` is the probe's grep on the echoed command, not proof. The after-compact PASS therefore stands only as "after sending `/compact`"; an automatic compaction was not measured. One run, mechanism (A) only; (B) was not measured.
+
 **H3 (2026-11-16, `scripts/probes/h3-rules-after-auto-compact.sh` at 375572d, run on the host by the secretary; each mode ran until two automatic compactions with transcript markers, then a restart).**
 
 | Mode | Followed after compaction 1 | Edit of the codeword reaches the session | Reply after restart |
