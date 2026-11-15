@@ -20,7 +20,7 @@ for t in awk sed grep date cut sort cksum tr mkdir rmdir dirname basename cat rm
   p=$(command -v "$t" 2>/dev/null) && [ -x "$p" ] && ln -sf "$p" "$tools/$t"
 done
 ln -sf "$(command -v bash)" "$tools/bash"
-# hc: ls/get from $STUB/t-<name>, read from $STUB/screen-<name>, doc from $STUB/doc. send
+# hc: ls/get from $STUB/t-<name> ($STUB/after-<name> once the screen was read), read from $STUB/screen-<name>, doc from $STUB/doc. send
 # honours --if idle (exit 10 when the status is not idle); a delivered send goes to $STUB/sent.
 cat > "$tools/hc" <<'EOF'
 #!/bin/sh
@@ -33,7 +33,8 @@ case "$cmd" in
       printf ']\n' ;;
   get) n=; for a in "$@"; do case "$a" in --*) ;; *) n=$a ;; esac; done
        [ -f "$STUB/t-$n" ] || { echo '{"error":{"kind":"not_found"}}'; exit 1; }
-       cat "$STUB/t-$n" ;;
+       # after the wake's screen read (since calls was last cleared), $STUB/after-<name> answers: it moved
+       if [ -f "$STUB/after-$n" ] && grep -qx "read $n" "$STUB/calls"; then cat "$STUB/after-$n"; else cat "$STUB/t-$n"; fi ;;
   read) [ -z "${STUB_READ_FAIL:-}" ] || exit 1; n=; for a in "$@"; do n=$a; done; cat "$STUB/screen-$n" 2>/dev/null ;;
   send) cond=; [ "$1" != --if ] || { cond=$2; shift 2; }
         [ -f "$STUB/t-$1" ] || exit 1
@@ -126,6 +127,15 @@ reset; term secretary - idle; o person send_message secretary "x" >/dev/null; pa
 
 reset; term secretary - done; o person send_message secretary "hello" >/dev/null; pass $T0
 [ "$(sent secretary)" -eq 1 ] && grep -q '^send secretary ' "$tmp/stub/calls" && woke | grep -q '	wake	secretary	person#1	done	no	0$'; check "done secretary: woken with a plain send (hc has no --if done)" $?
+
+# done, then moved before the send (the last get): no send, skip moved, retried next pass
+reset; term secretary - done; o person send_message secretary "hello" >/dev/null
+sed 's/"state":"done"/"state":"working"/' "$tmp/stub/t-secretary" > "$tmp/stub/after-secretary"; pass $T0
+[ "$(sent secretary)" -eq 0 ] && woke | grep -q '	skip	secretary	person#1	working	moved	-$'; check "done, working at the last get: no send, skip moved" $?
+: > "$tmp/stub/calls"; sed 's/"turn": 1/"turn": 2/' "$tmp/stub/t-secretary" > "$tmp/stub/after-secretary"; pass $((T0 + 30))
+[ "$(sent secretary)" -eq 0 ] && woke | grep -q '	skip	secretary	person#1	done	moved	-$'; check "done, turn moved at the last get: no send, skip moved" $?
+rm "$tmp/stub/after-secretary"; pass $((T0 + 45))
+[ "$(sent secretary)" -eq 1 ] && [ "$(grep -c '^get --json secretary' "$tmp/stub/calls")" -ge 2 ]; check "done and unchanged at the last get: woken (no ledger entry from the skips)" $?
 
 for st in working blocked none; do
   reset; term secretary - "$st"; o person send_message secretary "hello" >/dev/null; pass $T0

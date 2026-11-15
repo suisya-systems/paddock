@@ -158,18 +158,21 @@ prompt_line() { printf '%s\n' "$1" | bare | grep -E '^(❯|>)' | tail -1; }
 # ponytail: measured on the host: the prompt is "❯" + NBSP + input, between two rule lines,
 # above the status bar, so the last screen line is not it; a newer Claude Code screen may move it again.
 typed() { printf '%s\n' "$1" | bare | grep -Eq '^(❯|>)[[:space:]]+[^[:space:]│|]'; }
+# jstate <json>: term_status's state of a get already read (term_json answered from it in a subshell,
+# so the parse stays lib.sh's)
+jstate() { local J=$1; ( term_json() { printf '%s' "$J"; }; term_status - ); }
 # wake <terminal> <org id>: the one constant line when <org id> has unread mail and <terminal> is
 # idle or done, its screen shows a prompt line with no typed input, and this batch was not woken in WAKE s.
 # A batch is the highest unread seq per sender.
 wake() {
-  local t=$1 oid=$2 peek batch last st line rc msg
+  local t=$1 oid=$2 peek batch last st line rc msg j j2 st2
   peek=$("$BASH" "$org" --as "$oid" check_messages --peek 2>/dev/null) || return 0
   batch=$(printf '%s\n' "$peek" | sed -n 's/^\[\([a-z0-9_-]*\)#\([0-9]*\) .*/\1 \2/p' \
     | awk '{ if ($2 + 0 > m[$1] + 0) m[$1] = $2 + 0 } END { for (s in m) print s "#" m[s] }' | sort | tr '\n' ',')
   batch=${batch%,}; [ -n "$batch" ] || return 0
   last=$(T=$t B=$batch awk -F'\t' '$1 == ENVIRON["T"] && $2 == ENVIRON["B"] { l = $3 } END { print l }' "$wakes" 2>/dev/null)
   if [ -n "$last" ] && [ $((now - last)) -lt "$WAKE" ]; then wlog skip "$t" "$batch" - - rate; return 0; fi
-  st=$(term_status "$t") || st=not_found
+  j=$(term_json "$t") && st=$(jstate "$j") || st=not_found
   case "$st" in idle|done) ;; *) wlog skip "$t" "$batch" "$st" - -; return 0 ;; esac
   # a screen that cannot be read is not a screen without input: no wake this pass
   line=$(hc read "$t" 2>/dev/null) || { wlog skip "$t" "$batch" "$st" unreadable -; return 0; }
@@ -178,9 +181,17 @@ wake() {
   if typed "$line"; then wlog skip "$t" "$batch" "$st" yes -; return 0; fi
   if [ "$oid" = secretary ]; then msg="You have mail: run bash scripts/org --as secretary check_messages and act on it."
   else msg="You have mail: run bash \"\$PADDOCK_ORG\" --as $oid check_messages and act on it."; fi
-  # hc has no --if done: done was read just above, so it is a plain send
+  # hc has no --if done, so done is a plain send, after a last get: still done, same turn and
+  # status_ms as the first read, else skip (moved) and retry next pass.
+  # ponytail: a turn that starts between this get and the send's paste is still typed into.
   if [ "$st" = idle ]; then hc send --if idle "$t" "$msg" >/dev/null 2>&1; rc=$?
-  else hc send "$t" "$msg" >/dev/null 2>&1; rc=$?; fi
+  else
+    j2=$(term_json "$t") && st2=$(jstate "$j2") || st2=not_found
+    if [ "$st2" != done ] || [ "$(num "$j2" turn):$(num "$j2" status_ms)" != "$(num "$j" turn):$(num "$j" status_ms)" ]; then
+      wlog skip "$t" "$batch" "$st2" moved -; return 0
+    fi
+    hc send "$t" "$msg" >/dev/null 2>&1; rc=$?
+  fi
   wlog wake "$t" "$batch" "$st" no "$rc"
   [ "$rc" -eq 0 ] || return 0
   { T=$t awk -F'\t' '$1 != ENVIRON["T"]' "$wakes" 2>/dev/null; printf '%s\t%s\t%s\n' "$t" "$batch" "$now"; } > "$wakes.new" && mv "$wakes.new" "$wakes"
