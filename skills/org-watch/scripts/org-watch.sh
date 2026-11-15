@@ -177,9 +177,9 @@ wake() {
   { T=$t awk -F'\t' '$1 != ENVIRON["T"]' "$wakes" 2>/dev/null; printf '%s\t%s\t%s\n' "$t" "$batch" "$now"; } > "$wakes.new" && mv "$wakes.new" "$wakes"
 }
 # ci_lines: "open|super<TAB>pr<TAB>sha<TAB>repo<TAB>task" per ci_requested of the secretary with no
-# ci_completed or ci_watch_failed of the watcher at or after it for the same pr and sha (stage 1:
-# the skill's own ci_completed does not count). open: the newest request of its PR; super: an older
-# one with another head. This and the last calendar month of the history.
+# ci_completed or ci_watch_failed of the watcher at or after it for the same repo, pr and sha (stage 1:
+# the skill's own ci_completed does not count). open: the newest request of its repo and PR; super:
+# an older one with another head. This and the last calendar month of the history.
 ci_lines() {
   local ev=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/events d cur y m
   # this calendar month and the last, as scripts/org's window (own_files makes next month's folder early)
@@ -192,53 +192,52 @@ ci_lines() {
     function v(k) { if (match($0, "\"" k "\":\"[^\"]*\"")) return substr($0, RSTART + length(k) + 4, RLENGTH - length(k) - 5)
                     if (match($0, "\"" k "\":[0-9]+")) return substr($0, RSTART + length(k) + 3, RLENGTH - length(k) - 3); return "" }
     $1 == "R" { n++; ts[n] = v("ts"); pr[n] = v("pr"); sh[n] = v("sha"); rp[n] = v("repo"); tk[n] = v("task_id")
-                if (ts[n] >= nt[pr[n]]) { nt[pr[n]] = ts[n]; ns[pr[n]] = sh[n] } next }
-    $1 == "D" { k = v("pr") " " v("sha"); t = v("ts"); if (t > dt[k]) dt[k] = t }
-    END { for (i = n; i >= 1; i--) { k = pr[i] " " sh[i]; if ((k in dt) && dt[k] >= ts[i]) continue
+                p = rp[n] " " pr[n]; if (ts[n] >= nt[p]) { nt[p] = ts[n]; ns[p] = sh[n] } next }
+    $1 == "D" { k = v("repo") " " v("pr") " " v("sha"); t = v("ts"); if (t > dt[k]) dt[k] = t }
+    END { for (i = n; i >= 1; i--) { p = rp[i] " " pr[i]; k = p " " sh[i]; if ((k in dt) && dt[k] >= ts[i]) continue
             if (k in seen) continue; seen[k] = 1
-            printf "%s\t%s\t%s\t%s\t%s\n", (ns[pr[i]] == sh[i] ? "open" : "super"), pr[i], sh[i], rp[i], tk[i] } }'
+            printf "%s\t%s\t%s\t%s\t%s\n", (ns[p] == sh[i] ? "open" : "super"), pr[i], sh[i], rp[i], tk[i] } }'
 }
-ci_watch() { # ci_watch --pr N --sha S ...: ci-watch.sh in the background of this shell, output in its log
-  local pr=$2 sha=$4
-  "$BASH" "$here/ci-watch.sh" "$@" </dev/null >> "$cidir/$pr-${sha:0:7}.log" 2>&1 &
-  printf '%s %s\n' "$!" "$sha" > "$cidir/$pr.pid"
-}
-ci_fail() { # ci_fail <reason> --pr N --sha S ...: the record and the mailbox line, with no watch
-  local r=$1; shift
-  "$BASH" "$here/ci-watch.sh" "$@" --fail "$r" >> "$cidir/$2-${4:0:7}.log" 2>&1
+# ckey <repo> <pr>: the file key of one PR's watch, <owner>_<name>-<pr>
+ckey() { printf '%s-%s' "${1//\//_}" "$2"; }
+ci_run() { # ci_run <bg|fg> <reason|-> <pr> <sha> <repo> <task>: ci-watch.sh, its output in its log
+  local log ta=() fa=()
+  log=$cidir/$(ckey "$5" "$3")-${4:0:7}.log
+  [ -z "$6" ] || ta=(--task "$6"); [ "$2" = - ] || fa=(--fail "$2")
+  if [ "$1" = fg ]; then "$BASH" "$here/ci-watch.sh" --pr "$3" --sha "$4" --repo "$5" "${ta[@]}" "${fa[@]}" >> "$log" 2>&1; return; fi
+  "$BASH" "$here/ci-watch.sh" --pr "$3" --sha "$4" --repo "$5" "${ta[@]}" </dev/null >> "$log" 2>&1 &
+  printf '%s %s %s %s\n' "$!" "$4" "$5" "$3" > "$cidir/$(ckey "$5" "$3").pid"
 }
 ci_pass() {
-  local pf pid psha pr dead= lines kind sha repo tk ta
+  local pf pid psha prepo ppr dead= lines kind pr sha repo tk
   # first the watches that ended, then the records: a line written as a watch ended is seen
   for pf in "$cidir"/*.pid; do
     [ -f "$pf" ] || continue
-    read -r pid psha < "$pf"; pr=${pf##*/}; pr=${pr%.pid}
-    kill -0 "$pid" 2>/dev/null || dead="$dead$pr $psha
+    read -r pid psha prepo ppr < "$pf"
+    kill -0 "$pid" 2>/dev/null || dead="$dead$pf $psha $prepo $ppr
 "
   done
   lines=$(ci_lines)
   # a watch gone with no line of its own (SIGKILL, no trap ran): vanished
-  while read -r pr psha; do
-    [ -n "$pr" ] || continue
-    rm -f "${cidir:?}/${pr:?}.pid"
-    IFS="$tab" read -r kind pr sha repo tk <<< "$(printf '%s\n' "$lines" | awk -F'\t' -v p="$pr" -v s="$psha" '$2 == p && $3 == s' | head -1)"
+  while read -r pf psha prepo ppr; do
+    [ -n "$pf" ] || continue
+    rm -f "${pf:?}"
+    IFS="$tab" read -r kind pr sha repo tk <<< "$(printf '%s\n' "$lines" | awk -F'\t' -v p="$ppr" -v s="$psha" -v r="$prepo" '$2 == p && $3 == s && $4 == r' | head -1)"
     [ -n "$sha" ] || continue
-    ta=(); [ -z "$tk" ] || ta=(--task "$tk")
-    ci_fail vanished --pr "$pr" --sha "$sha" --repo "$repo" "${ta[@]}"
+    ci_run fg vanished "$pr" "$sha" "$repo" "$tk"
     lines=$(ci_lines)
   done <<< "$dead"
   while IFS="$tab" read -r kind pr sha repo tk; do
     [ -n "$pr" ] || continue
-    ta=(); [ -z "$tk" ] || ta=(--task "$tk")
-    psha=; pid=; [ ! -f "$cidir/$pr.pid" ] || read -r pid psha < "$cidir/$pr.pid"
+    pf=$cidir/$(ckey "$repo" "$pr").pid; psha=; pid=; [ ! -f "$pf" ] || read -r pid psha _ < "$pf"
     if [ "$kind" = super ]; then
       # a newer head of the same PR: its live watch is ended (USR1, it writes superseded), else the line is written here
       if [ "$psha" = "$sha" ]; then kill -USR1 "$pid" 2>/dev/null
-      else ci_fail superseded --pr "$pr" --sha "$sha" --repo "$repo" "${ta[@]}"; fi
+      else ci_run fg superseded "$pr" "$sha" "$repo" "$tk"; fi
       continue
     fi
-    [ -z "$pid" ] || continue   # one watch per PR; a superseded one clears its pid file as it ends
-    ci_watch --pr "$pr" --sha "$sha" --repo "$repo" "${ta[@]}"
+    [ -z "$pid" ] || continue   # one watch per repo and PR; a superseded one clears its pid file as it ends
+    ci_run bg - "$pr" "$sha" "$repo" "$tk"
   done <<< "$lines"
 }
 # listed <json> <member>: the task ids of a work_check member, space separated

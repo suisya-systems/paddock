@@ -186,9 +186,9 @@ reset; term secretary - working; req
 grep -q '"kind":"ci_requested","from":"secretary","task_id":"t1","pr":42,"sha":"'$SHA'","repo":"o/r"' "$tmp/state/events/$MON/secretary.jsonl"; check "org ci_requested writes the record of 0013" $?
 pass $T0; settle
 l=$(wev | grep ci_completed)
-grep -q '"from":"watcher","task_id":"t1","pr":42,"sha":"'$SHA'","run_id":777,"exit_code":0,"conclusion":"success"' <<<"$l"; check "green run: ci_completed from watcher ($l)" $?
+grep -q '"from":"watcher","task_id":"t1","pr":42,"sha":"'$SHA'","repo":"o/r","run_id":777,"exit_code":0,"conclusion":"success"' <<<"$l"; check "green run: ci_completed from watcher ($l)" $?
 unread secretary | grep -qF "CI success on PR 42, head $SHA7, run 777."; check "green run: the mailbox line" $?
-grep -q 'exit_code=0' "$tmp/state/watcher/ci/42-$SHA7.log"; check "the watch log keeps the exit code and output" $?
+grep -q 'exit_code=0' "$tmp/state/watcher/ci/o_r-42-$SHA7.log"; check "the watch log keeps the exit code and output" $?
 grep -q '^gh run watch 777 --repo o/r --exit-status --interval 30' "$tmp/stub/calls"; check "the run is watched with gh run watch --exit-status --interval 30" $?
 term secretary - idle; pass $((T0 + 30)); settle
 [ "$(wev | grep -c '"kind":"ci_')" -eq 1 ] && [ "$(sent secretary)" -eq 1 ]; check "a closed request is not watched again; the secretary is woken for the line" $?
@@ -207,20 +207,20 @@ failcase() { # failcase <reason> <env...>
   local r=$1; shift
   reset; term secretary - working; req; pass $T0 "$@"; settle
   l=$(wev | grep ci_watch_failed)
-  grep -q "\"from\":\"watcher\",\"task_id\":\"t1\",\"pr\":42,\"sha\":\"$SHA\".*\"reason\":\"$r\"" <<<"$l" && grep -q "\"log\":\"$tmp/state/watcher/ci/42-$SHA7.log\"" <<<"$l" \
+  grep -q "\"from\":\"watcher\",\"task_id\":\"t1\",\"pr\":42,\"sha\":\"$SHA\",\"repo\":\"o/r\".*\"reason\":\"$r\"" <<<"$l" && grep -q "\"log\":\"$tmp/state/watcher/ci/o_r-42-$SHA7.log\"" <<<"$l" \
     && [ "$(wev | grep -c '"kind":"ci_')" -eq 1 ]; check "$r: one ci_watch_failed record ($l)" $?
-  unread secretary | grep -qF "CI watch failed on PR 42, head $SHA7: $r (log $tmp/state/watcher/ci/42-$SHA7.log)."; check "$r: the mailbox line" $?
+  unread secretary | grep -qF "CI watch failed on PR 42, head $SHA7: $r (log $tmp/state/watcher/ci/o_r-42-$SHA7.log)."; check "$r: the mailbox line" $?
 }
 failcase no_run STUB_RUN_NONE=1
 failcase gh_error STUB_LIST_FAIL=1
 grep -q '"exit_code":1' <<<"$l"; check "gh_error keeps gh's exit code" $?
 failcase gh_error STUB_VIEW_FAIL=1
 reset; term secretary - working; req; touch "$tmp/stub/hold"; pass $T0; sleep 0.5
-read -r pid _ < "$tmp/state/watcher/ci/42.pid"; kill -TERM "$pid"; settle
+read -r pid _ < "$tmp/state/watcher/ci/o_r-42.pid"; kill -TERM "$pid"; settle
 l=$(wev | grep ci_watch_failed); grep -q '"reason":"signal","exit_code":143' <<<"$l"; check "signal (TERM): ci_watch_failed with reason signal ($l)" $?
 unread secretary | grep -q "CI watch failed on PR 42, head $SHA7: signal"; check "signal: the mailbox line" $?
 reset; term secretary - working; req; touch "$tmp/stub/hold"; pass $T0; sleep 0.5
-read -r pid _ < "$tmp/state/watcher/ci/42.pid"; kill -KILL "$pid"; sleep 0.2
+read -r pid _ < "$tmp/state/watcher/ci/o_r-42.pid"; kill -KILL "$pid"; sleep 0.2
 pass $((T0 + 30))
 l=$(wev | grep ci_watch_failed); grep -q '"reason":"vanished","exit_code":null' <<<"$l" && [ "$(wev | grep -c ci_watch_failed)" -eq 1 ]; check "a watch killed with no trap: vanished on the next pass ($l)" $?
 unread secretary | grep -q "CI watch failed on PR 42, head $SHA7: vanished"; check "vanished: the mailbox line" $?
@@ -236,5 +236,16 @@ wev | grep -q "\"kind\":\"ci_completed\".*\"sha\":\"$SHB\".*\"conclusion\":\"suc
 [ "$(wev | grep -c '"kind":"ci_')" -eq 2 ]; check "each request has exactly one watcher line" $?
 reset; term secretary - working; req; req 42 "$SHB"; pass $T0; settle
 wev | grep -q "\"sha\":\"$SHA\".*\"reason\":\"superseded\"" && wev | grep -q "\"sha\":\"$SHB\".*\"conclusion\":\"success\""; check "an older request never watched is written superseded, the newest watched" $?
+
+# the same PR number in two repositories is two PRs (repo + pr + sha)
+reset; term secretary - working; touch "$tmp/stub/hold"
+req 12 "$SHA"; o secretary ci_requested --pr 12 --sha "$SHB" --repo o/other >/dev/null
+pass $T0; sleep 0.5
+[ -f "$tmp/state/watcher/ci/o_r-12.pid" ] && [ -f "$tmp/state/watcher/ci/o_other-12.pid" ]; check "two repositories, same PR number: two watches, one pid file each" $?
+pass $((T0 + 30)); sleep 0.3
+! wev | grep -q superseded; check "a request of another repository does not supersede" $?
+rm -f "$tmp/stub/hold"; settle
+wev | grep -q "\"sha\":\"$SHA\",\"repo\":\"o/r\".*\"conclusion\":\"success\"" && wev | grep -q "\"sha\":\"$SHB\",\"repo\":\"o/other\".*\"conclusion\":\"success\"" \
+  && [ "$(wev | grep -c '"kind":"ci_')" -eq 2 ]; check "each repository's PR gets its own result" $?
 
 exit "$fail"

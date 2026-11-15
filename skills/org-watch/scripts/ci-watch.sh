@@ -17,7 +17,8 @@ the secretary:
   ci_completed (conclusion success or failure), or
   ci_watch_failed with reason no_run, gh_error, signal (HUP, INT, TERM) or superseded (USR1).
 --fail REASON writes only ci_watch_failed with REASON (org-watch: vanished, superseded).
-It removes watcher/ci/<pr>.pid when that file names it.
+Its log is watcher/ci/<owner>_<name>-<pr>-<sha7>.log; it removes watcher/ci/<owner>_<name>-<pr>.pid
+when that file names it.
 
 Exit codes: 0 a result was recorded, 2 bad argument, 1 no result (ci_watch_failed was written),
 129, 130, 143, 138 ended by HUP, INT, TERM, USR1 (ci_watch_failed was written).
@@ -43,7 +44,7 @@ case "$sha" in ''|*[!0-9a-f]*) die "--sha needs a hex commit id" ;; esac
 here=$(dirname "${BASH_SOURCE[0]}")
 org=${PADDOCK_ORG:-$here/../../../scripts/org}
 cidir=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/watcher/ci
-sha7=${sha:0:7}; log=$cidir/$pr-$sha7.log
+sha7=${sha:0:7}; key=${repo//\//_}-$pr; log=$cidir/$key-$sha7.log   # <owner>_<name>-<pr>: one PR of one repository
 ta=(); [ -z "$task" ] || ta=(--task "$task")
 run=; code=; child=; written=
 
@@ -53,18 +54,18 @@ finish() {
   local msg ra=() ca=()
   [ -z "$child" ] || kill "$child" 2>/dev/null
   if [ "$1" = ok ]; then
-    bash "$org" --as watcher ci_completed --pr "$pr" --sha "$sha" --run-id "$run" --exit-code "$code" "${ta[@]}" \
+    bash "$org" --as watcher ci_completed --pr "$pr" --sha "$sha" --repo "$repo" --run-id "$run" --exit-code "$code" "${ta[@]}" \
       || echo "ci-watch: the ci_completed line could not be written"
     msg="CI $2 on PR $pr, head $sha7, run $run."
   else
     [ -z "$run" ] || ra=(--run-id "$run"); [ -z "$code" ] || ca=(--exit-code "$code")
-    bash "$org" --as watcher ci_watch_failed --pr "$pr" --sha "$sha" --reason "$1" --log "$log" "${ra[@]}" "${ca[@]}" "${ta[@]}" \
+    bash "$org" --as watcher ci_watch_failed --pr "$pr" --sha "$sha" --repo "$repo" --reason "$1" --log "$log" "${ra[@]}" "${ca[@]}" "${ta[@]}" \
       || echo "ci-watch: the ci_watch_failed line could not be written"
     msg="CI watch failed on PR $pr, head $sha7: $1 (log $log)."
   fi
   bash "$org" --as watcher send_message secretary "$msg" || echo "ci-watch: the mailbox line could not be written"
   echo "ci-watch: $(date -u +%Y-%m-%dT%H:%M:%SZ) $msg exit_code=${code:-none}"
-  local p; read -r p _ < "$cidir/$pr.pid" 2>/dev/null && [ "$p" = "$$" ] && rm -f "${cidir:?}/${pr:?}.pid"
+  local p; read -r p _ < "$cidir/$key.pid" 2>/dev/null && [ "$p" = "$$" ] && rm -f "${cidir:?}/${key:?}.pid"
 }
 if [ -n "$fail" ]; then finish "$fail"; exit 1; fi
 
