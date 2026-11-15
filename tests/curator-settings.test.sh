@@ -72,6 +72,7 @@ cat > "$tmp/bin/hc" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >> "$STUB_CALLS"
 [ "$1" = run ] && [ -f "$STUB_CS" ] && echo settings-present >> "$STUB_CALLS"
+[ "$1" = run ] && echo '{"first_message":{"sent":true}}'
 exit 0
 EOF
 chmod +x "$tmp/bin/hc"
