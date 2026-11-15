@@ -54,7 +54,8 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 self=$root/skills/org-pull-request/scripts/org-pull-request.sh
 # die <code> <message> <next>: every non-zero exit ends with one `next:` line (decision 0014).
 die() { echo "org-pull-request: $2" >&2; echo "next: $3" >&2; exit "$1"; }
-fixcall="fix the call (bash $self --help)"
+qself=$(printf "%q" "$self")
+fixcall="fix the call (bash $qself --help)"
 
 wt=.; repo=; base=; project=; task=; mode=; pr=; title=; body=; bodyfile=; recheck=
 while [ $# -gt 0 ]; do
@@ -109,11 +110,13 @@ place_landing() {
     out=$(bash "$root/skills/org-start/scripts/org-start.sh" --place-only --from-origin "$base" 2>&1); rc=$?
     [ -z "$out" ] || printf '%s\n' "$out"
     [ "$rc" -eq 0 ] || die 13 "merged, but the placed files were not renewed" \
-      "run: bash $root/skills/org-start/scripts/org-start.sh --place-only --from-origin $base; if it fails again, ask the person: placing failed (output above); how do they want to proceed?"
-    case $out in
-      *"RENEWAL NEEDED"*) echo "next: ask the person to renew the secretary (secretary-handover skill): secretary.md changed and only a new secretary reads it; then $1"; return ;;
-      *"left alone"*) echo "next: ask the person: the paddock checkout was left alone (the org-start line above says why and gives the command); run it?"; return ;;
-    esac
+      "run: bash $(printf "%q" "$root/skills/org-start/scripts/org-start.sh") --place-only --from-origin $base; if it fails again, ask the person: placing failed (output above); how do they want to proceed?"
+    # both can come together: repair the checkout first, since a renewed secretary would read the old one.
+    left=; case $out in *"left alone"*) left="ask the person to run the command the org-start line above gives (the paddock checkout was left alone)" ;; esac
+    ren=; case $out in *"RENEWAL NEEDED"*) ren="ask the person to renew the secretary (secretary-handover skill: secretary.md changed and only a new secretary reads it)" ;; esac
+    if [ -n "$left$ren" ]; then
+      echo "next: ${left}${left:+, then }${ren}${ren:+, then }${1}"; return
+    fi
   fi
   echo "next: $1"
 }
@@ -158,7 +161,7 @@ else
   url="https://github.com/$repo/pull/$pr"
 fi
 echo "PR_URL=$url"
-again="bash $self --pr $pr --worktree $wt --repo $repo${mode:+ --mode $mode}"   # the rerun the secretary is told to make
+again="bash $qself --pr $pr --worktree $(printf "%q" "$wt") --repo $repo${mode:+ --mode $mode}"   # the rerun the secretary is told to make
 org=$root/scripts/org
 targs=(); [ -z "$task" ] || targs=(--task "$task")
 
