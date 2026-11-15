@@ -8,12 +8,12 @@ fail=0
 check() { if [ "$2" -eq 0 ]; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }
 
 rules=$here/templates/worker-rules.md
-sec=$here/templates/secretary.md
+sec=$here/skills/org-pull-request/SKILL.md
 skill=$here/skills/org-pull-request/SKILL.md
 
 grep -E 'last line' "$rules" | grep -qE 'verbatim|exact'; check "worker rules: the gate's last line goes into the report verbatim" $?
-grep -qE 'CODEX_GATE: passed' "$sec"; check "secretary template names CODEX_GATE: passed" $?
+grep -qE 'CODEX_GATE: passed' "$sec"; check "org-pull-request skill names CODEX_GATE: passed" $?
 sline=$(grep -E 'did not run' "$sec")
-grep -qE 'pull request|PR body' <<<"$sline" && grep -qE 'report' <<<"$sline"; check "secretary template: a review that did not run is said in the PR and in the report" $?
+grep -qE 'pull request|PR body' <<<"$sline" && grep -qE 'report' <<<"$sline"; check "org-pull-request skill: a review that did not run is said in the PR and in the report" $?
 grep -qE 'did not run' "$skill"; check "org-pull-request skill: the body says the review did not run" $?
 exit $fail

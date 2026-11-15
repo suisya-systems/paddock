@@ -113,7 +113,7 @@ reset; out=$(run_script --pr 42); rc=$?
 # The watcher's result for the head.
 watcher ci_completed --task t1
 out=$(run_script --pr 42); rc=$?
-[ "$rc" -eq 0 ] && ! merged && ! has '^gh pr (view|checks)' && grep -qi human <<<"$out" && grep -q 'run 777' <<<"$out"
+[ "$rc" -eq 0 ] && ! merged && ! has '^gh pr (view .*headRefOid|checks)' && grep -qi human <<<"$out" && grep -q 'run 777' <<<"$out"
 check "--pr after the watcher's success, human mode: exit 0, the person decides, not merged ($out)" $?
 run_script --pr 42 >/dev/null; rc=$?
 [ "$rc" -eq 0 ] && [ "$(nreq)" -eq 1 ]; check "rerunning --pr on a head with a result writes no second ci_requested" $?
@@ -181,7 +181,7 @@ ok_head; ENVX=STUB_CHECKS_RC=1 run_script --pr 42 --mode acceptance >/dev/null; 
 [ "$rc" -eq 10 ] && ! merged; check "required checks not green: refuse, exit 10, no merge" $?
 reset; run_script "${args[@]}" >/dev/null; CODE=1 watcher ci_completed
 run_script --pr 42 --mode acceptance >/dev/null; rc=$?
-[ "$rc" -eq 9 ] && ! merged && ! has '^gh pr (view|checks)'; check "CI failed in acceptance mode: exit 9, no merge" $?
+[ "$rc" -eq 9 ] && ! merged && ! has '^gh pr (view .*headRefOid|checks)'; check "CI failed in acceptance mode: exit 9, no merge" $?
 ok_head; ENVX=STUB_MERGE_FAIL=1 run_script --pr 42 --mode acceptance >/dev/null; rc=$?
 [ "$rc" -eq 11 ]; check "merge call fails: exit 11" $?
 

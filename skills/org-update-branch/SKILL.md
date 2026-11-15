@@ -1,6 +1,8 @@
 ---
 name: org-update-branch
-description: Take origin/main into a pushed worker branch with a merge (so the push needs no force), and in a worker stop before the merge when the incoming range touches a path the sandbox protects. Run it from the secretary.
+description: Take origin/main into a pushed worker branch with a merge (so the push needs no force), and in a worker stop before the merge when the incoming range touches a path the sandbox protects.
+when_to_use: Main moved under a branch that is already pushed (a PR is open or CI is waiting) and the branch must take main in; org-pull-request refuses a merge because the head moved or main changed under it.
+allowed-tools: Bash(bash skills/org-update-branch/scripts/org-update-branch.sh:*) Bash(bash ${CLAUDE_SKILL_DIR}/scripts/org-update-branch.sh *)
 ---
 
 # org-update-branch
@@ -11,35 +13,19 @@ Brings main into a pushed worker branch. Why it is built this way: [references/r
 bash skills/org-update-branch/scripts/org-update-branch.sh --worktree <worker worktree> [--base main]
 ```
 
-Bash and `git` only. Then `org-pull-request --pr <n> --worktree <worker worktree>` sends the branch (no force) and watches CI again.
+Bash and `git` only. **Every exit prints one line `next: ...`: do exactly that.** On success it is the [org-pull-request](../org-pull-request/SKILL.md) rerun that sends the branch (no force) and watches CI again for the new head. No exit-code table is kept here; `--help` lists the codes.
+
+## When to use
+
+Main moved under a branch that is pushed. A branch that is not pushed yet is the worker's to rebase (no force is needed, and its test commit stays first).
 
 ## What it does
 
-1. `git fetch origin` (in a worker a failed fetch is not an error: the sandbox cannot reach GitHub, so it goes on with the `origin/<base>` the secretary fetched in the project clone); refuses when tracked files have uncommitted changes (exit 7, nothing touched).
-2. Already contains `origin/<base>`: prints that and exits 0.
-3. In a worker (`PADDOCK_ORG` is set, which only the worker launch command does): lists the files of the incoming range (`merge-base..origin/<base>`); if any is `.claude/skills/**`, `.claude/hooks/**`, `.claude/settings.json` or `.claude/settings.local.json` (the four paths measured as stopping a rebase in a worker, and a merge writes them the same way), it names them and exits 4 with the branch unchanged. The secretary runs the same command outside the sandbox, where the check is off.
-4. `git merge --no-edit origin/<base>`. On a conflict it runs `git merge --abort` and exits 6, branch unchanged; the conflict is resolved by hand.
+1. `git fetch origin` (in a worker a failed fetch is not an error: the sandbox cannot reach GitHub, so it goes on with the `origin/<base>` the secretary fetched in the project clone); refuses when tracked files have uncommitted changes, with nothing touched.
+2. Already contains `origin/<base>`: says so and stops.
+3. In a worker (`PADDOCK_ORG` is set, which only the worker launch command does): if the incoming range touches `.claude/skills/**`, `.claude/hooks/**`, `.claude/settings.json` or `.claude/settings.local.json`, it names them and stops with the branch unchanged; the `next:` line is to run the same command from your own shell, outside the sandbox.
+4. `git merge --no-edit origin/<base>`. On a conflict it runs `git merge --abort`, leaving the branch unchanged; the conflict is the worker's to resolve (or yours, by hand).
 
-## Exit codes
+## What to check afterwards
 
-| Code | Meaning | What the secretary does |
-| --- | --- | --- |
-| 0 | Merged, or already up to date. | `org-pull-request --pr <n>`. |
-| 2 | Bad argument, or no branch checked out. | Fix the call. |
-| 3 | `git` not found. | Report to the person. |
-| 4 | Worker: the range touches a protected path. | Run it again from the secretary's own shell. |
-| 5 | The secretary's fetch failed, or there is no `origin/<base>` (a worker that has none says to ask the secretary to run `git fetch origin` in the project clone). | Report, or fetch in the project clone and rerun. |
-| 6 | Merge conflict (aborted). | Send the worker back to resolve it, or resolve it by hand. |
-| 7 | Uncommitted tracked changes. | Have the worker commit first. |
-
-## The acceptance gate's rules
-
-- Known limit: the predecessor's acceptance gate (`acceptance_gate.py`, `check_first`) refuses a branch that took main in after its test commit, because it requires the test commit's parent to equal `merge-base(base, head)` and a merge moves that to main's tip. So a merge made by this tool does not ride the automatic merge in `acceptance` mode today; a person decides that PR.
-- Until paddock's own gate accepts base changes that arrive after the test commit, the rule is: while nothing is pushed, the worker rebases onto `origin/main` (no force is needed, and the test commit stays first); once pushed, run this tool only when a person will decide the merge.
-- What that gate needs to accept for this tool to be useful: the test commit's parent is an ancestor of base (not equal to the merge-base); no join commit before the test commit on the first-parent line; declared-path and protected-path checks look only at the branch's own commits, not at changes that came in from base.
-
-## Assumptions (open points left open)
-
-- The protected list is fixed in the script, not read from what the sandbox places, which would be better. It is the four measured paths. Add a path to the script's `grep` when a new one is measured.
-- A worker is told apart by `PADDOCK_ORG`; a secretary shell with that variable set would be checked like a worker (harmless: exit 4 only refuses).
-- Not measured: how the gate treats files that arrive through the merge (they are main's, not the branch's); Measured on a host 2026-11-14 (host probe of the paddock repository, `docs/design/acceptance-mode-probe.md`): a real push after the merge, and `PADDOCK_ORG` in a real worker session (the protected-path stop, and the merge that goes on without a fetch). Also tested against a local bare repository (`tests/org-update-branch.test.sh`, `tests/org-update-branch-worker-fetch.test.sh`).
+`merged origin/<base> into <branch> at <sha>` (or `already up to date`), then the `next:` line. A merged branch whose PR is in `acceptance` mode may not ride the automatic merge: a person decides it (the rationale says why).
