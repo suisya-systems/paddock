@@ -109,7 +109,7 @@ const STR = {
     sent: (word, task, late, d) => `${word} · ${task} · ${late ? `not passed on yet, ${d}` : "passing on"}`,
     sec: (n) => `${n}s`, watcher: "WATCHER", watching: "WATCHING", lastActions: "LAST ACTIONS",
     watcherGone: "The watcher is not running. Nothing wakes the secretary or the workers, and no CI is watched. Run org-start again.",
-    lastPass: (d) => `alive · last pass ${d} ago`, noPass: (d) => `no pass for ${d}`, noPassEver: "no pass recorded",
+    lastPass: (d) => `alive · last pass ${d} ago`, noPass: (d) => `no pass for ${d}`, noPassEver: "running · no pass time recorded yet",
     cantRead: "Can't read the watcher's files.", noCi: "No CI watch open.",
     ci: (pr, repo, sha, d) => `PR ${pr} (${repo}) · head ${sha} · ${d}`,
     woke: (who, from) => `woke ${who} (mail from ${from})`, wakeFailed: (who, rc) => `wake of ${who} failed (exit ${rc})`,
@@ -136,7 +136,7 @@ const STR = {
     sent: (word, task, late, d) => `${word} · ${task} · ${late ? `${d}経過、まだ伝わっていません` : "窓口に伝えています"}`,
     sec: (n) => `${n}秒`, watcher: "ウォッチャー", watching: "監視中", lastActions: "最近の動き",
     watcherGone: "ウォッチャーが止まっています。窓口とワーカーを起こすものがなく、CI も見ていません。org-start を実行し直してください。",
-    lastPass: (d) => `稼働中 · 最終巡回 ${d}前`, noPass: (d) => `${d}巡回がありません`, noPassEver: "巡回の記録がありません",
+    lastPass: (d) => `稼働中 · 最終巡回 ${d}前`, noPass: (d) => `${d}巡回がありません`, noPassEver: "稼働中 · 巡回時刻の記録はまだありません",
     cantRead: "ウォッチャーのファイルを読めません。", noCi: "監視中の CI はありません。",
     ci: (pr, repo, sha, d) => `PR ${pr}（${repo}）· head ${sha} · ${d}`,
     woke: (who, from) => `${who} を起こしました（${from} からのメール）`, wakeFailed: (who, rc) => `${who} を起こせませんでした（終了コード ${rc}）`,
@@ -184,18 +184,20 @@ function lastLines(text, n = 2) {
 
 // The watcher's own files (skills/org-watch), read only, on the secretary's machine, as lines:
 //   now <epoch>                          that machine's clock
-//   pass <epoch>                         newest change in watcher/ (0: none). Every pass rewrites
-//                                        watcher/told once it exists, so this is the last pass.
+//   pass <epoch>                         watcher/told's change time (0: no told yet). Every pass
+//                                        rewrites told once it exists, so this is the last pass.
 //   ci <pr> <sha> <repo> <since epoch>   each pid file whose pid still runs ci-watch.sh
 //   wake <woke line>                     the last wakes of watcher/woke (time kind target batch status input rc)
 //   mail <json line>                     the last messages the watcher wrote to a mailbox
-// ponytail: a pass that cannot read org-state or work_check leaves told unchanged, so it reads
-// as stale (the strip then shows the watcher's last screen line); a per-pass stamp would be exact.
+// ponytail: told is made at the watcher's first telling or mailbox line; before that no pass time
+// exists, and the strip says so (not stale: its terminal runs). A pass that cannot read org-state
+// or work_check leaves told unchanged, so it reads as stale (the strip then shows the watcher's
+// last screen line). A per-pass stamp written by the watcher would be exact.
 // ponytail: the state folder is this shell's default; a watcher started with another
 // PADDOCK_STATE_DIR is not found. /proc is Linux's: elsewhere no CI watch is listed.
 const WATCH_SH = 's=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}; w=$s/watcher\n' +
   'echo "now $(date +%s)"\n' +
-  'p=0; for f in "$w/told" "$w/secretary.seen" "$w/wake" "$w/woke"; do [ -f "$f" ] || continue; m=$(date -r "$f" +%s 2>/dev/null) || continue; [ "$m" -le "$p" ] || p=$m; done; echo "pass $p"\n' +
+  'p=0; [ ! -f "$w/told" ] || p=$(date -r "$w/told" +%s 2>/dev/null) || p=0; echo "pass $p"\n' +
   'for f in "$w"/ci/*.pid; do [ -f "$f" ] || continue; read -r pid sha repo pr < "$f"; ' +
   'tr "\\0" " " < "/proc/$pid/cmdline" 2>/dev/null | grep -q "ci-watch\\.sh" || continue; ' +
   'printf "ci\\t%s\\t%s\\t%s\\t%s\\n" "$pr" "$sha" "$repo" "$(date -r "$f" +%s)"; done\n' +
@@ -213,7 +215,7 @@ function parseWatch(out) {
       try { const m = JSON.parse(f.slice(1).join("\t")); r.acts.push({ at: Date.parse(m.ts) / 1000, to: m.to, text: m.text }); } catch {}
     }
   }
-  r.acts = r.acts.filter((a) => a.at > 0).sort((a, b) => b.at - a.at).slice(0, 4);
+  r.acts = r.acts.filter((a) => a.at > 0).sort((a, b) => b.at - a.at).slice(0, 3);
   return r;
 }
 // The watcher's pass sleeps 30 s (PADDOCK_WATCH_INTERVAL) after a pass of a few seconds: two
@@ -312,7 +314,7 @@ export default class Cockpit extends View {
         const r = await exec("sh", ["-c", WATCH_SH], { on: this.secretaryMachine() });
         w = r.code === 0 ? parseWatch(r.stdout) : { error: r.stderr.trim() || `sh exited with ${r.code}` };
         const term = this.watcherTerminal();
-        if (!w.error && term && w.now - w.pass > STALE_S) {
+        if (!w.error && term && w.pass !== 0 && w.now - w.pass > STALE_S) {
           w.why = await hc(["read", term.address]).then((x) => (x.code === 0 ? lastLines(x.stdout, 1)[0] : null), () => null);
         }
       } catch (e) {
@@ -457,8 +459,9 @@ export default class Cockpit extends View {
     const term = this.watcherTerminal();
     const w = this.watch;
     const row = (s, color) => div().truncate().text_size(11).text_color(color ?? t.muted).child(s);
-    // An action is shown whole (the CI line names every run it read), wrapped, never cut.
-    const said = (s) => div().text_size(11).line_height(1.35).text_color(t.muted).whitespace_normal().child(s);
+    // An action is shown wrapped (the CI line names every run it read), up to four lines each, so
+    // the strip never squeezes the tiles out of the rail.
+    const said = (s) => div().text_size(11).line_height(1.35).max_h(60).overflow_hidden().text_color(t.muted).whitespace_normal().child(s);
     if (!term) {
       const c = t.blocked;
       return v_flex().id("watcher").flex_none().gap(4).rounded(8).px(12).py(10).bg(c + "2e").border(1).border_color(c)
@@ -466,7 +469,7 @@ export default class Cockpit extends View {
         .child(div().text_size(12).font_semibold().line_height(1.4).text_color(t.foreground).whitespace_normal().child(L.watcherGone));
     }
     const age = w && !w.error ? w.now - w.pass : null;
-    const stale = w?.error || (age != null && (w.pass === 0 || age > STALE_S));
+    const stale = w?.error || (age != null && w.pass !== 0 && age > STALE_S);
     const head = !w ? "…" : w.error ? L.cantRead : w.pass === 0 ? L.noPassEver : stale ? L.noPass(ago(age, L)) : L.lastPass(ago(age, L));
     const c = stale ? t.blocked : t.done ?? t.working;
     return v_flex().id("watcher").flex_none().gap(6).rounded(8).px(12).py(10).bg(stale ? c + "1f" : t.raised)

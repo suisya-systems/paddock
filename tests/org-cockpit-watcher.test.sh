@@ -108,17 +108,17 @@ has "$out" "alive · last pass"; check "a fresh pass reads alive ($out)" $?
 has "$out" "PR 423 (paddock) · head 1e49346"; check "the live CI watch is shown with its PR and head" $?
 ! has "$out" "PR 400"; check "a pid file whose pid does not run ci-watch.sh is not shown" $?
 has "$out" "→ secretary: $ci_line"; check "the CI line is shown whole, as the watcher wrote it" $?
-has "$out" "woke secretary (mail from person)" && has "$out" "woke w-b (mail from secretary, person)"; check "a wake shows its target and whose mail" $?
+has "$out" "woke w-b (mail from secretary, person)"; check "a wake shows its target and whose mail" $?
 has "$out" "wake of w-a failed (exit 1)"; check "a failed wake says so" $?
-! has "$out" "person#80" && ! has "$out" "w-a is blocked"; check "skips are not actions; only the last 4 actions are shown" $?
-[ "$(printf '%s\n' "$out" | grep -n 'CI success' | cut -d: -f1)" -lt "$(printf '%s\n' "$out" | grep -n 'woke secretary' | cut -d: -f1)" ]
+! has "$out" "person#80" && ! has "$out" "w-a is blocked" && ! has "$out" "woke secretary"; check "skips are not actions; only the last 3 actions are shown" $?
+[ "$(printf '%s\n' "$out" | grep -n 'CI success' | cut -d: -f1)" -lt "$(printf '%s\n' "$out" | grep -n 'woke w-b' | cut -d: -f1)" ]
 check "newest action first" $?
 
 out=$(drive 1 '{"conversation_lang":"ja"}')
-has "$out" "稼働中 · 最終巡回" && has "$out" "最近の動き" && has "$out" "secretary を起こしました（person からのメール）"
+has "$out" "稼働中 · 最終巡回" && has "$out" "最近の動き" && has "$out" "w-b を起こしました（secretary, person からのメール）"
 check "lang ja: the strip speaks Japanese ($out)" $?
 
-touch -d "@$((now - 300))" "$w/told" "$w/woke"
+touch -d "@$((now - 300))" "$w/told"
 out=$(drive 1 '{}')
 has "$out" "no pass for 5m" && has "$out" "org-watch: cannot reach the core (hc ls failed)"
 check "no pass for over 90 s: stale, with the watcher's last screen line as the why ($out)" $?
@@ -134,6 +134,7 @@ has "$out" "ウォッチャーが止まっています"; check "no watcher termi
 
 rm -rf "$w" "$PADDOCK_STATE_DIR/events"
 out=$(drive 1 '{}')
-has "$out" "no pass recorded" && has "$out" "Nothing yet."; check "no watcher files at all: says no pass recorded ($out)" $?
+has "$out" "running · no pass time recorded yet" && has "$out" "Nothing yet." && ! has "$out" "cannot reach the core"
+check "no told yet (a quiet watcher): says no pass time yet, not stale ($out)" $?
 
 [ "$fail" -eq 0 ] && echo "all passed" || { echo "FAILED"; exit 1; }
