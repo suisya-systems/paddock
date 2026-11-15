@@ -21,7 +21,8 @@ no hc call, no core, no secretary, no watcher, no herdr-app command. It may run 
 BRANCH first runs git fetch origin BRANCH in the paddock folder and places origin/BRANCH, not the
 checkout; then it fast-forwards the paddock checkout to origin/BRANCH when it is clean, on BRANCH and
 behind (otherwise it leaves it alone and prints one line with why and what to run; still exit 0).
-It prints the placed files that changed, and a renewal line when secretary.md changed.
+It prints the placed files that changed, a renewal line when secretary.md changed, and (when the
+fast-forward changed a SKILL.md) a 'skill changed' line per skill and one /reload-plugins line.
 
 --check only checks the first-run steps (hc, agent shell, claude, notes = false, hc on the running core's PATH,
 the folder trust of each --project clone, and the herdr-app mods folder with whether its cockpit equals the
@@ -301,6 +302,12 @@ if [ -n "$keep" ]; then
 else
   cp -f "$src/layouts/paddock.json" "$layouts/paddock.json" || die 6 "cannot place the layout"
 fi
+# decision 0014 part 4: a running secretary serves the SKILL.md text it loaded until /reload-plugins.
+skill_lines() {
+  local f n
+  for f in $1; do n=${f#skills/}; echo "org-start: skill changed: paddock:${n%/SKILL.md} (invoke it again before you use it)"; done
+  [ -z "$1" ] || echo "org-start: secretary: run /reload-plugins in your session (ask the person to type it if you cannot), or the changed skills keep their old text"
+}
 if [ -n "$placeonly" ]; then # what each change needs; Claude Code re-reads a changed settings file's hooks
   from=${fromorigin:+origin/}${fromorigin:-$root}
   # org-delegate and the secretary's own scripts read the checkout, so bring it to the
@@ -315,8 +322,9 @@ if [ -n "$placeonly" ]; then # what each change needs; Claude Code re-reads a ch
     elif ! git -C "$root" merge-base --is-ancestor HEAD "$o"; then
       echo "org-start: the checkout $root was left alone: its $fromorigin has commits $o lacks (diverged); bring them together by hand, then: $fix"
     elif [ "$(git -C "$root" rev-parse HEAD)" != "$(git -C "$root" rev-parse "$o")" ]; then
+      sk=$(git -C "$root" diff --name-only HEAD "$o" -- 'skills/*/SKILL.md')
       git -C "$root" merge --ff-only -q "$o" \
-        && echo "org-start: fast-forwarded the checkout $root to $o" \
+        && { echo "org-start: fast-forwarded the checkout $root to $o"; skill_lines "$sk"; } \
         || echo "org-start: the checkout $root was left alone: git merge --ff-only $o failed (an untracked file in the way?); fix it, then: $fix"
     fi
   fi
