@@ -24,7 +24,8 @@ case "$1" in
 esac
 exit 0
 EOF2
-cat > "$stubdir/cmd.exe" <<'EOF2'
+cmdbin=$tmp/cmdbin; mkdir -p "$cmdbin"   # cmd.exe on PATH only in the WSL_DISTRO_NAME cases
+cat > "$cmdbin/cmd.exe" <<'EOF2'
 #!/bin/sh
 printf 'C:\\Users\\someone\r\n'
 EOF2
@@ -42,16 +43,17 @@ echo "$*" >> "$STUB/app-calls"
 exit 0
 EOF2
 printf '#!/bin/sh\n' > "$stubdir/claude"; chmod +x "$stubdir/claude"
-chmod +x "$stubdir/hc" "$stubdir/cmd.exe" "$stubdir/wslpath" "$exe"
+chmod +x "$stubdir/hc" "$cmdbin/cmd.exe" "$stubdir/wslpath" "$exe"
 
 run() {
   env -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID \
       -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN \
       -u APPDATA -u PADDOCK_APP_MODS_DIR -u PADDOCK_APP_LAYOUTS_DIR -u PADDOCK_APP_MACHINE \
       -u PADDOCK_SECRETARY_NAME \
-      WSL_DISTRO_NAME=Test STUB="$tmp/stub" WIN="$win" PATH="$stubdir:/usr/bin:/bin" \
+      WSL_DISTRO_NAME=Test STUB="$tmp/stub" WIN="$win" PATH="$stubdir:$cmdbin:/usr/bin:/bin" \
+      PADDOCK_PROC_DIR="$tmp/proc" PADDOCK_WIN_C_DIR="$tmp/c" \
       XDG_CONFIG_HOME="$tmp/wslcfg" PADDOCK_CORE_CONFIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fixtures/core-notes-off" PADDOCK_CORE_TEMPLATES_DIR="$tmp/core/templates" \
-      PADDOCK_BIN_DIR="$tmp/bin-org" PADDOCK_READY_TRIES=2 "$@" bash "$script" 2>&1
+      PADDOCK_BIN_DIR="$tmp/bin-org" PADDOCK_READY_TRIES=2 "$@" bash "$script" ${sargs:-} 2>&1
 }
 blocks=$(grep -c '"mod": "org-cockpit"' "$here/layouts/paddock.json")
 
@@ -82,5 +84,44 @@ rm -f "$tmp/stub/secretary"
 out=$(run env -u WSL_DISTRO_NAME); rc=$?
 [ "$rc" -eq 0 ] && [ -f "$tmp/wslcfg/herdr-app/layouts/paddock.json" ] \
   && cmp -s "$here/layouts/paddock.json" "$tmp/wslcfg/herdr-app/layouts/paddock.json"; check "not WSL: layout placed unchanged under the own config folder ($out)" $?
+
+# Issue #405: a terminal the core starts has no WSL_DISTRO_NAME and no cmd.exe on PATH. WSL is read from
+# a fake /proc, and the Windows folder is found without cmd.exe on PATH.
+mkdir -p "$tmp/fproc/sys/fs/binfmt_misc"
+printf 'Linux version 6.6.0-microsoft-standard-WSL2 (gcc)\n' > "$tmp/fproc/version"
+nowsl() { run env -u WSL_DISTRO_NAME PATH="$stubdir:/usr/bin:/bin" PADDOCK_PROC_DIR="$tmp/fproc" "$@"; } # sargs=--check for --check
+rm -rf "$app/mods" "$app/layouts" "$tmp/wslcfg"
+
+# a. /proc/version says microsoft; cmd.exe is found at C:\Windows\System32 under the C: mount.
+mkdir -p "$tmp/c/Windows/System32"; cp "$cmdbin/cmd.exe" "$tmp/c/Windows/System32/cmd.exe"
+out=$(nowsl); rc=$?
+[ "$rc" -eq 0 ] && cmp -s "$here/mods/org-cockpit/main.js" "$app/mods/org-cockpit/main.js" && [ ! -e "$tmp/wslcfg/herdr-app" ]
+check "#405 /proc/version microsoft, cmd.exe only under C:: Windows mods folder ($out)" $?
+out=$(sargs=--check nowsl)
+grep -qx "ok mods: $app/mods (its cockpit equals the checkout $here)" <<<"$out"; check "#405 --check names the Windows mods folder and an equal cockpit ($out)" $?
+printf '// changed\n' >> "$app/mods/org-cockpit/main.js"
+out=$(sargs=--check nowsl); rc=$?
+[ "$rc" -eq 1 ] && grep -q "^TODO mods: $app/mods: its cockpit differs from the checkout.*--place-only" <<<"$out"; check "#405 --check: a differing cockpit is a TODO naming --place-only" $?
+
+# b. no cmd.exe at all, only WSLInterop: the one Windows user with a herdr-app folder is taken.
+rm -rf "$tmp/c/Windows" "$app/mods" "$app/layouts"
+printf 'Linux version 6.6.0 (gcc)\n' > "$tmp/fproc/version"; : > "$tmp/fproc/sys/fs/binfmt_misc/WSLInterop"
+mkdir -p "$app" "$tmp/c/Users/Public"
+out=$(nowsl); rc=$?
+[ "$rc" -eq 0 ] && cmp -s "$here/mods/org-cockpit/main.js" "$app/mods/org-cockpit/main.js" && [ ! -e "$tmp/wslcfg/herdr-app" ]
+check "#405 WSLInterop, no cmd.exe: the one C:/Users/*/.config/herdr-app is used ($out)" $?
+
+# c. two Windows users with a herdr-app folder: not guessed; a warning, and a TODO in --check.
+mkdir -p "$tmp/c/Users/other/.config/herdr-app"
+out=$(nowsl); rc=$?
+grep -q "^org-start: warning: WSL, but several Windows users have a herdr-app folder.*PADDOCK_APP_MODS_DIR" <<<"$out"; check "#405 several Windows users: a warning naming PADDOCK_APP_MODS_DIR ($out)" $?
+out=$(sargs=--check nowsl); rc=$?
+[ "$rc" -eq 1 ] && grep -q "^TODO mods: WSL, but several Windows users" <<<"$out"; check "#405 several Windows users: --check exits 1 with a TODO mods" $?
+
+# d. none: a warning too. And PADDOCK_APP_MODS_DIR wins over the detection.
+rm -rf "$tmp/c/Users"
+out=$(nowsl); grep -q "^org-start: warning: WSL, but the Windows user folder was not found" <<<"$out"; check "#405 no Windows user folder: a warning" $?
+out=$(sargs=--check nowsl PADDOCK_APP_MODS_DIR="$tmp/own/mods")
+grep -q "^ok mods: $tmp/own/mods " <<<"$out"; check "#405 PADDOCK_APP_MODS_DIR wins: --check names it" $?
 
 exit "$fail"

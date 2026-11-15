@@ -58,7 +58,7 @@ run() {
       -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN \
       -u APPDATA -u PADDOCK_APP_MODS_DIR -u PADDOCK_APP_LAYOUTS_DIR -u PADDOCK_APP_MACHINE \
       -u PADDOCK_SECRETARY_NAME -u HERDR_APP_HOME \
-      WSL_DISTRO_NAME=Test STUB="$tmp/stub" WIN="$win" HOME="$home" PATH="$stubdir:/usr/bin:/bin" \
+      WSL_DISTRO_NAME=Test PADDOCK_PROC_DIR="$tmp/no-proc" PADDOCK_WIN_C_DIR="$tmp/no-c" STUB="$tmp/stub" WIN="$win" HOME="$home" PATH="$stubdir:/usr/bin:/bin" \
       XDG_CONFIG_HOME="$tmp/wslcfg" PADDOCK_CORE_CONFIG_DIR="$here/tests/fixtures/core-notes-off" PADDOCK_CORE_TEMPLATES_DIR="$tmp/core/templates" \
       PADDOCK_BIN_DIR="$tmp/bin-org" PADDOCK_READY_TRIES=2 "$@" bash "$script" 2>&1
 }

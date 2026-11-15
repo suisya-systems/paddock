@@ -22,7 +22,8 @@ BRANCH first runs git fetch origin BRANCH in the paddock folder and places origi
 checkout. It prints the placed files that changed, and a renewal line when secretary.md changed.
 
 --check only checks the first-run steps (hc, agent shell, claude, notes = false, hc on the running core's PATH,
-and the folder trust of each --project clone) and prints 'ok <step>: ...' or 'TODO <step>: <exact fix>' for
+the folder trust of each --project clone, and the herdr-app mods folder with whether its cockpit equals the
+checkout) and prints 'ok <step>: ...' or 'TODO <step>: <exact fix>' for
 every one. Read-only: it places nothing, calls no hc, starts no secretary. Exit 0 only when no TODO is left.
 The core's PATH is read from /proc/<core pid>/environ (Linux and WSL only; the line says so elsewhere).
 
@@ -40,7 +41,8 @@ Environment overrides:
   PADDOCK_READY_TRIES         seconds to wait for a status (default 15)
   PADDOCK_SECRETARY_NAME      terminal name of the secretary (default secretary)
   PADDOCK_WATCHER_NAME        terminal name of the watcher (default watcher)
-  PADDOCK_PROC_DIR            replaces /proc when the core's PATH is read (tests)
+  PADDOCK_PROC_DIR            replaces /proc when the core's PATH is read and WSL is detected (tests)
+  PADDOCK_WIN_C_DIR           replaces /mnt/c when the Windows user folder is looked for (tests)
 
 Exit codes: 0 ready (7 also prints the terminal exit code and last line), 2 bad argument, 3 hc not found, 4 run inside an agent,
 5 core unreachable, 6 files could not be placed, 7 secretary has no status,
@@ -99,6 +101,47 @@ templates=${PADDOCK_CORE_TEMPLATES_DIR:-$cfg/herdr-core/templates}
 # write the core's config, L-N1).
 coreconf=${PADDOCK_CORE_CONFIG_DIR:-$cfg/herdr-core}
 
+# on WSL, herdr-app for Windows reads the Windows user's .config/herdr-app and sees this
+# core as another machine (wsl). A herdr-app on PATH that is not an .exe is a Linux app: WSL's folder.
+app=$(command -v herdr-app 2>/dev/null); appcfg=$cfg/herdr-app; appmachine=
+# readlink only on a found app: some readlink builds answer "" with the current folder.
+case "${app:+$(readlink -f "$app" 2>/dev/null)}" in ""|*.exe) winapp=1 ;; *) winapp= ;; esac
+# a Linux herdr-app on PATH looks for the window at its own socket (HERDR_APP_HOME or
+# ~/.config/herdr-app). The Windows window's socket is a file in the Windows user's folder, which WSL
+# cannot connect to but can see: when WSL has none and Windows has one, the Windows program is used.
+lsock=${HERDR_APP_HOME:-${HOME:-}/.config/herdr-app}/herdr-app.sock; wsock=
+# A terminal the core starts may have no WSL_DISTRO_NAME and no cmd.exe on PATH, so WSL is
+# also read from /proc, cmd.exe also looked for under C:, and without interop the one Windows user folder
+# that holds herdr-app's config is taken. PADDOCK_PROC_DIR and PADDOCK_WIN_C_DIR replace /proc and /mnt/c (tests).
+proc=${PADDOCK_PROC_DIR:-/proc}; winc=${PADDOCK_WIN_C_DIR:-/mnt/c}; appwarn=
+if [ -z "${PADDOCK_APP_MODS_DIR:-}" ] && { [ -n "$winapp" ] || [ ! -e "$lsock" ]; } \
+  && { [ -n "${WSL_DISTRO_NAME:-}" ] || [ -e "$proc/sys/fs/binfmt_misc/WSLInterop" ] || grep -qi microsoft "$proc/version" 2>/dev/null; }; then
+  wcmd=$(command -v cmd.exe 2>/dev/null) || wcmd=$winc/Windows/System32/cmd.exe
+  winhome=$(wslpath "$("$wcmd" /d /c echo %USERPROFILE% 2>/dev/null | tr -d '\r')" 2>/dev/null)
+  if [ -z "$winhome" ] || [ ! -d "$winhome" ]; then
+    wcands=("$winc"/Users/*/.config/herdr-app); winhome=
+    if [ "${#wcands[@]}" -eq 1 ] && [ -d "${wcands[0]}" ]; then winhome=${wcands[0]%/.config/herdr-app}
+    elif [ -d "${wcands[0]}" ]; then appwarn="WSL, but several Windows users have a herdr-app folder (${wcands[*]})"
+    else appwarn="WSL, but the Windows user folder was not found (cmd.exe and wslpath failed, no $winc/Users/*/.config/herdr-app)"; fi
+  fi
+  if [ -n "$winhome" ]; then
+    wsock=$winhome/.config/herdr-app/herdr-app.sock
+    if [ -n "$winapp" ] || [ -e "$wsock" ]; then
+      appcfg=$winhome/.config/herdr-app; appmachine=wsl
+      # ponytail: the installer's default folder; LOCALAPPDATA moved elsewhere needs herdr-app(.exe) on PATH.
+      exe=$winhome/AppData/Local/Programs/herdr-app/herdr-app.exe
+      [ -n "$winapp" ] || app= # the Linux program has no window here
+      # Bash adds no .exe, so herdr-app.exe on PATH is looked up by that name.
+      [ -n "$app" ] || app=$(command -v herdr-app.exe 2>/dev/null) || { [ ! -x "$exe" ] || app=$exe; }
+    fi
+  fi
+fi
+[ -z "$appwarn" ] || appwarn="$appwarn; placing the mods under $cfg/herdr-app, which a Windows herdr-app does not read. Set PADDOCK_APP_MODS_DIR to the mods folder of the herdr-app you run"
+[ -z "$appwarn" ] || [ -n "$check" ] || echo "org-start: warning: $appwarn" >&2
+apppath() { if [ -n "$appmachine" ]; then wslpath -w "$1"; else printf '%s\n' "$1"; fi; } # a path herdr-app reads
+mods=${PADDOCK_APP_MODS_DIR:-$appcfg/mods}
+layouts=${PADDOCK_APP_LAYOUTS_DIR:-$(dirname "$mods")/layouts} # beside mods: an overridden mods folder never touches the real layouts
+
 if [ -n "$check" ]; then # every step, read-only; the first TODO does not hide the others
   todo=0
   ok() { echo "ok $1: $2"; }
@@ -121,6 +164,12 @@ if [ -n "$check" ]; then # every step, read-only; the first TODO does not hide t
     if fr_trusted "$p"; then ok trust "$p is recorded as trusted"
     else fix trust "$p is not recorded as trusted; a worker cut from it would stop at the dialog. Run once: cd '$p' && claude   # answer 'Yes, I trust this folder', then leave with /exit"; fi
   done <<<"$projects"
+  # the mods folder org-start would place into, and whether the cockpit there is this checkout's
+  if [ -n "$appwarn" ]; then fix mods "$appwarn"
+  elif [ ! -e "$mods/org-cockpit/main.js" ]; then ok mods "$mods (no cockpit placed yet; org-start places it)"
+  elif cmp -s "$root/mods/org-cockpit/main.js" "$mods/org-cockpit/main.js" && cmp -s "$root/mods/org-cockpit/mod.json" "$mods/org-cockpit/mod.json"
+  then ok mods "$mods (its cockpit equals the checkout $root)"
+  else fix mods "$mods: its cockpit differs from the checkout $root; place it again: bash $root/skills/org-start/scripts/org-start.sh --place-only"; fi
   exit "$todo"
 fi
 
@@ -130,34 +179,6 @@ fr_notes_ok "$coreconf" || die 8 "herdr-core's notes are on: $FR_NOTES_FIX"
 # silent where /proc is not readable (Linux and WSL only) or no core runs yet (the first hc starts one from here).
 fr_core_path || { [ $? -eq 2 ] || die 10 "$FR_PATH_FIX"; }
 fi
-# on WSL, herdr-app for Windows reads the Windows user's .config/herdr-app and sees this
-# core as another machine (wsl). A herdr-app on PATH that is not an .exe is a Linux app: WSL's folder.
-app=$(command -v herdr-app 2>/dev/null); appcfg=$cfg/herdr-app; appmachine=
-# readlink only on a found app: some readlink builds answer "" with the current folder.
-case "${app:+$(readlink -f "$app" 2>/dev/null)}" in ""|*.exe) winapp=1 ;; *) winapp= ;; esac
-# a Linux herdr-app on PATH looks for the window at its own socket (HERDR_APP_HOME or
-# ~/.config/herdr-app). The Windows window's socket is a file in the Windows user's folder, which WSL
-# cannot connect to but can see: when WSL has none and Windows has one, the Windows program is used.
-lsock=${HERDR_APP_HOME:-${HOME:-}/.config/herdr-app}/herdr-app.sock; wsock=
-if [ -n "${WSL_DISTRO_NAME:-}" ] && [ -z "${PADDOCK_APP_MODS_DIR:-}" ] && { [ -n "$winapp" ] || [ ! -e "$lsock" ]; }; then
-  winhome=$(wslpath "$(cmd.exe /d /c echo %USERPROFILE% 2>/dev/null | tr -d '\r')" 2>/dev/null)
-  if [ -n "$winhome" ] && [ -d "$winhome" ]; then
-    wsock=$winhome/.config/herdr-app/herdr-app.sock
-    if [ -n "$winapp" ] || [ -e "$wsock" ]; then
-      appcfg=$winhome/.config/herdr-app; appmachine=wsl
-      # ponytail: the installer's default folder; LOCALAPPDATA moved elsewhere needs herdr-app(.exe) on PATH.
-      exe=$winhome/AppData/Local/Programs/herdr-app/herdr-app.exe
-      [ -n "$winapp" ] || app= # the Linux program has no window here
-      # Bash adds no .exe, so herdr-app.exe on PATH is looked up by that name.
-      [ -n "$app" ] || app=$(command -v herdr-app.exe 2>/dev/null) || { [ ! -x "$exe" ] || app=$exe; }
-    fi
-  elif [ -n "$winapp" ]; then
-    echo "org-start: warning: WSL, but the Windows user folder was not found (cmd.exe, wslpath); placing the mods under $cfg/herdr-app" >&2
-  fi
-fi
-apppath() { if [ -n "$appmachine" ]; then wslpath -w "$1"; else printf '%s\n' "$1"; fi; } # a path herdr-app reads
-mods=${PADDOCK_APP_MODS_DIR:-$appcfg/mods}
-layouts=${PADDOCK_APP_LAYOUTS_DIR:-$(dirname "$mods")/layouts} # beside mods: an overridden mods folder never touches the real layouts
 # the org script goes where a worker may read it and may not write (see worker-settings.json).
 orgbin=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}
 case "$orgbin" in /*) ;; *) die 2 "PADDOCK_BIN_DIR must be an absolute path: $orgbin" ;; esac
@@ -294,7 +315,7 @@ if [ -n "$app" ]; then
     && echo "org-start: switched the screen to the paddock layout with $app" \
     || echo "org-start: warning: layout.switch failed: $sw" >&2
 fi
-if [ -n "${WSL_DISTRO_NAME:-}" ] && [ -n "$wsock" ]; then
+if [ -n "$wsock" ]; then # set only on WSL
   echo "org-start: herdr-app window sockets looked for: $lsock (WSL), $wsock (Windows)"
 fi
 
