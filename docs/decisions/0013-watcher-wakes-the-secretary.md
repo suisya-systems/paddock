@@ -1,0 +1,106 @@
+# 0013. A deterministic watcher wakes the secretary on unread mail and worker events
+
+Status: **Proposed** (2026-11-15). Refs #391, #392. This file records the proposal only; nothing is built for it. The choices the owner has to make are in [Open questions](#open-questions).
+
+## The question, in plain words
+
+The secretary is a model. Today it is kept awake by rules it must follow itself (end every turn in `org wait --children`, read the mailbox before ending a turn), by a `Stop` hook that enforces them, and by a one-shot nudge typed after each mailbox write. The rules were broken or worked around (#334, rounds 3 and 5); the nudge never fired on the host (#388) and has a race. Should a small loop with no model in it, outside the secretary, notice what waits for the secretary and wake it, so that the secretary holds no wait and needs no hook to stay awake?
+
+## What exists today (checked in this repository)
+
+| Fact | Where |
+| --- | --- |
+| A resident loop already runs: `org-watch`, kept by `org-start` as the terminal `watcher` (`hc run --bg --keep --no-notify --label paddock_role=watcher`), ended by `org-down`. Each pass (30 s) it reads `hc ls`, `hc get`, `hc read --lines 0` and `org-state`, and tells the person by toast or bell. It types into nothing; its rationale says "a bug here can be noisy, never destructive". | [org-watch SKILL.md](../../skills/org-watch/SKILL.md), [org-watch.sh](../../skills/org-watch/scripts/org-watch.sh), [rationale](../../skills/org-watch/references/rationale.md), [org-start.sh](../../skills/org-start/scripts/org-start.sh) line 288 |
+| It already sees a blocked worker with a still secretary ("Incident", Q3's rule) and a terminal that never reported a status ("No status"), and has a ledger (`watcher/told`: key, last told) that tells each item once and again after N minutes. | org-watch.sh `pass`, `tell` |
+| Every write addressed to the secretary is followed by `nudge`: `hc send --if idle`, else (secretary `done`, read with `hc get`) a plain `hc send`, retried in the background 5 times every 2 s while the mail is unread. A worker's write cannot reach the core from its sandbox, so its `PostToolUse` hook runs `org nudge` outside it. | [scripts/org](../../scripts/org) `put`, `nudge`; [worker-settings.json](../../templates/worker-settings.json) line 51 |
+| The nudge's race: hc 0.1.18's `--if` takes only `idle|working`, so `done` is read and then sent in two steps; a write that lands while the secretary works is refused (exit 10) and the 10 s of retries can run out before the turn ends. | scripts/org `nudge`; [decision 0002](0002-org-mailbox-not-hc-send.md) "Widened by Issue #385" |
+| The `Stop` hook refuses an end with unread mail, and (TEMPORARY, #388) an idle end while `org-state` has `work` or `approvals`, telling the secretary to end the turn in `org wait --children`. | [secretary-stop-guard.sh](../../scripts/hooks/secretary-stop-guard.sh) |
+| `org wait --children` returns on unread mail, a child ending, the person's typed line or a timeout, and on each return lists workers from `org-state.work` that are `gone`, `waiting` (blocked) or `unreported` (status `done`, no `run_completed` since the latest `run_started`). This check runs only inside the secretary's own wait. | scripts/org `wait`, `watch` |
+| hc's notes to a parent are off (`notes = false`, Q2); workers start with `--outlive-parent`, so a renewed secretary is not their parent; the CI child starts with `--no-notify`. So no hc note reaches the secretary today, whatever comment 1 of #391 assumes. | [decision 0002](0002-org-mailbox-not-hc-send.md) Consequences, [Q19](../design/open-questions.md#q19-do-workers-outlive-the-secretary-that-started-them), [org-pull-request.sh](../../skills/org-pull-request/scripts/org-pull-request.sh) line 126 |
+| CI: `org-pull-request` starts `hc run --bg --rm --no-notify --name ci-<pr> -- gh run watch ... --exit-status`, then `hc wait ci-<pr>` with no timeout, which checks in after about 180 s. If CI still runs then, the script exits 8 and nobody is left to write `ci_completed` when the child ends: the line is written only by the script that waited, and `--rm` removes the child and its exit code. The secretary must rerun `--pr <n>`. | org-pull-request.sh lines 124-137; [org-pull-request SKILL.md](../../skills/org-pull-request/SKILL.md) exit 8 |
+| #392's watch was named `bg-ci-390`, not the skill's `ci-<pr>`, so it may not have been started by the skill; its exit code and output are lost (`--rm`). Why it ended is not known. | #392 body |
+| Q18 decided (c), "nothing is typed into an agent", and rejected (b), a wake-up by `hc send --if idle`, partly because "it needs a resident process paddock does not have". `org-watch` is that process now. Architecture §3 says "No dispatcher"; §5 says "Nothing wakes agents". | [Q18](../design/open-questions.md#q18-how-does-anything-reach-an-idle-agent), [architecture §3, §5](../design/architecture.md#3-roles) |
+
+## Proposal
+
+### Who runs it
+
+`org-watch` takes the job (open question 1). It already polls the facts this needs, already has a ledger, and already starts and ends with the organization. A second resident loop would read the same `hc ls` and `org-state` on its own clock and need its own start, stop and ledger.
+
+The cost is that `org-watch` stops being read-only: it would type one fixed line into one terminal. The line is a constant (no text from a worker or a person is ever typed), it goes only to the secretary, and only on an exact status.
+
+### What it notices each pass
+
+Each item becomes one line in the secretary's mailbox (written by the watcher as its own id, `--as watcher`), then a wake. Each line states a recorded fact; none suggests what to do beyond reading it. Each item is written once (ledger key `mail:<kind>:<item>`) and dropped from the ledger when it stops being true.
+
+| Item | Fact it reads | Mailbox line |
+| --- | --- | --- |
+| Unread secretary mail | `check_messages --peek` for the secretary is not empty (card `ANSWER`, a worker's report or question, `ci_completed`) | none: the mail is the line; only the wake |
+| Blocked worker | a `task_id` terminal is `blocked` (and, for the person's toast, Q3's still secretary as today) | `w-<task> is blocked` |
+| Worker done without a report | status `done`, no `run_completed` to the secretary since its latest `run_started` (the rule `org wait` uses for `unreported`) | `w-<task> is done and sent no report` |
+| Worker gone | a `work` entry whose terminal is not found or `finished`, with no done record (`gone`) | `w-<task> has no terminal and sent no done report` |
+| No status | a `task_id` terminal with no status N minutes after creation (today's rule) | `w-<task> has reported no status for N minutes` |
+| CI watch ended | a `ci-<pr>` terminal seen on one pass is gone on a later one, and no `ci_completed` for that PR was written since it was first seen | `the CI watch ci-<pr> ended with no ci_completed` |
+
+The worker checks (done without report, gone) are the ones `org wait`'s `watch` already computes; the build should move that function into an `org` subcommand both can call, not copy it. CI state read from GitHub directly is open question 2.
+
+### How it wakes
+
+- **One typed line, constant:** `You have mail: run bash scripts/org --as secretary check_messages and act on it.` (the line `nudge` sends today).
+- **Never into a working secretary.** `hc send --if idle`; for `done`, `hc get` and then a plain `hc send` (hc has no `--if done`). `working`, `blocked`, no status, or not found: no send this pass.
+- **No race by retry, not by timing.** The loop looks again every pass while the mail stays unread, so a write during a working turn is announced on the first pass after the turn ends.
+- **Rate limit per unread batch.** A batch is keyed by the highest unread `seq` per sender. At most one wake per batch per `PADDOCK_WATCH_WAKE` seconds (proposed default 60). New mail is a new batch and is woken on the next pass.
+- **Log.** Each wake and each mailbox line is printed on the watcher's terminal and appended to `watcher/woke` in the state folder: time, batch key, the secretary's status read, the send's exit code.
+
+### What stays with the secretary
+
+All judgment. The watcher does not answer a worker, close one, press a key, rerun a skill, merge, or choose which item matters. It writes facts into the mailbox and types one constant line. The secretary reads the mailbox on its turn and decides, as today.
+
+The secretary then ends its turns idle. `org wait` stays as a manual tool (a person or a skill may still call it); nothing requires it.
+
+### Staged replacement
+
+1. **Beside.** Build the watcher's wake and mailbox lines; keep the secretary's wait, the `Stop` hook and the per-write nudge as they are. The secretary inside `org wait` is `working`, so the watcher does not type into it; the per-write nudge and the watcher may both announce the same mail to an idle secretary (harmless, one extra `check_messages`).
+2. **Compare.** On the host, run the [host checks](#host-checks) and read `watcher/woke` against the secretary's `check_messages` acks: every unread batch must be read, and every worker event must have its mailbox line, within one pass of the secretary going idle.
+3. **Remove.** In one change: the template's wait rule (it becomes a hint: "check the mailbox at the end of a turn"), the `Stop` hook's work hold and its unread-mail refusal, the per-write `nudge` in `scripts/org` and the worker's `PostToolUse` hook that calls it. `org wait` and its `--children` stay as commands.
+
+On acceptance, Q18 is reopened and amended toward a wake by a resident process; decision 0002's #385 paragraph is replaced by a pointer here; architecture §3 and §5 and `org-watch`'s "types into nothing" are corrected.
+
+### Host checks
+
+These are the "Done when" of #391, with nobody typing into the secretary:
+
+1. A card answered while the secretary is idle is read within one pass.
+2. A worker report arriving while the secretary is idle is read within one pass.
+3. A write during a working turn is read after that turn ends, within one pass.
+4. A worker that ends without a report is noticed and handed to an idle secretary within one pass, the secretary holding no wait.
+5. The watcher never types into a working secretary (`watcher/woke` shows no send whose status read was `working`, and the secretary's screen shows no joined line mid-turn).
+
+## Why
+
+- **Principle 1 (nothing runs inside the watched agents).** The wait is a rule the model must keep; the `Stop` hook and the worker's `PostToolUse` hook are moving parts on files an agent can reach. The watcher is outside both.
+- **Principle 2 (recorded facts, not screens).** Every trigger above is the mailbox history or hc status. The screen is not read to decide a wake.
+- **Principle 3 (judgment with the secretary).** The watcher only notices and wakes.
+- **Principle 4 (in stages).** Today's behaviour stays until the comparison shows the watcher covers it.
+- **The race goes away.** A one-shot sender has to be right at the moment of the write; a loop only has to be right once in the minutes that follow.
+
+## Costs accepted
+
+- `org-watch` types into a terminal. A bug can now wake the secretary needlessly (a turn and its cost), bounded by the per-batch rate limit.
+- Latency: up to one pass (30 s) plus the rate limit for a repeat. Today's per-write nudge is faster when it works.
+- A typed line while the person has half-typed input in the secretary is joined to it and submitted (decision 0002's measurement). See open question 3.
+- The watcher lives in the core: if the core stops, nothing wakes the secretary (as in [0008](0008-who-tells-the-person-outside-the-window.md)). If the watcher terminal ends, the secretary is woken by nothing until `org-start` is rerun; stage 3 makes that a real loss, where today the secretary's own wait would still run.
+- The CI-ended check sees only a `ci-<pr>` it saw alive; a watch that starts and ends between two passes, or while the watcher is down, is missed.
+
+## Open questions
+
+1. **Does `org-watch` take the wake job, rather than a separate dispatcher terminal?** Recommended: **Yes.** It already reads every fact needed, has the ledger and the start/stop wiring; a second loop doubles that for one constant line. Yes: `org-watch` gains the mailbox lines and the wake, and loses its "types into nothing" property. No: a new kept terminal (for example `dispatcher`) with its own script, ledger and `org-start`/`org-down` wiring; `org-watch` stays read-only.
+2. **Should the watcher also read CI state of open PRs from GitHub directly (`gh pr checks` per open PR), instead of only noticing a `ci-<pr>` watch that ended without `ci_completed`?** Recommended: **No, for now.** The watcher then needs no network, no GitHub login and no rate-limit budget, and #392's own fix (a watch that ends for any reason leaves one line) is on the writer's side; the ended-watch check covers the symptom that was seen. Yes: the watcher calls `gh` each pass or every few passes and writes a line when a head's checks finish with no `ci_completed`, catching watches it never saw. No: CI facts come only from `org-pull-request`'s record and the ended-watch check.
+3. **Should the watcher hold off the wake while the person has typed something into the secretary's prompt?** Recommended: **No.** hc reports no fact about the input line, so this would mean reading the screen (against principle 2); the line is joined only in that rare moment, and the rate limit keeps it to once per batch. Yes: each wake first reads the secretary's last screen line and skips when it holds input. No: the join is accepted as a known nuisance.
+4. **Should the watcher wake idle workers with unread mail too (and so replace the worker nudge after `org-escalation answer`, #282)?** Recommended: **No, not in this decision.** The owner's scope is the secretary; workers wait in `org wait` when blocked, and the #282 nudge is a single send that has not been reported broken. Yes: the same rule and rate limit for every `w-*` terminal, and #282's nudge goes in stage 3. No: workers keep today's path; revisit if a worker misses an answer.
+
+## What is not measured
+
+- Nothing here was run. This record was written in a worker sandbox with no core reachable; every `hc` fact is from the code and documents cited.
+- Whether `hc send` to a `done` secretary always lands (the #388 question) is still open; the build's first host probe must confirm it before stage 2.
+- Why `bg-ci-390` ended without a line (#392).
