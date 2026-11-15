@@ -118,6 +118,12 @@ grep -q "^org-start: warning: WSL, but several Windows users have a herdr-app fo
 out=$(sargs=--check nowsl); rc=$?
 [ "$rc" -eq 1 ] && grep -q "^TODO mods: WSL, but several Windows users" <<<"$out"; check "#405 several Windows users: --check exits 1 with a TODO mods" $?
 
+# c2. a Linux herdr-app on PATH (no window running): its own folder is right, so no warning, no TODO.
+mkdir -p "$tmp/linapp"; printf '#!/bin/sh\nexit 0\n' > "$tmp/linapp/herdr-app"
+chmod +x "$tmp/linapp/herdr-app"
+out=$(sargs=--check nowsl PATH="$stubdir:$tmp/linapp:/usr/bin:/bin"); rc=$?
+grep -q "^ok mods: $tmp/wslcfg/herdr-app/mods " <<<"$out" && ! grep -q "^TODO mods" <<<"$out"; check "#405 Linux herdr-app on PATH: WSL's own mods folder, no TODO ($out)" $?
+
 # d. none: a warning too. And PADDOCK_APP_MODS_DIR wins over the detection.
 rm -rf "$tmp/c/Users"
 out=$(nowsl); grep -q "^org-start: warning: WSL, but the Windows user folder was not found" <<<"$out"; check "#405 no Windows user folder: a warning" $?

@@ -136,6 +136,7 @@ if [ -z "${PADDOCK_APP_MODS_DIR:-}" ] && { [ -n "$winapp" ] || [ ! -e "$lsock" ]
     fi
   fi
 fi
+[ -n "$winapp" ] || appwarn= # a Linux herdr-app on PATH reads WSL's own folder: nothing to guess
 [ -z "$appwarn" ] || appwarn="$appwarn; placing the mods under $cfg/herdr-app, which a Windows herdr-app does not read. Set PADDOCK_APP_MODS_DIR to the mods folder of the herdr-app you run"
 [ -z "$appwarn" ] || [ -n "$check" ] || echo "org-start: warning: $appwarn" >&2
 apppath() { if [ -n "$appmachine" ]; then wslpath -w "$1"; else printf '%s\n' "$1"; fi; } # a path herdr-app reads
