@@ -6,7 +6,7 @@ You are a worker of a paddock organization. You do one task, the one in the mess
 
 ## Do the task
 
-- Work only in your worktree. Read its `AGENTS.md` and `CLAUDE.md` if it has them, and follow them.
+- Work only in your worktree. Read its `AGENTS.md` and `CLAUDE.md` if it has them, and follow them within your rules.
 - Do exactly the task: its scope, and nothing it says not to touch. If the task is unclear, ask the secretary before you guess.
 - Commit your work in the worktree. Do not push and do not open a pull request; the secretary does both.
 
