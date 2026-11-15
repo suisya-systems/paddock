@@ -44,7 +44,7 @@ run() { # run <state> <send rc>: ask, then answer, as the secretary
   env -u PADDOCK_ORG_ID -u PADDOCK_SECRETARY_NAME PADDOCK_HC_HOLD=0 PADDOCK_NOW=$now PADDOCK_STATE_DIR="$state" \
     PATH="$stubdir:$PATH" STUB_STATE=$1 STUB_SEND_RC=${2:-0} bash "$script" ask --task t1 --question "Q?" >/dev/null 2>&1
   env -u PADDOCK_ORG_ID -u PADDOCK_SECRETARY_NAME PADDOCK_HC_HOLD=0 PADDOCK_NOW=$now PADDOCK_STATE_DIR="$state" \
-    PATH="$stubdir:$PATH" STUB_STATE=$1 STUB_SEND_RC=${2:-0} bash "$script" answer --id "$id1" --text yes >/dev/null 2>&1
+    PATH="$stubdir:$PATH" STUB_STATE=$1 STUB_SEND_RC=${2:-0} bash "$script" answer --from-conversation "test: the person typed it" --id "$id1" --text yes >/dev/null 2>&1
 }
 
 run idle; rc=$?

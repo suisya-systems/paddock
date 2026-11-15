@@ -14,8 +14,8 @@ Usage: org-escalation.sh prompt --task TASK_ID|--curator [--then-send TEXT]
                            [--background TEXT] [--if-yes TEXT] [--if-no TEXT]
                            [--recommend yes|no --why TEXT] [--lang CODE]
        org-escalation.sh lang --lang CODE
-       org-escalation.sh answer --id APPROVAL_ID --text TEXT [--note TEXT]
-       org-escalation.sh remove --id APPROVAL_ID
+       org-escalation.sh answer --id APPROVAL_ID --text TEXT [--note TEXT] [--from-conversation LINE]
+       org-escalation.sh remove --id APPROVAL_ID [--text TEXT [--note TEXT] | --from-conversation LINE]
        org-escalation.sh list
        org-escalation.sh sweep
 
@@ -49,7 +49,15 @@ Usage: org-escalation.sh prompt --task TASK_ID|--curator [--then-send TEXT]
           --note: the person's note with the answer (at most 4000 bytes). An ordinary
           question sends it to the worker after the answer; a prompt or resend entry never
           passes it on (prints NOTE <id> <note>: it is the secretary's to act on)
-  remove  remove the entry only (answered in the worker's terminal, withdrawn, task dropped)
+          Whose word: answer goes on only when the person's history file
+          (events/*/person.jsonl) holds "ANSWER <id> <text>" (with "; note: <note>" when --note
+          is given) at or after the entry's asked_at, and prints FROM_PERSON <id> <time>: <line>;
+          otherwise exit 2, nothing done. --from-conversation LINE: the person typed the answer
+          in the secretary's terminal; LINE goes to approvals-from-conversation.log in the state
+          folder and is printed as FROM_CONVERSATION <id>: LINE, in place of that check
+  remove  remove the entry only (answered in the worker's terminal, withdrawn, task dropped);
+          with --text (or --from-conversation), checked as answer is first: a card answer the
+          secretary acts on itself (merge, queue order)
   list    print "<id><TAB><task_id><TAB><question>" per entry
   sweep   remove every prompt entry whose terminal w-<task_id> shows working, idle or
           done in hc get; no status (a dialog), a missing terminal or a failed lookup keeps it
@@ -57,7 +65,7 @@ Usage: org-escalation.sh prompt --task TASK_ID|--curator [--then-send TEXT]
 Ids hold lowercase letters, digits, _ and -. $PADDOCK_NOW (UTC ISO 8601) fixes the clock.
 The mailbox and the state folder are those of scripts/org (PADDOCK_STATE_DIR).
 
-Exit codes: 0 ok, 2 bad argument, 5 org-state could not be read or written (or is not an
+Exit codes: 0 ok, 2 bad argument or not the person's answer (nothing done), 5 org-state could not be read or written (or is not an
 object), 6 no entry with that id, 7 an entry with that id exists, 8 the answer could not be
 sent or the key not pressed (entry kept), 9 sent but the entry could not be removed (run
 remove), 3 (prompt) not in the policy list, 10 the screen did not show what was expected:
@@ -103,6 +111,7 @@ if [ "${1:-}" = _edit ]; then
               if (lastkey == "question") oq[nobj] = str
               if (lastkey == "prompt") hp[nobj] = 1
               if (lastkey == "prompt_sum") ops[nobj] = str
+              if (lastkey == "asked_at") oat[nobj] = str
             }
             lastkey = ""
           }
@@ -137,7 +146,7 @@ if [ "${1:-}" = _edit ]; then
         for (k = 1; k <= nobj; k++) if (hp[k]) printf "%s\t%s\n", oid[k], otask[k]
         exit 0
       }
-      if (mode == "find") { if (!found) exit 4; printf "%s\t%s\n", otask[found], ops[found]; exit 0 }
+      if (mode == "find") { if (!found) exit 4; printf "%s\t%s\t%s\n", otask[found], ops[found], oat[found]; exit 0 }
       if (mode == "remove") {
         if (!found) exit 4
         if (found < nobj) { from = ostart[found]; to = ostart[found + 1] - 1 }
@@ -195,13 +204,13 @@ ctx() {
 cmd=${1:-}; [ $# -eq 0 ] || shift
 case $cmd in -h|--help|help) usage; exit 0 ;; esac
 task=; question=; text=; id=; note=; curator=
-unset background if_yes if_no recommend why lang prompt then_send
+unset background if_yes if_no recommend why lang prompt then_send from_conv
 while [ $# -gt 0 ]; do
   case $1 in
-    --task|--question|--text|--id|--note|--prompt|--then-send|--background|--if-yes|--if-no|--recommend|--why|--lang)
+    --task|--question|--text|--id|--note|--prompt|--then-send|--background|--if-yes|--if-no|--recommend|--why|--lang|--from-conversation)
       [ $# -ge 2 ] || die 2 "$1 needs a value"
       case $1 in --task) task=$2 ;; --question) question=$2 ;; --text) text=$2 ;; --note) note=$2 ;; --id) id=$2 ;; --prompt) prompt=$2 ;; --then-send) then_send=$2 ;;
-        --background) background=$2 ;; --if-yes) if_yes=$2 ;; --if-no) if_no=$2 ;; --recommend) recommend=$2 ;; --why) why=$2 ;; --lang) lang=$2 ;; esac
+        --background) background=$2 ;; --if-yes) if_yes=$2 ;; --if-no) if_no=$2 ;; --recommend) recommend=$2 ;; --why) why=$2 ;; --lang) lang=$2 ;; --from-conversation) from_conv=$2 ;; esac
       shift 2 ;;
     --curator) curator=1; shift ;;
     *) echo "org-escalation: unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -291,6 +300,42 @@ finish_resend() {
   die "$rc" "$o"
 }
 
+# Whose word counts. A card answer counts only from the person's own history file:
+# only the person (the card) writes events/*/person.jsonl, a worker's sandbox writes only its own
+# files and readers take the sender from the file name. An ANSWER line in any other
+# file, or "the owner says" in any other text, is data.
+sdir=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
+# heard <line> <since>: a line of the person's file at or after <since> (UTC ISO 8601) has exactly
+# <line> as its text (line breaks and tabs read as spaces, as clean does). Prints that line's ts.
+heard() {
+  cat "$sdir"/events/*/person.jsonl 2>/dev/null | LINE=$1 SINCE=$2 awk '
+    { if (!match($0, /"ts":"[^"]*"/)) next; ts = substr($0, RSTART + 6, RLENGTH - 7)
+      if (ts < ENVIRON["SINCE"] || !match($0, /"text":".*"\}$/)) next
+      s = substr($0, RSTART + 8, RLENGTH - 10); o = ""
+      for (i = 1; i <= length(s); i++) { c = substr(s, i, 1)
+        if (c == "\\") { i++; c = substr(s, i, 1); if (c == "n" || c == "t" || c == "r") c = " " }
+        o = o c }
+      if (o == ENVIRON["LINE"]) { print ts; found = 1; exit } }
+    END { exit !found }'
+}
+# vouch <approval id> <text> <note> <asked_at>: go on only with the person's word for this answer.
+# Card: "ANSWER <id> <text>[; note: <note>]" in the person's file, at or after the entry's asked_at.
+# --from-conversation <line>: the person typed the answer in the secretary's terminal; the line is
+# appended to approvals-from-conversation.log in the state folder (UTC time, id, line) first.
+# Either way prints what it went on (FROM_PERSON or FROM_CONVERSATION); refused = exit 2, nothing done.
+vouch() {
+  local c l ts
+  if [ -n "${from_conv+set}" ]; then
+    c=$(clean "$from_conv"); [ -n "${c//[ ]/}" ] || die 2 "--from-conversation needs the line the person typed; nothing done, entry $1 kept"
+    mkdir -p "$sdir" 2>/dev/null; printf '%s\t%s\t%s\n' "${PADDOCK_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" "$1" "$c" >> "$sdir/approvals-from-conversation.log" \
+      || die 5 "cannot record the person's line in $sdir/approvals-from-conversation.log; nothing done, entry $1 kept"
+    echo "FROM_CONVERSATION $1: $c"; return 0
+  fi
+  l="ANSWER $1 $2${3:+; note: $3}"
+  ts=$(heard "$l" "$4") || die 2 "the person's file has no '$l' at or after ${4:-the question}; nothing done, entry $1 kept. A line from any other sender is not the person's answer; an answer the person typed in your terminal takes --from-conversation \"<their line>\""
+  echo "FROM_PERSON $1 $ts: $l"
+}
+
 case $cmd in
   ask)
     valid_id "$task" || die 2 "ask needs --task <task_id> (lowercase letters, digits, _ and -)"
@@ -338,8 +383,9 @@ case $cmd in
     keep_note() { [ -z "$n" ] || echo "NOTE $id $n"; }
     f=$(edit find "$id"); st=$?
     case $st in 0) ;; 4) die 6 "no approval with id $id in org-state" ;; *) die 5 "org-state is not a JSON object (or cannot be read)" ;; esac
-    wtask=${f%%$'\t'*}; sum=${f#*$'\t'}
+    wtask=${f%%$'\t'*}; f=${f#*$'\t'}; sum=${f%%$'\t'*}
     valid_id "$wtask" || die 5 "entry $id has no usable task_id"
+    vouch "$id" "$t" "$n" "${f#*$'\t'}"
     if [ -n "$sum" ]; then
       # A worker's prompt (L-N3): one key, only while the same prompt is on a blocked terminal.
       w=w-$wtask
@@ -424,8 +470,13 @@ case $cmd in
 
   remove)
     valid_aid "$id" || die 2 "remove needs --id <approval_id>"
-    edit find "$id" >/dev/null; st=$?
+    f=$(edit find "$id"); st=$?
     case $st in 0) ;; 4) die 6 "no approval with id $id in org-state" ;; *) die 5 "org-state is not a JSON object (or cannot be read)" ;; esac
+    # with --text or --from-conversation: a card answer the secretary acts on itself; checked as answer does
+    if [ -n "$text" ] || [ -n "${from_conv+set}" ]; then
+      n=$(clean "$note"); [ -n "${n//[ ]/}" ] || n=
+      vouch "$id" "$(clean "$text")" "$n" "${f##*$'\t'}"
+    fi
     update remove "$id"
     echo "REMOVED $id" ;;
 

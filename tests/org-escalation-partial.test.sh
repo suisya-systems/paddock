@@ -45,7 +45,7 @@ chmod +x "$stubdir/hc"
 export STUB=$tmp/stub; state=$tmp/state; mkdir -p "$STUB"
 printf '%s\n' '{"approvals":[{"id":"t3-1","task_id":"t3","question":"Q?","asked_at":"x"}]}' > "$STUB/docval-org-state"
 out=$(env -u PADDOCK_ORG_ID PADDOCK_HC_HOLD=0 PADDOCK_NOW=2026-11-10T01:02:03Z PADDOCK_STATE_DIR="$state" \
-  PATH="$stubdir:$PATH" STUB_SET_ERROR=1 bash "$script" answer --id t3-1 --text yes 2>&1); rc=$?
+  PATH="$stubdir:$PATH" STUB_SET_ERROR=1 bash "$script" answer --from-conversation "test: the person typed it" --id t3-1 --text yes 2>&1); rc=$?
 [ "$rc" -eq 9 ]; check "answer exits 9 when the send worked but the removal failed" $?
 case $out in *"run: remove --id t3-1"*) r=0 ;; *) r=1 ;; esac; check "and says to run remove" $r
 m=$(env -u PADDOCK_ORG_ID PADDOCK_STATE_DIR="$state" PADDOCK_NOW=2026-11-10T01:02:03Z bash "$org" --as w-t3 check_messages 2>&1)
