@@ -1,6 +1,8 @@
 ---
 name: org-suspend
 description: Record the organization's state before a pause. Saves the org-state document, the terminals that carry a task_id label, and each worker's worktree git state; leaves every terminal alive. Run it from your own login shell.
+when_to_use: The person pauses the organization and wants the state recorded first, or org-down is about to run (it calls this). Run from the person's login shell, never from inside an agent.
+disable-model-invocation: true
 ---
 
 # org-suspend
