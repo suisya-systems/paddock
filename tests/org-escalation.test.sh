@@ -113,6 +113,15 @@ case $(doc) in *"$id1"*) r=1 ;; *) r=0 ;; esac; check "the answered entry is rem
 case $(doc) in *"$id2"*) r=0 ;; *) r=1 ;; esac; check "the other entry stays" $r
 grep -q 'send' "$STUB/calls"; [ $? -ne 0 ]; check "no hc send / hc keys is used (mailbox only)" $?
 
+# answer --note: the person's note (the card's "anything to add") reaches the worker with the answer
+now=2026-11-10T01:02:05Z; esc ask --task t5 --question "Q five?" >/dev/null; now=2026-11-10T01:02:03Z
+out=$(esc answer --id t5-20261110T010205Z --text yes --note "but also update the docs"); r=$?
+[ $r -eq 0 ]; check "answer with a note exits 0 ($out)" $?
+case $(mail w-t5) in *"Answer to your question (t5-20261110T010205Z): yes (note from the person: but also update the docs)"*) r=0 ;; *) r=1 ;; esac
+check "the worker gets the answer and the note in one message" $r
+[ "$(rc esc answer --id "$id2" --text yes --note "$(head -c 4001 /dev/zero | tr '\0' x)")" -eq 2 ]; check "a note over 4000 bytes exits 2" $?
+case $(doc) in *"$id2"*) r=0 ;; *) r=1 ;; esac; check "a refused note keeps the entry" $r
+
 # answer: unknown id exits 6 and sends nothing
 before=$(doc)
 [ "$(rc esc answer --id nope-1 --text yes)" -eq 6 ]; check "answer with an unknown id exits 6" $?

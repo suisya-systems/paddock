@@ -12,7 +12,7 @@ bash skills/org-escalation/scripts/org-escalation.sh prompt --task <task_id> [--
 bash skills/org-escalation/scripts/org-escalation.sh ask    --task <task_id> --question "<one sentence>" [--prompt "<PROMPT= text>"] \
          --background "<why it is asked>" --if-yes "<what Yes does>" --if-no "<what No does>" \
          --recommend yes|no --why "<reason>" --lang <code>
-bash skills/org-escalation/scripts/org-escalation.sh answer --id <approval_id> --text "<answer>"
+bash skills/org-escalation/scripts/org-escalation.sh answer --id <approval_id> --text "<answer>" [--note "<the person's note>"]
 bash skills/org-escalation/scripts/org-escalation.sh remove --id <approval_id>
 bash skills/org-escalation/scripts/org-escalation.sh list
 bash skills/org-escalation/scripts/org-escalation.sh sweep
@@ -24,7 +24,7 @@ bash skills/org-escalation/scripts/org-escalation.sh sweep
 2. `ask` adds `{"id","task_id","question","asked_at"}` to `org-state.approvals`. The id is `<task_id>-<UTC yyyymmddThhmmssZ>`; the script prints `APPROVAL_ID=<id>`. The mod shows the entry as a card. `question` is one sentence, at most 400 bytes; control characters become spaces. Every entry is answered through the secretary; `--answer-in` is gone and exits 2.
    The card is all the person sees when deciding, so write the context with it: `--background` (why this is asked, one or two sentences, at most 600 bytes), `--if-yes` and `--if-no` (what each answer leads to, at most 300 bytes each), and `--recommend yes|no` with `--why` (your recommendation and its reason, at most 400 bytes; one without the other exits 2). They are kept in the entry as `background`, `if_yes`, `if_no`, `recommend` and `why`. Each is optional to the script, but leave one out only when it truly does not apply: the card names every one that is missing ("Not written: ..."). An empty or too long value exits 2 and writes nothing; control characters become spaces.
 3. The person answers, in conversation with the secretary or from the card.
-4. `answer` sends `Answer to your question (<approval_id>): <text>` to `w-<task_id>` with `scripts/org send_message`, then removes the entry. Nothing is typed into the worker ([decision 0002](../../docs/decisions/0002-org-mailbox-not-hc-send.md)).
+4. `answer` sends `Answer to your question (<approval_id>): <text>` to `w-<task_id>` with `scripts/org send_message`, then removes the entry. With `--note <note>` (the person's note from the card, at most 4000 bytes, which the card checks before sending; control characters become spaces) the message reads `... : <text> (note from the person: <note>)`. Nothing is typed into the worker ([decision 0002](../../docs/decisions/0002-org-mailbox-not-hc-send.md)).
 
 ## A worker's prompt
 
@@ -38,7 +38,7 @@ A worker runs in auto mode, so few prompts appear. A prompt or dialog that does 
 - `ask ... --lang <code>`: the person reads the card, so its text is in the conversation language and `--lang` (`ja`, `en`) sets the language of the card's fixed words; without it the card is English.
 - `lang --lang <code>` records the conversation language in org-state (`conversation_lang`); the cockpit's consult band, which has no card, uses it. Run it once you have settled the language.
 - `ask ... --prompt "<that text>"` records it as an ordinary question; the entry keeps `prompt` and `prompt_sum` (a checksum of the text). The card offers Yes / No as for any question.
-- `answer --id <id> --text yes|no` on such an entry presses one key, only while `w-<t>` is `blocked` and the checksum of its dialog (from the last rule line `───` to the end of the screen; the whole screen when there is none) equals `prompt_sum` (a change in the dialog refuses; the transcript above it may change, as the host check showed; a request taller than the screen is compared only where it shows): yes = `enter` with the cursor on "1. Yes" (the one-time Yes, never "don't ask again"), no = `esc`. Anything else presses nothing and exits 10 (entry kept; run `prompt` again). Free text exits 2.
+- `answer --id <id> --text yes|no` on such an entry presses one key, only while `w-<t>` is `blocked` and the checksum of its dialog (from the last rule line `───` to the end of the screen; the whole screen when there is none) equals `prompt_sum` (a change in the dialog refuses; the transcript above it may change, as the host check showed; a request taller than the screen is compared only where it shows): yes = `enter` with the cursor on "1. Yes" (the one-time Yes, never "don't ask again"), no = `esc`. Anything else presses nothing and exits 10 (entry kept; run `prompt` again). Free text exits 2. A `--note` never reaches the worker's prompt or its mailbox: the key is pressed as without it, and the script prints `NOTE <id> <note>` for the secretary, who acts on the note itself (the same on a resend card).
 - `sweep` (on each return from the wait) removes every prompt entry whose terminal `w-<task_id>` shows `working`, `idle` or `done` in `hc get --json` (someone answered it, or it moved on), and prints `SWEPT <id>`. No status, a missing terminal or a failed lookup keeps it. Other entries are never touched; an old `answer_in: worker` entry has no `prompt` and is an ordinary question.
 
 ## The answer message (shared with the card)
@@ -47,9 +47,10 @@ A card (or any agent) that carries the person's answer sends one line to the sec
 
 ```
 ANSWER <approval_id> <text>
+ANSWER <approval_id> yes|no; note: <note>
 ```
 
-`<approval_id>` is the `id` of an entry in `org-state.approvals`; `<text>` is `yes`, `no` or free text, to the end of the line. The card sends it with `bash scripts/org --as <id> send_message secretary "ANSWER <approval_id> <text>"`. When the secretary reads such a line in `check_messages`, it runs `answer --id <approval_id> --text "<text>"`. An id that is in no entry exits 6: tell the person, never guess a task.
+`<approval_id>` is the `id` of an entry in `org-state.approvals`; `<text>` is `yes`, `no` or free text, to the end of the line. The card sends `yes` or `no`, and with the second form when the person typed something in its optional note field ("anything to add"); the note is one line, to the end of the line. The card sends it with `bash scripts/org --as <id> send_message secretary "ANSWER <approval_id> <text>"`. When the secretary reads such a line in `check_messages`, it runs `answer --id <approval_id> --text "<text>"`, and for the second form `answer --id <approval_id> --text yes|no --note "<note>"`. The note is part of the answer: the secretary acts on it too (it may ask for more than the worker can do, or be meant for the secretary). An answer about a worker's prompt still presses exactly one key; the note stays with the secretary. An id that is in no entry exits 6: tell the person, never guess a task.
 
 ## What it does
 
@@ -84,4 +85,4 @@ ANSWER <approval_id> <text>
 
 ## Not measured
 
-Tested against a stubbed `hc` (documents only) and the real `scripts/org` in a throwaway state folder (`tests/org-escalation.test.sh`). Not run on a host: a real `doc.get` / `doc.set` of an `org-state` that the mod is displaying, the card sending `ANSWER ...`, and a worker reading the answer from its mailbox.
+Tested against a stubbed `hc` (documents only) and the real `scripts/org` in a throwaway state folder (`tests/org-escalation.test.sh`). Not run on a host: a real `doc.get` / `doc.set` of an `org-state` that the mod is displaying, the card sending `ANSWER ...` (with or without a note), and a worker reading the answer from its mailbox.

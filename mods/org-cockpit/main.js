@@ -3,14 +3,15 @@
 //   "workers"  left: one tile per worker terminal (labelled task_id): status colour, its last
 //              lines, "Needs you" when blocked. Click opens the terminal to answer there.
 //              Above them, always: "Back to the secretary" (Issue #389).
-//   "approval" bottom right: the oldest org-state approval as one card, answered Yes / No
-//              through the secretary (a worker's prompt too: the secretary relays it, #260).
+//   "approval" bottom right: the oldest org-state approval as one card, answered Yes / No, with
+//              an optional note, through the secretary (a worker's prompt too: the secretary
+//              relays it, #260; the note stays with the secretary there, #386).
 //   "consult"  floating: what the secretary asks the person, while its terminal is blocked.
 // The secretary itself is a terminal block in the layout, not drawn here.
 // org-state reading is prototype 1's (mods/org-agents/main.js); mods cannot import across folders.
 
 import { View, div, svg } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
+import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { exec, hc, panes, props, run, settings, terminals, theme, window } from "herdr";
 
 const DOC = "org-state";
@@ -60,9 +61,25 @@ async function readDoc(on) {
 // The card answers through them, on the secretary's machine; it never writes org-state (L-N8).
 const ORG = 'o=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}/org; ' +
   '[ -f "$o" ] || o=${PADDOCK_CORE_TEMPLATES_DIR:-${APPDATA:-${XDG_CONFIG_HOME:-$HOME/.config}}/herdr-core/templates}/org';
+// The line the card sends: `ANSWER <id> yes|no`, or with the person's note
+// `ANSWER <id> yes|no; note: <note>` (skills/org-escalation, "The answer message"). The note is one
+// line: whitespace runs, line breaks included, become one space.
+const oneLine = (note) => String(note ?? "").replace(/\s+/g, " ").trim();
+function answerLine(id, word, note) {
+  const n = oneLine(note);
+  return `ANSWER ${id} ${word}${n ? `; note: ${n}` : ""}`;
+}
+// org-escalation answer --note takes at most this many bytes (UTF-8); a longer note is not sent.
+const NOTE_MAX = 4000;
+function utf8Bytes(s) {
+  let b = 0;
+  for (const ch of s) { const c = ch.codePointAt(0); b += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4; }
+  return b;
+}
+
 // ponytail: needs sh on that machine; a native Windows one without it shows "Not sent".
-async function sendAnswer(on, id, word) {
-  const r = await exec("sh", ["-c", `${ORG}; exec bash "$o" --as person send_message secretary "$1"`, "sh", `ANSWER ${id} ${word}`], { on });
+async function sendAnswer(on, id, word, note) {
+  const r = await exec("sh", ["-c", `${ORG}; exec bash "$o" --as person send_message secretary "$1"`, "sh", answerLine(id, word, note)], { on });
   if (r.code !== 0) throw new Error(r.stderr.trim() || `org exited with ${r.code}`);
 }
 
@@ -75,6 +92,8 @@ const STR = {
     answerInTerminal: "Answer in the secretary's terminal", background: "BACKGROUND", ifYouAnswer: "IF YOU ANSWER",
     recommends: "SECRETARY RECOMMENDS", fromSecretary: "FROM THE SECRETARY",
     yes: "Yes", no: "No", wordCol: 28, recommended: "Recommended",
+    noteLabel: "ANYTHING TO ADD? (optional, sent with Yes or No)",
+    noteTooLong: (max) => `The note is too long (over ${max} bytes). Shorten it, then answer.`,
     waiting: (d) => `waiting ${d}`, more: (n) => `and ${n} more waiting`,
     under1m: "<1m", min: (n) => `${n}m`, hour: (n) => `${n}h`, day: (n) => `${n}d`,
     fields: { background: "background", if_yes: "what Yes does", if_no: "what No does", recommend: "recommendation" },
@@ -93,6 +112,8 @@ const STR = {
     answerInTerminal: "窓口のターミナルで回答してください", background: "背景", ifYouAnswer: "回答すると",
     recommends: "窓口のおすすめ", fromSecretary: "窓口から",
     yes: "はい", no: "いいえ", wordCol: 40, recommended: "おすすめ",
+    noteLabel: "補足（任意。「はい」「いいえ」と一緒に送られます）",
+    noteTooLong: (max) => `補足が長すぎます（${max}バイト超）。短くしてから回答してください。`,
     waiting: (d) => `${d}待ち`, more: (n) => `ほかに${n}件あります`,
     under1m: "1分未満", min: (n) => `${n}分`, hour: (n) => `${n}時間`, day: (n) => `${n}日`,
     fields: { background: "背景", if_yes: "「はい」の結果", if_no: "「いいえ」の結果", recommend: "おすすめ" },
@@ -156,6 +177,10 @@ export default class Cockpit extends View {
     this.lines = new Map(); // address -> last lines
     this.sent = new Map(); // approval id -> { word, state: "sending" | "sent" | "failed", at }
     this.cx = cx; // init's cx is an AsyncContext: valid after init, used by the card's clicks
+    // The card's note field: one state, made here (it cannot be made in render), emptied when an
+    // answer is sent or when another card takes its place.
+    if (this.role === "approval") this.note = InputState.new();
+    this.noteFor = null; // the approval id the shown card is for
     if (this.role === "consult") {
       // The centre is the layout's active-tab block. The secretary joins it as a pane: herdr-app
       // adopts any terminal labelled herdr.space / herdr.tab, so a renewed secretary is adopted
@@ -358,12 +383,17 @@ export default class Cockpit extends View {
   answer(a, word) {
     const s = this.sent.get(a.id);
     if (s && s.state !== "failed") return;
+    const note = this.note?.value() ?? "";
+    // Too long for the secretary's answer: nothing is sent, the card stays as it is and says so.
+    this.noteTooLong = utf8Bytes(oneLine(note)) > NOTE_MAX ? a.id : null;
+    if (this.noteTooLong) { this.cx.spawn(async (cx) => cx.notify()); return; }
     this.sent.set(a.id, { word, state: "sending" });
     this.cx.spawn(async (cx) => {
       cx.notify();
       try {
-        await sendAnswer(this.secretaryMachine(), a.id, word);
+        await sendAnswer(this.secretaryMachine(), a.id, word, note);
         this.sent.set(a.id, { word, state: "sent", at: Date.now() });
+        if (this.noteFor === a.id) this.note?.set_value("");
       } catch {
         this.sent.set(a.id, { word, state: "failed" });
       }
@@ -409,6 +439,12 @@ export default class Cockpit extends View {
     // An approval without an id cannot be answered here (the secretary matches answers by id).
     const answerable = typeof a.id === "string" && a.id !== "";
     const L = words(a.lang);
+    // Another card took this place (answered elsewhere, or withdrawn): a note typed for the last
+    // one is emptied, outside render.
+    if (this.noteFor !== a.id) {
+      if (this.noteFor !== null && this.note?.value()) this.cx.spawn(async (cx) => { this.note.set_value(""); cx.notify(); });
+      this.noteFor = a.id;
+    }
     const task = a.task_id || L.unnamedTask;
     // A malformed entry still says which approval it is, so the person can ask about it.
     const question = a.question || L.fallbackQuestion(a.id, task);
@@ -470,6 +506,11 @@ export default class Cockpit extends View {
         .child(div().mx(16).h(1).bg(t.foreground + "14"))
         .child(v_flex().px(16).py(12).gap(10)
           .when(failed, (el) => el.child(div().text_size(12).text_color(c).child(L.notSent)))
+          .when(this.noteTooLong === a.id, (el) => el.child(div().text_size(12).text_color(c).whitespace_normal().child(L.noteTooLong(NOTE_MAX))))
+          .when(answerable && Boolean(this.note), (el) => el.child(v_flex().gap(4)
+            .child(this.label(t, L.noteLabel, t.muted))
+            .child(Input.new(this.note).h(34).px(10).items_center().rounded(8).border_1()
+              .border_color(t.input ?? t.foreground + "29").bg(t.background).text_size(13).text_color(t.foreground))))
           .when(answerable, (el) => el.child(h_flex().gap(8)
             .child(this.choice(t, a, "yes", L.yes, rec === "yes", L))
             .child(this.choice(t, a, "no", L.no, rec === "no", L))))
