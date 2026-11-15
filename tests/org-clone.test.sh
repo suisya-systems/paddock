@@ -108,4 +108,11 @@ export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.$tmp/remote/o/r.git.insteadOf" G
 PATH="$tmp/nocli" bash "$script" o/r >"$STUB/out" 2>"$STUB/err"; rc=$?
 unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
 [ "$rc" = 0 ] && [ -d "$tmp/pp/o/r/.git" ] && grep -q "^| r | $tmp/pp/o/r | trunk |" "$tmp/projects.md"; check "no CLI on PATH: falls back to git clone ($rc)" $?
+
+# Wrong argument count: exit 2, nothing cloned, and the output still ends with one next: line.
+reset
+for args in "" "o/r x/y"; do
+  # shellcheck disable=SC2086
+  rc=$(run $args); [ "$rc" = 2 ] && [ ! -s "$STUB/calls" ] && tail -n 1 "$STUB/err" | grep -q '^next: '; check "argument count '$args': exit 2, no clone, ends with a next: line ($rc)" $?
+done
 exit $fail

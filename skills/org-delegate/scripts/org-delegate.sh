@@ -5,7 +5,7 @@ set -u
 
 usage() {
   cat <<'USAGE'
-Usage: org-delegate.sh --project <git repo> --task-id <id> (--task <text> | --task-file <file|->)
+Usage: org-delegate.sh (--project <git repo | project name> | --repo OWNER/NAME) --task-id <id> (--task <text> | --task-file <file|->)
                        [--title <text>] [--base <ref>] [--no-fetch] [--branch <name>] [--allow-write <path>]... [--secret-block <on|off|patterns>]
 
 Creates a git worktree for the task under the workers folder, writes
@@ -16,6 +16,11 @@ brief file into the worktree (rules: --append-system-prompt-file in the template
 
   --project      the git repository the worker changes, or a project name (no /) whose path and base
                  are read from the row in projects.md (PADDOCK_PROJECTS_FILE, else the paddock config folder)
+  --repo         OWNER/NAME (or a github.com URL) instead of --project: clones the repository with org-clone when it is
+                 not on the machine (a recorded one is reused, never cloned twice), then delegates into it. Only a
+                 full OWNER/NAME is accepted, a bare name is never guessed. org-clone's exit codes (2 to 8) are this
+                 script's; its message and next: line are on stderr. The first worker on a fresh clone stops at the
+                 folder-trust dialog: exit 10 and the next: line say how to ask the person.
   --task-id      [a-z0-9_-], at most 30 characters; the worker is w-<id>, the label task_id=<id>
   --task         the task text (what to change, what not to touch, how to report)
   --task-file    the task text from a file, or - for stdin
@@ -45,17 +50,35 @@ settings path problem (the worktree is removed), 7 a terminal w-<id> exists,
 10 the worker started but its first message was not sent (left as it is),
 12 the start record or the worker's own files in the state folder could not be written (nothing was started),
 13 the worker runs but the org-state entry could not be written (--title; add it by hand).
+Every non-zero exit ends with one line on stderr: next: <the exact action> or next: ask the person: <question>.
 USAGE
 }
 
-die() { code=$1; shift; echo "org-delegate: $*" >&2; exit "$code"; }
+# die <code> <message> [<next text>]: the message, then the one next: line (the code's default unless given).
+die() {
+  local code=$1 msg=$2 nx=${3:-}
+  if [ -z "$nx" ]; then
+    case $code in
+      2) nx="fix the argument the message names and run org-delegate again (nothing was created)" ;;
+      3) nx="tell the person that hc or git is not installed; do not retry" ;;
+      5) nx="tell the person the core did not answer or hc failed (message above); once hc ls works, run org-delegate again with the same task id" ;;
+      6) nx="fix the cause the message names and run org-delegate again; if the project or base is wrong, ask the person" ;;
+      7) nx="run hc get w-${id:-<task_id>}; if that worker is running, do not start another; otherwise pick another task id" ;;
+      12) nx="fix the cause the message names and run org-delegate again (nothing was started)" ;;
+      13) nx="the worker runs; add its work entry by hand with bash scripts/org --as secretary doc update org-state, and do not delegate again" ;;
+      *) nx="read the message above and tell the person" ;;
+    esac
+  fi
+  echo "org-delegate: $msg" >&2; echo "next: $nx" >&2; exit "$code"
+}
 needs() { [ $# -ge 2 ] || die 2 "$1 needs a value"; }
 
-project= id= task= taskfile= title= base= branch= allow=() fetch=1
+repo= project= id= task= taskfile= title= base= branch= allow=() fetch=1
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --project) needs "$@"; project=$2; shift 2 ;;
+    --repo) needs "$@"; repo=$2; shift 2 ;;
     --task-id) needs "$@"; id=$2; shift 2 ;;
     --task) needs "$@"; task=$2; shift 2 ;;
     --task-file) needs "$@"; taskfile=$2; shift 2 ;;
@@ -65,12 +88,13 @@ while [ $# -gt 0 ]; do
     --no-fetch) fetch=; shift ;;
     --allow-write) needs "$@"; allow+=("$2"); shift 2 ;;
     --secret-block) needs "$@"; secret=$2; havesecret=1; shift 2 ;;
-    *) echo "org-delegate: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+    *) echo "org-delegate: unknown argument: $1" >&2; usage >&2; echo "next: fix the argument and run org-delegate again (nothing was created)" >&2; exit 2 ;;
   esac
 done
 
 # Arguments first: nothing is created or called until they are all valid.
-[ -n "$project" ] || die 2 "--project is required"
+[ -z "$repo" ] || [ -z "$project" ] || die 2 "give --repo or --project, not both" "run org-delegate again with --repo OWNER/NAME (clones when needed) or --project <name or path>, not both"
+[ -n "$project" ] || [ -n "$repo" ] || die 2 "--project (or --repo OWNER/NAME) is required" "ask the person: which repository is the task for? (a projects.md name or path for --project, OWNER/NAME for --repo)"
 case "$id" in ''|-*|*[!a-z0-9_-]*) die 2 "--task-id is required: lowercase letters, digits, _ and -" ;; esac
 [ "${#id}" -le 30 ] || die 2 "--task-id is longer than 30 characters (the terminal name w-<id> allows 32)"
 if [ -n "$task" ] && [ -n "$taskfile" ]; then die 2 "give --task or --task-file, not both"; fi
@@ -80,6 +104,24 @@ fi
 [ -n "$task" ] || die 2 "the task text is empty: give --task or --task-file"
 [ -z "${havetitle:-}" ] || [ -n "${title//[[:space:]]/}" ] || die 2 "--title is empty"
 [ -n "$branch" ] || branch=work/$id
+for p in ${allow[@]+"${allow[@]}"}; do
+  case "$p" in /*|"~/"*) ;; *) die 2 "--allow-write needs an absolute path or ~/...: $p" ;; esac
+  case "$p" in *[\"\\]*) die 2 "--allow-write path has a quote or backslash: $p" ;; esac
+  case "$p" in *[[:cntrl:]]*) die 2 "--allow-write path has a control character (a newline too)" ;; esac
+done
+# --repo: clone when needed (org-clone), then delegate into the project it printed. Checked first, so that nothing is cloned
+# when the core is down or the terminal name is taken.
+if [ -n "$repo" ]; then
+  command -v hc >/dev/null 2>&1 || die 3 "hc not found on PATH (install herdr-core)"
+  command -v git >/dev/null 2>&1 || die 3 "git not found on PATH"
+  git check-ref-format --branch "$branch" >/dev/null 2>&1 || die 2 "invalid branch name: $branch"
+  hc ls >/dev/null 2>&1 || die 5 "cannot reach the herdr core (hc ls failed)"
+  if hc get "w-$id" >/dev/null 2>&1; then die 7 "a terminal named w-$id already exists; pick another task id, or end that terminal first"; fi
+  # org-clone's own message and next: line go to stderr as they are; its exit code is ours.
+  root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+  project=$(bash "$root/skills/org-clone/scripts/org-clone.sh" "$repo") || exit $?
+  [ -n "$project" ] || die 8 "org-clone printed no project name" "read the message above and tell the person"
+fi
 # a --project without a "/" is a name in projects.md; its path and base come from the row.
 case "$project" in
   */*|.|..) ;;
@@ -104,11 +146,6 @@ case "${secret:-}" in
        case "${sp[$i]}" in ''|/*|*..*) die 2 "bad secret-block pattern (empty, absolute or with ..): ${sp[$i]}" ;; esac
      done ;;
 esac
-for p in ${allow[@]+"${allow[@]}"}; do
-  case "$p" in /*|"~/"*) ;; *) die 2 "--allow-write needs an absolute path or ~/...: $p" ;; esac
-  case "$p" in *[\"\\]*) die 2 "--allow-write path has a quote or backslash: $p" ;; esac
-  case "$p" in *[[:cntrl:]]*) die 2 "--allow-write path has a control character (a newline too)" ;; esac
-done
 
 command -v hc >/dev/null 2>&1 || die 3 "hc not found on PATH (install herdr-core)"
 command -v git >/dev/null 2>&1 || die 3 "git not found on PATH"
@@ -305,7 +342,7 @@ if ! out=$(hc run --bg --outlive-parent --name "$name" --cwd "$wt" --label "task
     mark_blocked "Delegation failed: hc run did not start $name. The worktree was removed."
     fail_undone 5 "hc run failed: ${out:0:300}. $name does not exist; the worktree and branch were removed."
   fi
-  die 5 "hc run failed: ${out:0:300}. $name may exist or its state is unknown, so nothing was removed: terminal $name, worktree $wt, branch $branch (project $project). Check 'hc get $name'."
+  die 5 "hc run failed: ${out:0:300}. $name may exist or its state is unknown, so nothing was removed: terminal $name, worktree $wt, branch $branch (project $project). Check 'hc get $name'." "run hc get $name before anything else: the worker may exist (terminal, worktree and branch are named above); do not delegate again with this task id until you know"
 fi
 first="$(awk 'n >= 2 { print; next } /^---$/ { n++ }' "$root/templates/worker.md")
 
@@ -323,7 +360,7 @@ if ! printf '%s' "$out" | tr -d '\n' | grep -Eq '"sent": *true' \
     || echo "org-delegate: could not save the first message in $rs; the secretary resends it by hand" >&2
   mark_blocked "Delegation stalled: $name did not get its first message. Terminal, worktree $wt and branch $branch were left."
   echo "$out" >&2
-  die 10 "$name started but first_message.sent is not true. Read it with 'hc read $name'. If it shows the folder-trust dialog, the folder is not trusted yet: after the person's yes on the trust card, org-escalation answer sends the task and writes the work entry (saved in $rs). If the template refused, check the read-only token file. Left as they are, nothing typed: terminal $name, worktree $wt, branch $branch."
+  die 10 "$name started but first_message.sent is not true. Read it with 'hc read $name'. If it shows the folder-trust dialog, the folder is not trusted yet: after the person's yes on the trust card, org-escalation answer sends the task and writes the work entry (saved in $rs). If the template refused, check the read-only token file. Left as they are, nothing typed: terminal $name, worktree $wt, branch $branch." "hc read $name (do not press keys). At the folder-trust dialog ask the person on an approval card (org-escalation ask --task $id --prompt ...); on their yes run org-escalation answer --id <card id> --text yes, which sends the task and writes the work entry. Anything else: tell the person"
 fi
 
 [ -z "${po:-}" ] || echo "org-delegate: $name was at the folder-trust dialog; answered it and sent the task again (${po//$'\n'/ })"

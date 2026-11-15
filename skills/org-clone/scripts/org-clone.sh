@@ -24,13 +24,28 @@ Exit codes: 0 done (name on stdout), 2 bad argument, 3 git not found, 4 not foun
 5 network, 6 the target path exists and is not a clone of that origin, 7 NAME is already another
 row in projects.md, 8 other failure (the clone failed for another reason, or the row was not
 written). Nothing is recorded and no partial folder is left on exit 4, 5, 6, 7; no retry.
+Every non-zero exit ends with one line on stderr: next: <the exact action> or next: ask the person: <question>.
 USAGE
 }
 
-die() { code=$1; shift; echo "org-clone: $*" >&2; exit "$code"; }
+# die <code> <message> [<next text>]: the message, then the one next: line (the code's default unless given).
+die() {
+  local code=$1 msg=$2 nx=${3:-}
+  if [ -z "$nx" ]; then
+    case $code in
+      2) nx="ask the person: which repository is meant (OWNER/NAME or a github.com URL)?" ;;
+      3) nx="tell the person that git is not installed; do not delegate" ;;
+      4) nx="tell the person it was not found or the login has no access (they may need gh auth login); do not delegate" ;;
+      5) nx="tell the person the network failed; do not delegate and do not retry" ;;
+      6) nx="tell the person which folder is in the way (named above); do not delegate" ;;
+      *) nx="read the message above, fix the cause, and run org-clone again (it registers a clone that is already there)" ;;
+    esac
+  fi
+  echo "org-clone: $msg" >&2; echo "next: $nx" >&2; exit "$code"
+}
 
 case "${1:-}" in -h|--help) usage; exit 0 ;; esac
-[ $# -eq 1 ] || { usage >&2; exit 2; }
+[ $# -eq 1 ] || { usage >&2; die 2 "expected exactly one argument: OWNER/NAME or a github.com URL"; }
 
 # slug <OWNER/NAME | URL>: OWNER/NAME on stdout, or nothing when the text is not a GitHub repository.
 slug() {
@@ -55,7 +70,7 @@ owner=${want%%/*}; name=${want#*/}
 key=$(printf '%s' "$want" | tr 'A-Z' 'a-z')
 
 dir=${PADDOCK_PROJECTS_DIR:-$HOME/paddock-projects}
-case $dir in /*) ;; *) die 2 "PADDOCK_PROJECTS_DIR must be an absolute path: $dir" ;; esac
+case $dir in /*) ;; *) die 2 "PADDOCK_PROJECTS_DIR must be an absolute path: $dir" "set PADDOCK_PROJECTS_DIR to an absolute path (or unset it) and run org-clone again" ;; esac
 command -v git >/dev/null 2>&1 || die 3 "git not found on PATH"
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
@@ -87,7 +102,7 @@ fi
 
 # 2. NAME is taken by another row: never overwrite; the secretary asks the person for a name.
 project_lookup "$name"; rc=$?
-[ $rc -eq 1 ] || [ $rc -eq 2 ] || die 7 "the name '$name' is already another project in $projf; ask the person for a different name to register $want under (config project add <name> <path>), do not overwrite"
+[ $rc -eq 1 ] || [ $rc -eq 2 ] || die 7 "the name '$name' is already another project in $projf; never overwritten" "ask the person: the name $name is already another project; what name should $want be registered under? (Nothing was cloned: clone it into a folder, run bash scripts/org --as secretary config project add <name> <path>, then delegate with --project <name>)"
 
 tgt=$dir/$owner/$name
 part=$dir/$owner/.$name.partial
