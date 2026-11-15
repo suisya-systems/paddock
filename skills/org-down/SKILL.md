@@ -1,6 +1,8 @@
 ---
 name: org-down
 description: Shut the organization down. Runs org-suspend, then hc kill and hc rm only for terminals that carry a task_id label (and the secretary with --secretary). Never stops the person's core unless --stop-core is given. Run it from your own login shell.
+when_to_use: The person ends the day or shuts the organization down (add --secretary to end the secretary too, --stop-core to stop their core). Only a person can run it from their own login shell; the secretary tells them to.
+disable-model-invocation: true
 ---
 
 # org-down
