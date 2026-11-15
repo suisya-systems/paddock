@@ -274,7 +274,7 @@ kill -0 "$other" 2>/dev/null && wev | grep -q "\"sha\":\"$SHA\".*\"reason\":\"va
 kill "$other" 2>/dev/null
 
 reset; term secretary - working; req; touch "$tmp/stub/hold"; pass $T0; wait_for watching 777
-req 42 "$SHB"; pass $((T0 + 30)); wait_for eval 'wev | grep -q superseded' 
+req 42 "$SHB"; pass $((T0 + 30)); settle   # USR1 ends it; settle waits until its record and line are both written
 wev | grep -q "\"sha\":\"$SHA\".*\"reason\":\"superseded\""; check "a newer head of the PR ends the older watch: superseded" $?
 unread secretary | grep -q "CI watch failed on PR 42, head $SHA7: superseded"; check "superseded: the mailbox line" $?
 rm -f "$tmp/stub/hold"; pass $((T0 + 60)); settle
