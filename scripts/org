@@ -10,8 +10,6 @@ usage() {
 Usage: org [--as <id>] <command> [args]
 
   send_message <to> <text>                      put a message in <to>'s box
-  nudge                                         if the secretary has unread mail, tell it (idle only)
-                                                to read it; writes nothing (the workers' hook, #385)
   check_messages [--peek]                       print unread messages for you, mark them read
   set_summary <text>                            say what you are doing (shown by list_runs)
   report <start|done|blocked> --task <task_id> [--to <id>] <text>
@@ -34,7 +32,8 @@ Usage: org [--as <id>] <command> [args]
                                                 month and the next, seq file and lock folder,
                                                 and print them: what its sandbox may write
   list_runs                                     latest state per task, and each agent's summary
-  wait [--timeout S] [--children]               hold until you have unread mail (prints
+  wait [--timeout S] [--children]               a manual tool (decision 0013: org-watch wakes the
+                                                secretary and workers); hold until you have unread mail (prints
                                                 {"reason":"mail","unread":N}; marks nothing read)
                                                 or S seconds pass ({"reason":"timeout"}; default
                                                 $PADDOCK_WAIT_TIMEOUT, else 60); --children also
@@ -102,11 +101,8 @@ is how long hc connect's input stays open after a request. $PADDOCK_WAIT_POLL se
 is how often wait looks at the mailbox. $PADDOCK_LOCK_WAIT seconds (default 60) is how long a
 write waits for its id's lock when the holder is alive or unknown (a dead holder's lock is broken).
 
-Every line written to the secretary (send_message, report, a refused review round) is followed by one
-hc send --if idle (then --if done) to its terminal, ${PADDOCK_SECRETARY_NAME:-secretary}, telling it to
-run check_messages (Issue #385); not the watcher's own lines, which its guarded wake announces
-(decision 0013). A working secretary is not typed into; a refused or failed nudge
-(no hc, or a sandbox that keeps the writer off the core) never fails the write.
+A write types into no terminal: org-watch wakes an idle or done secretary or worker that has unread
+mail (decision 0013).
 
 Exit codes: 0 ok, 2 bad usage, 3 hc not found (doc), 5 store or core error, 6 document name
 not allowed, 7 not the writer (document, or codex_round), 8 value over the cap, 9 version conflict that did
@@ -125,7 +121,7 @@ cmd=${1:-}; [ $# -eq 0 ] || shift
 
 valid_id() { case "$1" in ''|-*|*[!a-z0-9_-]*) return 1 ;; esac; }
 case "$cmd" in
-  send_message|nudge|check_messages|set_summary|report|ci_completed|ci_requested|ci_watch_failed|work_check|list_runs|doc|wait|brief|rebuild|config|codex_round|own_files) ;;
+  send_message|check_messages|set_summary|report|ci_completed|ci_requested|ci_watch_failed|work_check|list_runs|doc|wait|brief|rebuild|config|codex_round|own_files) ;;
   *) echo "org: unknown command: $cmd" >&2; usage >&2; exit 2 ;;
 esac
 valid_id "$id" || die 2 "no valid id: give --as <id> or set PADDOCK_ORG_ID (lowercase letters, digits, _ and -)"
@@ -226,32 +222,6 @@ put() {
   printf '%s\n' "$s" > "$state/events/$id.seq" && printf '{"seq":%s,%s}\n' "$s" "$1" >> "$d/$id.jsonl" && ok=1
   lock_drop "$lk"
   [ "$ok" -eq 1 ] || die 5 "cannot write $d/$id.jsonl"
-  # the secretary's own writes (its start records) are made while it works: no nudge. Nor the
-  # watcher's (decision 0013): its wake, with the typed-input check and the rate limit, announces them.
-  [ "$id" = watcher ] || [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || case "$1" in *'"to":"secretary",'*|*"\"to\":\"${PADDOCK_SECRETARY_NAME:-secretary}\","*) nudge ;; esac
-}
-
-# nudge: Issue #385. An idle secretary starts no turn on mail alone (decision 0002), so after a write
-# to it, one hc send that only tells it to read its mailbox. Exact-status sends: a working secretary is
-# never typed into. Its prompt shows `idle` or, after a turn, `done`, so both are tried. It writes
-# nothing (no loop), and its failure is ignored: the write already happened.
-# Refused as working (exit 10), it is retried in the background every $PADDOCK_NUDGE_INTERVAL s (default 2),
-# $PADDOCK_NUDGE_RETRY times (default 5), while the mail is still unread: a write that lands after the
-# Stop hook looked at the mailbox, but before the secretary went idle, is still announced.
-nudge() {
-  local t=${PADDOCK_SECRETARY_NAME:-secretary} m="You have mail: run bash scripts/org --as secretary check_messages and act on it." n rc
-  command -v hc >/dev/null 2>&1 || return 0
-  # hc 0.1.18's --if takes only idle|working (Issue #388): `done` is read with hc get, then sent plainly
-  send1() { hc send --if idle "$t" "$m" >/dev/null 2>&1; local r=$?; [ "$r" -eq 10 ] || return "$r"
-    hc get --json "$t" 2>/dev/null | tr -d '\n' | grep -Eo '"state": *"(working|blocked|done|error|idle)"' | head -1 \
-      | grep -q '"done"' || return 10
-    hc send "$t" "$m" >/dev/null 2>&1; }
-  send1; [ $? -eq 10 ] || return 0
-  ( id=secretary; n=${PADDOCK_NUDGE_RETRY:-5}
-    while [ "$n" -gt 0 ]; do
-      sleep "${PADDOCK_NUDGE_INTERVAL:-2}"; [ -n "$(unread_lines)" ] || exit 0
-      send1; rc=$?; [ "$rc" -eq 10 ] || exit 0; n=$((n - 1))
-    done ) </dev/null >/dev/null 2>&1 &
 }
 
 # window: every line of this month's and the previous month's files as TSV
@@ -351,11 +321,6 @@ case "$cmd" in
     valid_id "$to" || die 2 "invalid recipient: $to"
     [ -n "$text" ] || die 2 "empty text"
     append message "$to" "" "$text" ;;
-
-  nudge)
-    # for an agent whose own write could not reach hc (a worker's sandbox): its hook runs this outside
-    [ $# -eq 0 ] || die 2 "usage: nudge"
-    id=secretary; [ -z "$(unread_lines)" ] || nudge ;;
 
   set_summary)
     [ $# -ge 1 ] && [ -n "$*" ] || die 2 "usage: set_summary <text>"
@@ -500,8 +465,8 @@ case "$cmd" in
     fi ;;
 
   wait)
-    # Issue #140: the secretary ends its turns here while work or approvals are in progress,
-    # so a mailbox message (the card's ANSWER, a worker's report) starts its next turn.
+    # A manual tool (decision 0013): the watcher wakes the secretary on mail; a person or a skill may
+    # still hold here until mail, a child's end or the person's typed line.
     # ponytail: polls the files every PADDOCK_WAIT_POLL s; a file-change wait if they grow large.
     timeout=${PADDOCK_WAIT_TIMEOUT:-60}; children=
     while [ $# -gt 0 ]; do

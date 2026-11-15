@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Acceptance test for skills/org-pull-request/scripts/org-pull-request.sh (stubbed hc and gh).
+# Acceptance test for skills/org-pull-request/scripts/org-pull-request.sh (stubbed gh). Decision 0013,
+# stage 3: the skill pushes, opens the PR and records ci_requested; org-watch watches CI and records
+# ci_completed (here written with scripts/org --as watcher, as ci-watch.sh does); --pr acts on it.
 # Needs only bash, coreutils and git: a local bare repository stands in for origin, so
 # nothing reaches GitHub and no core runs.
 #
 # Stub knobs (environment of the script under test):
-#   STUB_RUN_AFTER=N    `gh run list` prints nothing for the first N calls, then the run id (777)
-#   STUB_WATCH_CODE=N   `hc wait` reports exit_code N (default 0)
-#   STUB_WAIT_RAW=text  `hc wait` prints this text instead of its JSON line
 #   STUB_HEAD=sha       `gh pr view` reports this head (default: the pushed head)
 #   STUB_CHECKS_RC=N    `gh pr checks` exits N (default 0)
 #   STUB_MERGE_FAIL=1   `gh pr merge` fails
@@ -22,31 +21,12 @@ check() { # check <name> <condition-exit-status>
 script=$here/skills/org-pull-request/scripts/org-pull-request.sh
 
 stubdir=$tmp/bin; mkdir -p "$stubdir"
-cat > "$stubdir/hc" <<'EOF2'
-#!/bin/sh
-echo "hc $*" >> "$STUB/calls"
-case $1 in
-  run) echo '{"started":true}'; exit 0 ;;
-  wait)
-    if [ -n "${STUB_WAIT_RAW:-}" ]; then echo "$STUB_WAIT_RAW"; exit 0; fi
-    echo "{\"children\":[],\"ended\":true,\"exit_code\":${STUB_WATCH_CODE:-0},\"reason\":\"exit\",\"signal\":null,\"status\":null,\"terminal\":\"t2d\",\"turn\":0}"
-    exit 0 ;;
-  connect) cat >/dev/null
-    cat "$STUB/doc" 2>/dev/null || echo '{"jsonrpc":"2.0","id":1,"result":{"value":null,"version":0}}'
-    exit 0 ;;
-esac
-exit 0
-EOF2
 cat > "$stubdir/gh" <<'EOF2'
 #!/bin/sh
 echo "gh $*" >> "$STUB/calls"
 case "$1 $2" in
   "pr create") [ -z "${STUB_PR_FAIL:-}" ] || { echo 'gh: create failed' >&2; exit 1; }
     echo "https://github.com/o/r/pull/42"; exit 0 ;;
-  "run list")
-    n=$(cat "$STUB/runlist-n" 2>/dev/null || echo 0); echo $((n + 1)) > "$STUB/runlist-n"
-    [ "$n" -ge "${STUB_RUN_AFTER:-0}" ] && echo 777
-    exit 0 ;;
   "pr view") echo "${STUB_HEAD:-$(cat "$STUB/head")}"; exit 0 ;;
   "pr checks") exit "${STUB_CHECKS_RC:-0}" ;;
   "pr merge") [ -z "${STUB_MERGE_FAIL:-}" ] || { echo 'gh: merge failed' >&2; exit 1; }
@@ -54,7 +34,7 @@ case "$1 $2" in
 esac
 exit 0
 EOF2
-chmod +x "$stubdir/hc" "$stubdir/gh"
+chmod +x "$stubdir/gh"
 
 # origin is a bare repo; the worker's worktree is a clone on branch feat/x.
 origin=$tmp/origin.git; wt=$tmp/wt
@@ -75,9 +55,15 @@ reset() { # fresh stub state, empty events folder, empty origin refs
   git -C "$origin" for-each-ref --format='%(refname)' | while read -r r; do git -C "$origin" update-ref -d "$r"; done
 }
 run_script() { # run_script [args...]; extra env via ENVX (space separated)
-  env -u PADDOCK_NOW STUB="$tmp/stub" PADDOCK_STATE_DIR="$tmp/state" PADDOCK_ORG_CONFIG_FILE="$tmp/no-org-config.md" PADDOCK_RUN_SLEEP=0 PADDOCK_RUN_TRIES=3 \
+  env -u PADDOCK_NOW STUB="$tmp/stub" PADDOCK_STATE_DIR="$tmp/state" PADDOCK_ORG_CONFIG_FILE="$tmp/no-org-config.md" \
       PATH="$stubdir:$PATH" ${ENVX:-} bash "$script" --worktree "$wt" --repo o/r "$@" 2>&1
 }
+# watcher <ci_completed|ci_watch_failed> [args]: the watcher's record of this head, as ci-watch.sh writes it
+watcher() { local k=$1; shift
+  if [ "$k" = ci_completed ]; then set -- --run-id 777 --exit-code "${CODE:-0}" "$@"; else set -- --reason "${REASON:-no_run}" --log /x.log "$@"; fi
+  env -u PADDOCK_NOW -u PADDOCK_ORG_ID PADDOCK_STATE_DIR="$tmp/state" PATH="/usr/bin:/bin" bash "$here/scripts/org" --as watcher "$k" \
+    --pr 42 --sha "$head" --repo o/r "$@" >/dev/null; }
+nreq() { grep -c '"kind":"ci_requested"' "$evfile" 2>/dev/null || echo 0; }
 has() { grep -Eq -- "$1" "$calls"; }
 merged() { has '^gh pr merge'; }
 body=$tmp/body.md; printf 'Body text\n' > "$body"
@@ -97,85 +83,111 @@ reset; run_script --body-file "$body" >/dev/null; rc=$?
 [ "$rc" -eq 2 ] && [ ! -s "$calls" ]; check "missing title (no --pr) exits 2 before any call" $?
 reset; env STUB="$tmp/stub" PATH="$stubdir:$PATH" bash "$script" --worktree "$wt" "${args[@]}" >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 2 ] && [ ! -s "$calls" ]; check "no --repo and an origin that is not a GitHub URL exits 2 (never guesses a repository)" $?
-mkdir -p "$tmp/nohc"; ln -s "$(command -v git)" "$tmp/nohc/git"
-out=$(env PATH="$tmp/nohc" "$(command -v bash)" "$script" --worktree "$wt" --repo o/r "${args[@]}" 2>&1); rc=$?
-[ "$rc" -eq 3 ]; check "no hc or gh on PATH exits 3" $?
+mkdir -p "$tmp/nogh"; ln -s "$(command -v git)" "$tmp/nogh/git"
+out=$(env PATH="$tmp/nogh" "$(command -v bash)" "$script" --worktree "$wt" --repo o/r "${args[@]}" 2>&1); rc=$?
+[ "$rc" -eq 3 ]; check "no gh on PATH exits 3" $?
+mkdir -p "$tmp/nohc"; ln -s "$(command -v git)" "$tmp/nohc/git"; ln -s "$stubdir/gh" "$tmp/nohc/gh"
+reset; env STUB="$tmp/stub" PADDOCK_STATE_DIR="$tmp/state" PATH="$tmp/nohc:/usr/bin:/bin" bash "$script" --worktree "$wt" --repo o/r "${args[@]}" >/dev/null 2>&1; rc=$?
+[ "$rc" -eq 0 ]; check "hc is not needed any more (the watcher watches CI)" $?
 
-# Happy path, human mode (the default): push, create, find the run, watch, record, stop.
+# First run: push, create, record ci_requested, exit 0. No watch of its own.
 reset; out=$(run_script "${args[@]}"); rc=$?
-[ "$rc" -eq 0 ]; check "human mode, green CI exits 0 ($out)" $?
+[ "$rc" -eq 0 ]; check "the first run exits 0 once the PR is opened and CI requested ($out)" $?
 [ "$(git -C "$origin" rev-parse refs/heads/feat/x 2>/dev/null)" = "$head" ]; check "the branch was pushed to origin" $?
 has '^gh pr create .*--repo o/r' && has '^gh pr create .*--head feat/x' && has '^gh pr create .*--title feat: x' && has "^gh pr create .*--body-file $body"; check "gh pr create names the repo, head, title and body file" $?
 grep -q 'https://github.com/o/r/pull/42' <<<"$out"; check "the PR URL is printed" $?
-has '^hc run --bg --rm --no-notify --name ci-42 -- gh run watch 777 .*--exit-status'; check "CI is watched as a background child: hc run --bg --rm --no-notify --name ci-<pr> -- gh run watch <id> --exit-status" $?
-has '^gh run watch|^gh run list .*--commit '"$head" ; check "the run id is resolved from the head sha with gh run list" $?
-[ "$(line_run=$(grep -n '^hc run' "$calls" | head -1 | cut -d: -f1); line_wait=$(grep -n '^hc wait ci-42' "$calls" | head -1 | cut -d: -f1); [ -n "$line_run" ] && [ -n "$line_wait" ] && [ "$line_run" -lt "$line_wait" ] && echo yes)" = yes ]; check "hc wait ci-<pr> comes after hc run" $?
-! merged && ! has '^gh pr (view|checks)'; check "human mode stops: no merge, no head or checks query" $?
-grep -qi 'human' <<<"$out"; check "the output says the person decides" $?
-
-# ci_requested (decision 0013, stage 1) then ci_completed: two lines.
-[ -f "$evfile" ] && [ "$(wc -l < "$evfile")" -eq 2 ]; check "two lines in events/<YYYY-MM>/secretary.jsonl (ci_requested, ci_completed)" $?
+grep -qi 'watcher' <<<"$out"; check "the output says the watcher mails the result" $?
+! has '^gh run|^hc ' && ! merged && ! has '^gh pr (view|checks)'; check "no run lookup, no gh run watch, no hc, no merge" $?
+[ -f "$evfile" ] && [ "$(wc -l < "$evfile")" -eq 1 ]; check "one line in events/<YYYY-MM>/secretary.jsonl" $?
 r=$(head -1 "$evfile" 2>/dev/null)
 grep -q '"seq":1,' <<<"$r" && grep -q '"kind":"ci_requested","from":"secretary"' <<<"$r" && grep -q '"pr":42,' <<<"$r" \
-  && grep -q "\"sha\":\"$head\"" <<<"$r" && grep -q '"repo":"o/r"' <<<"$r"; check "ci_requested first: from secretary, pr, sha and repo ($r)" $?
-l=$(tail -1 "$evfile" 2>/dev/null)
-grep -q '"kind":"ci_completed"' <<<"$l" && grep -q '"seq":2[,}]' <<<"$l"; check "ci_completed line carries kind and seq 2" $?
-grep -Eq '"ts":"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z"' <<<"$l"; check "ci_completed line carries a UTC ts" $?
-grep -q '"pr":42[,}]' <<<"$l" && grep -q "\"sha\":\"$head\"" <<<"$l" && grep -q '"run_id":777[,}]' <<<"$l" && grep -q '"exit_code":0[,}]' <<<"$l"; check "ci_completed line carries pr, sha, run_id and exit_code" $?
-grep -q '"conclusion":"success"' <<<"$l"; check "ci_completed line carries conclusion success for exit 0" $?
-run_script "${args[@]}" >/dev/null
-[ "$(wc -l < "$evfile")" -eq 4 ] && tail -1 "$evfile" | grep -q '"seq":4[,}]'; check "a second run appends ci_requested and ci_completed, seq 4 (own file, own sequence)" $?
+  && grep -q "\"sha\":\"$head\"" <<<"$r" && grep -q '"repo":"o/r"' <<<"$r"; check "ci_requested: from secretary, pr, sha and repo ($r)" $?
+! grep -q ci_completed "$evfile"; check "the skill writes no ci_completed of its own" $?
 
-# Run id: retry while no run exists yet.
-reset; ENVX=STUB_RUN_AFTER=2 run_script "${args[@]}" >/dev/null; rc=$?
-[ "$rc" -eq 0 ] && [ "$(grep -c '^gh run list' "$calls")" -eq 3 ]; check "run id found on the third try after two empty answers" $?
-reset; ENVX=STUB_RUN_AFTER=99 run_script "${args[@]}" >/dev/null; rc=$?
-[ "$rc" -eq 7 ] && [ "$(grep -c '^gh run list' "$calls")" -eq 3 ] && ! has '^hc run' && ! grep -q ci_completed "$evfile"; check "no run after PADDOCK_RUN_TRIES exits 7, starts no watcher, records no ci_completed" $?
+# --pr before the watcher's result: exit 4, and no second request for the same head.
+out=$(run_script --pr 42); rc=$?
+[ "$rc" -eq 4 ] && [ "$(nreq)" -eq 1 ] && ! merged; check "--pr with the request still open exits 4 and writes no second ci_requested ($out)" $?
+reset; out=$(run_script --pr 42); rc=$?
+[ "$rc" -eq 4 ] && [ "$(nreq)" -eq 1 ] && ! has '^gh pr create'; check "--pr on a head with no request: no create, requests it once, exit 4" $?
 
-# hc wait JSON parse.
-reset; ENVX=STUB_WATCH_CODE=1 run_script "${args[@]}" >/dev/null; rc=$?
-[ "$rc" -eq 9 ]; check "CI failure (exit_code 1) exits 9" $?
-grep -q '"exit_code":1[,}]' "$evfile" && grep -q '"conclusion":"failure"' "$evfile"; check "a failed run is recorded too (exit_code 1, failure)" $?
-reset; ENVX='STUB_WAIT_RAW={"ended":true,"exit_code":null,"reason":"signal","signal":9}' run_script "${args[@]}" >/dev/null; rc=$?
-[ "$rc" -eq 8 ] && ! grep -q ci_completed "$evfile"; check "a wait without an integer exit_code exits 8 and records no ci_completed" $?
-grep -q '"kind":"ci_requested"' "$evfile"; check "the watcher's ci_requested is written before the skill's own watch" $?
-reset; ENVX=STUB_WAIT_RAW=garbage run_script "${args[@]}" >/dev/null; rc=$?
-[ "$rc" -eq 8 ]; check "unparseable wait output exits 8" $?
-reset; ENVX='STUB_WAIT_RAW={"children":[],"ended":true,"exit_code":0,"reason":"exit","signal":null,"status":null,"terminal":"t2d","turn":0}' run_script "${args[@]}" >/dev/null; rc=$?
-[ "$rc" -eq 0 ]; check "the measured MON-12 output line parses" $?
+# The watcher's result for the head.
+watcher ci_completed --task t1
+out=$(run_script --pr 42); rc=$?
+[ "$rc" -eq 0 ] && ! merged && ! has '^gh pr (view|checks)' && grep -qi human <<<"$out" && grep -q 'run 777' <<<"$out"
+check "--pr after the watcher's success, human mode: exit 0, the person decides, not merged ($out)" $?
+run_script --pr 42 >/dev/null; rc=$?
+[ "$rc" -eq 0 ] && [ "$(nreq)" -eq 1 ]; check "rerunning --pr on a head with a result writes no second ci_requested" $?
+reset; run_script "${args[@]}" >/dev/null; CODE=1 watcher ci_completed
+run_script --pr 42 >/dev/null; rc=$?
+[ "$rc" -eq 9 ] && ! merged; check "the watcher's failure for the head: exit 9, no merge" $?
+reset; run_script "${args[@]}" >/dev/null
+env -u PADDOCK_NOW -u PADDOCK_ORG_ID PADDOCK_STATE_DIR="$tmp/state" PATH="/usr/bin:/bin" bash "$here/scripts/org" --as secretary ci_completed \
+  --pr 42 --sha "$head" --run-id 5 --exit-code 0 >/dev/null
+run_script --pr 42 >/dev/null; rc=$?
+[ "$rc" -eq 4 ]; check "an old ci_completed from secretary (the skill's former watch) does not count" $?
+reset; run_script "${args[@]}" >/dev/null; watcher ci_completed --repo o/other
+run_script --pr 42 >/dev/null; rc=$?
+[ "$rc" -eq 4 ]; check "the watcher's result for another repository does not count" $?
 
-# Approval mode.
+# A failed watch: --pr requests the head again, once.
+reset; run_script "${args[@]}" >/dev/null; REASON=gh_error watcher ci_watch_failed
+out=$(run_script --pr 42); rc=$?
+[ "$rc" -eq 4 ] && [ "$(nreq)" -eq 2 ] && grep -q gh_error <<<"$out"; check "after ci_watch_failed, --pr requests the head again and exits 4 ($out)" $?
+run_script --pr 42 >/dev/null; rc=$?
+[ "$rc" -eq 4 ] && [ "$(nreq)" -eq 2 ]; check "and a further --pr does not request it a third time" $?
+
+# --recheck: CI rerun on the same commit after a recorded failure; the head is requested again, once.
+reset; run_script "${args[@]}" >/dev/null; CODE=1 watcher ci_completed
+run_script --recheck "${args[@]}" >/dev/null; rc=$?
+[ "$rc" -eq 2 ]; check "--recheck without --pr exits 2" $?
+out=$(run_script --pr 42 --recheck); rc=$?
+[ "$rc" -eq 4 ] && [ "$(nreq)" -eq 2 ]; check "--pr --recheck after a recorded failure requests the head again, exit 4 ($out)" $?
+run_script --pr 42 --recheck >/dev/null; rc=$?
+[ "$rc" -eq 4 ] && [ "$(nreq)" -eq 2 ]; check "--recheck while that request is open writes no third one" $?
+watcher ci_completed
+run_script --pr 42 >/dev/null; rc=$?
+[ "$rc" -eq 0 ]; check "the rerun's success is read for the same head" $?
+
+# The request line cannot be written: exit 12.
+reset; mkdir -p "$ev/$month"; : > "$evfile"; chmod a-w "$ev/$month" "$evfile"
+run_script "${args[@]}" >/dev/null; rc=$?
+chmod u+w "$ev/$month" "$evfile"
+[ "$rc" -eq 12 ]; check "a ci_requested line that cannot be written exits 12 ($rc)" $?
+
+# Approval mode (with the watcher's success recorded).
+ok_head() { reset; run_script "${args[@]}" >/dev/null; watcher ci_completed; : > "$calls"; }
 cfgf=$tmp/org-config.md
-reset; printf '%s\n' 'merge_approval_mode: acceptance' > "$cfgf"
-ENVX=PADDOCK_ORG_CONFIG_FILE=$cfgf run_script "${args[@]}" >/dev/null; rc=$?
+ok_head; printf '%s\n' 'merge_approval_mode: acceptance' > "$cfgf"
+ENVX=PADDOCK_ORG_CONFIG_FILE=$cfgf run_script --pr 42 >/dev/null; rc=$?
 [ "$rc" -eq 0 ] && merged; check "mode acceptance is read from org-config.md" $?
-reset; ENVX=PADDOCK_ORG_CONFIG_FILE=$cfgf run_script --mode human "${args[@]}" >/dev/null; rc=$?
+ok_head; ENVX=PADDOCK_ORG_CONFIG_FILE=$cfgf run_script --pr 42 --mode human >/dev/null; rc=$?
 [ "$rc" -eq 0 ] && ! merged; check "--mode human overrides org-config.md" $?
-reset; printf '%s\n' 'merge_approval_mode: nonsense' > "$cfgf"
-ENVX=PADDOCK_ORG_CONFIG_FILE=$cfgf run_script "${args[@]}" >/dev/null; rc=$?
+ok_head; printf '%s\n' 'merge_approval_mode: nonsense' > "$cfgf"
+ENVX=PADDOCK_ORG_CONFIG_FILE=$cfgf run_script --pr 42 >/dev/null; rc=$?
 [ "$rc" -eq 0 ] && ! merged; check "an unknown value in org-config.md falls back to human" $?
+reset; ENVX=PADDOCK_ORG_CONFIG_FILE=$cfgf run_script --mode acceptance "${args[@]}" >/dev/null; rc=$?
+[ "$rc" -eq 0 ] && ! merged; check "acceptance, first run: never merges before the watcher's result" $?
 
 # Acceptance mode.
-reset; out=$(run_script --mode acceptance "${args[@]}"); rc=$?
+ok_head; out=$(run_script --pr 42 --mode acceptance); rc=$?
 [ "$rc" -eq 0 ]; check "acceptance, green CI, head unmoved exits 0 ($out)" $?
 has "^gh pr merge 42 .*--repo o/r .*--squash .*--match-head-commit $head( |\$)"; check "merge call: gh pr merge <n> --squash --match-head-commit <sha>" $?
 has '^gh pr view 42 .*headRefOid'; check "the head is read with gh pr view --json headRefOid" $?
 has '^gh pr checks 42 .*--required'; check "required checks are queried with gh pr checks --required" $?
 ! has '--admin|--auto'; check "no --admin and no --auto" $?
-reset; ENVX=STUB_HEAD=0000000000000000000000000000000000000000 run_script --mode acceptance "${args[@]}" >/dev/null; rc=$?
+ok_head; ENVX=STUB_HEAD=0000000000000000000000000000000000000000 run_script --pr 42 --mode acceptance >/dev/null; rc=$?
 [ "$rc" -eq 10 ] && ! merged; check "head moved after the watched run: refuse, exit 10, no merge" $?
-reset; ENVX=STUB_CHECKS_RC=1 run_script --mode acceptance "${args[@]}" >/dev/null; rc=$?
+ok_head; ENVX=STUB_CHECKS_RC=1 run_script --pr 42 --mode acceptance >/dev/null; rc=$?
 [ "$rc" -eq 10 ] && ! merged; check "required checks not green: refuse, exit 10, no merge" $?
-reset; ENVX=STUB_WATCH_CODE=1 run_script --mode acceptance "${args[@]}" >/dev/null; rc=$?
+reset; run_script "${args[@]}" >/dev/null; CODE=1 watcher ci_completed
+run_script --pr 42 --mode acceptance >/dev/null; rc=$?
 [ "$rc" -eq 9 ] && ! merged && ! has '^gh pr (view|checks)'; check "CI failed in acceptance mode: exit 9, no merge" $?
-reset; ENVX=STUB_MERGE_FAIL=1 run_script --mode acceptance "${args[@]}" >/dev/null; rc=$?
+ok_head; ENVX=STUB_MERGE_FAIL=1 run_script --pr 42 --mode acceptance >/dev/null; rc=$?
 [ "$rc" -eq 11 ]; check "merge call fails: exit 11" $?
 
-# Other failure and reuse paths.
+# Other failure paths.
 reset; ENVX=STUB_PR_FAIL=1 run_script "${args[@]}" >/dev/null; rc=$?
-[ "$rc" -eq 6 ] && ! has '^hc run'; check "gh pr create fails: exit 6, no watcher" $?
-reset; run_script --pr 42 >/dev/null; rc=$?
-[ "$rc" -eq 0 ] && ! has '^gh pr create' && has '^hc run .*--name ci-42'; check "--pr 42 reuses an open PR: no create, same watch" $?
+[ "$rc" -eq 6 ] && [ "$(nreq)" -eq 0 ]; check "gh pr create fails: exit 6, nothing requested" $?
 reset; git -C "$wt" remote set-url origin "$tmp/missing.git"
 run_script "${args[@]}" >/dev/null; rc=$?
 git -C "$wt" remote set-url origin "$origin"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Issue #300: org-pull-request reads the task's codex-gate history and, when the last diff round did
 # not end in codex_round_passed (or there is none), adds "Second-model review did not run" and that
-# record to the PR body itself, so a body file written without it still carries it. Stubbed hc and gh;
+# record to the PR body itself, so a body file written without it still carries it. Stubbed gh;
 # the history is written by the real `org --as codex-gate codex_round result`.
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

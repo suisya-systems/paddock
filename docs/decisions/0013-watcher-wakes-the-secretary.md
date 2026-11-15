@@ -1,6 +1,6 @@
 # 0013. A deterministic watcher wakes the secretary on unread mail and worker events
 
-Status: **Proposed** (2026-11-15; all four open questions decided by the owner). Refs #391, #392. Stage 1 ("Beside") is built: `org-watch` writes the mailbox lines, wakes, and runs `ci-watch.sh`; `org-pull-request` writes `ci_requested`; `org work_check` is the worker check both share. Stages 2 and 3 are not done. The owner's answers to its open questions are in [Open questions](#open-questions).
+Status: **accepted** (2026-11-15, owner: all four open questions decided; stage 2's host checks passed, see [Stage 2 results](#stage-2-results)). Refs #391, #392. All three stages are built. Stage 1 ("Beside", #394, with the prompt-line fix #396/#397): `org-watch` writes the mailbox lines, wakes, and runs `ci-watch.sh`; `org-pull-request` writes `ci_requested`; `org work_check` is the worker check both share. Stage 2 ("Compare") ran on the host. Stage 3 ("Remove") is done: the secretary's wait rule, its `Stop` hook, the per-write `nudge`, the #282 worker nudge and `org-pull-request`'s own CI watch are gone, and the worker's wait after `report blocked` is a hint. The owner's answers to its open questions are in [Open questions](#open-questions). The table "What exists today" below describes the state before stage 3.
 
 ## The question, in plain words
 
@@ -14,7 +14,7 @@ The secretary is a model. Today it is kept awake by rules it must follow itself 
 | It already sees a blocked worker with a still secretary ("Incident", Q3's rule) and a terminal that never reported a status ("No status"), and has a ledger (`watcher/told`: key, last told) that tells each item once and again after N minutes. | org-watch.sh `pass`, `tell` |
 | Every write addressed to the secretary is followed by `nudge`: `hc send --if idle`, else (secretary `done`, read with `hc get`) a plain `hc send`, retried in the background 5 times every 2 s while the mail is unread. A worker's write cannot reach the core from its sandbox, so its `PostToolUse` hook runs `org nudge` outside it. | [scripts/org](../../scripts/org) `put`, `nudge`; [worker-settings.json](../../templates/worker-settings.json) line 51 |
 | The nudge's race: hc 0.1.18's `--if` takes only `idle|working`, so `done` is read and then sent in two steps; a write that lands while the secretary works is refused (exit 10) and the 10 s of retries can run out before the turn ends. | scripts/org `nudge`; [decision 0002](0002-org-mailbox-not-hc-send.md) "Widened by Issue #385" |
-| The `Stop` hook refuses an end with unread mail, and (TEMPORARY, #388) an idle end while `org-state` has `work` or `approvals`, telling the secretary to end the turn in `org wait --children`. | [secretary-stop-guard.sh](../../scripts/hooks/secretary-stop-guard.sh) |
+| The `Stop` hook refuses an end with unread mail, and (TEMPORARY, #388) an idle end while `org-state` has `work` or `approvals`, telling the secretary to end the turn in `org wait --children`. | secretary-stop-guard.sh (removed in stage 3) |
 | `org wait --children` returns on unread mail, a child ending, the person's typed line or a timeout, and on each return lists workers from `org-state.work` that are `gone`, `waiting` (blocked) or `unreported` (status `done`, no `run_completed` since the latest `run_started`). This check runs only inside the secretary's own wait. | scripts/org `wait`, `watch` |
 | hc's notes to a parent are off (`notes = false`, Q2); workers start with `--outlive-parent`, so a renewed secretary is not their parent; the CI child starts with `--no-notify`. So no hc note reaches the secretary today, whatever comment 1 of #391 assumes. | [decision 0002](0002-org-mailbox-not-hc-send.md) Consequences, [Q19](../design/open-questions.md#q19-do-workers-outlive-the-secretary-that-started-them), [org-pull-request.sh](../../skills/org-pull-request/scripts/org-pull-request.sh) line 126 |
 | CI: `org-pull-request` starts `hc run --bg --rm --no-notify --name ci-<pr> -- gh run watch ... --exit-status`, then `hc wait ci-<pr>` with no timeout, which checks in after about 180 s. If CI still runs then, the script exits 8 and nobody is left to write `ci_completed` when the child ends: the line is written only by the script that waited, and `--rm` removes the child and its exit code. The secretary must rerun `--pr <n>`. | org-pull-request.sh lines 124-137; [org-pull-request SKILL.md](../../skills/org-pull-request/SKILL.md) exit 8 |
@@ -95,6 +95,19 @@ These are the "Done when" of #391, with nobody typing into the secretary:
 8. An answer forwarded to an idle worker by `org-escalation answer` is read by it within one pass, with no #282 nudge.
 9. With a half-typed line in the secretary's prompt, no wake is typed; once the line is sent or cleared, the next pass wakes it if mail is still unread.
 
+### Stage 2 results
+
+Run on the host on 2026-11-15; the full numbers are in the #391 comment of that date and are not copied here.
+
+| Check | Result |
+| --- | --- |
+| 1-6 | PASS |
+| 7 | PASS for `no_run`; `gh_error` and a killed watch were not run on the host (covered by tests only) |
+| 8 | PASS (so the worker's own wait after `report blocked` became a hint in stage 3) |
+| 9 | FAIL at first (the prompt line was not found: `❯` is followed by an NBSP and the prompt is not the last screen line); fixed by #396/#397. After the fix the wake of an empty prompt is seen on the host; the skip over typed input is seen only in tests. |
+
+One finding fed stage 3: rerunning `org-pull-request --pr` on the same head wrote a second `ci_requested`, and the watcher reported that head twice. Since stage 3 the skill writes a request only for a head with none open (or after a failed watch).
+
 ## Why
 
 - **Principle 1 (nothing runs inside the watched agents).** The wait is a rule the model must keep; the `Stop` hook and the worker's `PostToolUse` hook are moving parts on files an agent can reach. The watcher is outside both.
@@ -115,7 +128,7 @@ These are the "Done when" of #391, with nobody typing into the secretary:
 
 ## Text this decision makes stale
 
-This record is Proposed and changes no file. The implementation PR fixes each place below in the same change (or says in its body why not). Lines are as of 3a04e71. "Stage 3" places change only with the removal; "watcher" places change when the watcher starts typing (stage 1).
+Every row below was fixed by its stage's change (stage 1 for the "watcher" rows; stage 3 for the "Stage 3" and "On acceptance" rows, with the decision's acceptance). Lines are as of 3a04e71, so they no longer match. "Stage 3" places change only with the removal; "watcher" places change when the watcher starts typing (stage 1).
 
 | Place | What must change |
 | --- | --- |
@@ -129,7 +142,7 @@ This record is Proposed and changes no file. The implementation PR fixes each pl
 | templates/secretary.md:83 | Stage 3: "CI is watched only by the script's child and your `org wait --children`", the exit 8 timeout and `--pr` rerun text: the watcher watches CI; act on its `ci_completed` or `ci_watch_failed` message. |
 | templates/secretary.md:84-85 | Stage 3: "quote the CI result the script printed" becomes the watcher's line; exit 9 and 10 move to the `--pr` rerun. |
 | [templates/secretary-settings.json](../../templates/secretary-settings.json):10 | Stage 3: remove the `Stop` hook entry. |
-| [scripts/hooks/secretary-stop-guard.sh](../../scripts/hooks/secretary-stop-guard.sh) (whole file) | Stage 3: delete. |
+| scripts/hooks/secretary-stop-guard.sh (removed in stage 3) (whole file) | Stage 3: delete. |
 | [skills/org-start/scripts/org-start.sh](../../skills/org-start/scripts/org-start.sh):174 | Stage 3: stop copying `secretary-stop-guard.sh`. |
 | [scripts/hooks/secretary-bash-guard.sh](../../scripts/hooks/secretary-bash-guard.sh):45 | Stage 3: `wait_hint` says "then end the turn in org wait --children"; it becomes "then end the turn". |
 | [scripts/org](../../scripts/org):218 | Stage 3: remove the `nudge` call in `put`. |
@@ -158,7 +171,7 @@ This record is Proposed and changes no file. The implementation PR fixes each pl
 | docs/design/open-questions.md:61 (Q2), :322 | On acceptance: "may block on `hc wait --children`" and "learns of the exit from `org wait --children`" become the watcher's lines. |
 | [docs/design/architecture.md](../design/architecture.md):34, :75, :87 | On acceptance: "No dispatcher", "Nothing wakes agents: the secretary waits with `org wait --children`", and step 5 "each time its `org wait` returns". |
 | [docs/design/routine-procedures.md](../design/routine-procedures.md):15, :36, :44 | Stage 3: "On each return of `org wait`" becomes "on each wake". |
-| [tests/org-nudge-secretary.test.sh](../../tests/org-nudge-secretary.test.sh), [tests/secretary-stop-guard.test.sh](../../tests/secretary-stop-guard.test.sh), [tests/org-wait.test.sh](../../tests/org-wait.test.sh):148-149, [tests/org-commands.test.sh](../../tests/org-commands.test.sh):142-143 | Stage 3: remove or rewrite with the code they test; the template's nudge line check follows the watcher's line. |
+| tests/org-nudge-secretary.test.sh (removed in stage 3), tests/secretary-stop-guard.test.sh (removed in stage 3), [tests/org-wait.test.sh](../../tests/org-wait.test.sh):148-149, [tests/org-commands.test.sh](../../tests/org-commands.test.sh):142-143 | Stage 3: remove or rewrite with the code they test; the template's nudge line check follows the watcher's line. |
 
 Worker wake (open question 4), stage 3:
 
@@ -183,6 +196,7 @@ The prototype reports in `docs/design/prototype-*.md` record past runs and stay 
 
 ## What is not measured
 
-- Nothing here was run. This record was written in a worker sandbox with no core reachable; every `hc` fact is from the code and documents cited.
-- Whether `hc send` to a `done` secretary always lands (the #388 question) is still open; the build's first host probe must confirm it before stage 2.
+- The proposal was written in a worker sandbox with no core reachable; every `hc` fact in "What exists today" is from the code and documents cited. Stage 2 is the host run.
+- Whether `hc send` to a `done` secretary always lands (the #388 question): this record does not say; host checks 1 to 4 passed (see the #391 comment of 2026-11-15 for the status each wake read).
+- After stage 3, a watcher terminal that ends leaves nothing to wake the secretary; `org-start` restarts it, and the person is not told of that by anything but the screen.
 - Why `bg-ci-390` ended without a line (#392).

@@ -24,7 +24,7 @@ These rules apply to every paddock worker, for every task. They are appended to 
 ## No GitHub writes
 
 - You have no GitHub credential, and `GH_CONFIG_DIR` points at an empty folder. Never push, and never write to GitHub in any way (pull request, comment, review, issue, release, workflow run). Do not look for a login or a token, and do not unset or change `GH_CONFIG_DIR`. Do not fetch: `git fetch origin` fails for a private repository, which is intended.
-- Read the base from the local `origin/<branch>`: your worktree shares the project clone's remote-tracking refs, and the secretary fetched them when it started you. If you need a newer base, say it is stale: `bash "$PADDOCK_ORG" --as <your id> send_message secretary "base is stale: need origin/<branch> at or after <sha, or: the latest>"`, then end the turn in `wait` (see "Blocked"). The secretary fetches in the project clone and answers; then `origin/<branch>` is updated in your worktree and you rebase yourself. Ask only when you need it.
+- Read the base from the local `origin/<branch>`: your worktree shares the project clone's remote-tracking refs, and the secretary fetched them when it started you. If you need a newer base, say it is stale: `bash "$PADDOCK_ORG" --as <your id> send_message secretary "base is stale: need origin/<branch> at or after <sha, or: the latest>"`, then end the turn (see "Blocked"). The secretary fetches in the project clone and answers; then `origin/<branch>` is updated in your worktree and you rebase yourself. Ask only when you need it.
 - When your work is committed, say so in your completion report. The secretary pushes.
 
 ## Review by a second model
@@ -35,13 +35,13 @@ These rules apply to every paddock worker, for every task. They are appended to 
 
 ## When an org command fails
 
-A failed `org` command must not end your turn idle at your prompt: the secretary nudges an idle worker once after an answer, but a nudge can be refused.
+When you end your turn idle or done with unread mail, the organization's watcher wakes you: it types one line telling you to run `check_messages`. It never types while you work or over typed input.
 
 - A refusal is an answer: exit 2 (refused by a rule) or exit 11 (`CODEX_ROUND_DENIED`). Do not run it again.
-- Any other failure (for example exit 5, a lock it could not take): run the same command once again. If it fails again, write on your screen the command, its exit code, its error text, and the report or question it carried. Then end the turn with ONE Bash call, its tool timeout set to 200000: `bash "$PADDOCK_ORG" --as <your id> wait`. On `"reason":"timeout"` run `wait` again, also when the line holds a `watch_error` (a failed read of the core is not an answer; never end the turn or ask in your terminal because of it; no limit on the number of waits); on `"reason":"mail"` run `check_messages` and act on the answer. `wait` only reads your mailbox, so it works when a write did not.
-- If `$PADDOCK_ORG` is empty, or `wait` itself fails, there is no mailbox to wait on: say so on your screen and stop. The person answers in your terminal.
+- Any other failure (for example exit 5, a lock it could not take): run the same command once again. If it fails again, write on your screen the command, its exit code, its error text, and the report or question it carried, and end the turn; the watcher wakes you when an answer is in your mailbox. A hint, not a rule: you may hold instead with ONE Bash call, its tool timeout set to 200000, `bash "$PADDOCK_ORG" --as <your id> wait` (on `"reason":"timeout"` run it again, also with a `watch_error`; on `"reason":"mail"` run `check_messages` and act). `wait` only reads your mailbox, so it works when a write did not.
+- If `$PADDOCK_ORG` is empty, there is no mailbox: say so on your screen and stop. The person answers in your terminal.
 - Never fall back to `hc send` or to a file of your own.
 
 ## Blocked
 
-When you cannot go on (a question only the secretary can answer, a command refused by a rule, a missing permission), report `blocked` with one clear question and wait. The secretary or the person answers in your terminal. A refusal is an answer: do not retry it another way.
+When you cannot go on (a question only the secretary can answer, a command refused by a rule, a missing permission), report `blocked` with one clear question and end the turn; the watcher wakes you when the answer is in your mailbox. The secretary, or the person in your terminal, answers. A refusal is an answer: do not retry it another way.

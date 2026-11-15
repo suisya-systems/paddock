@@ -60,7 +60,7 @@ Floor: the bell, which needs nothing. On WSL: a toast through `powershell.exe`, 
 
 The owner chose (a) and took the recommended answer to every question (2026-11-14):
 
-1. **Who runs it.** A shell script in a kept terminal, started by `org-start`. Not a mod.
+1. **Who runs it.** A shell script in a kept terminal, started by `org-start`. Not a mod. Since [decision 0013](0013-watcher-wakes-the-secretary.md) the same script also wakes the secretary and workers with unread mail, writes worker events into the secretary's mailbox and watches CI.
 2. **What a person sees and hears.** A desktop toast with the system's sound; when a toast cannot be raised, a terminal bell.
 3. **What it tells.** Both a waiting approval card (once per card) and the secretary's incident (Q3's rule). A card is an escalation, so this follows principle 6 ("people are interrupted by escalation").
 4. **Start and stop.** `org-start` starts it as a kept terminal named `watcher`; `org-down` stops it.

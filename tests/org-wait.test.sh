@@ -135,17 +135,17 @@ o w-t1 check_messages | grep -q 'Answer to your question (t1-20261110T010203Z): 
 check "chain: the worker's mailbox holds the answer" $?
 ! grep -q t1-20261110T010203Z "$STUB/docval-org-state"; check "chain: the approval is gone from org-state" $?
 
-# The secretary template (Issue #385): the mail's nudge wakes it, and the Stop hook catches mail that came
-# while it worked.
+# The secretary template (decision 0013, stage 3): the watcher wakes it; no wait rule, no Stop hook,
+# no per-write nudge, no TEMPORARY hold. org wait stays as a manual tool.
 tpl=$here/templates/secretary.md
-# TEMPORARY (Issue #388): the #380 hold is back until the nudge is confirmed on the host.
-grep -q 'scripts/org --as secretary wait --children' "$tpl"; check "template names org wait --children" $?
-grep -Eq '`work` or `approvals`' "$tpl"; check "template ties the wait to work or approvals in org-state" $?
-grep -qi 'handover' "$tpl" && grep -Eiq 'except.*handover|handover.*(end the turn|ends? your turn)' "$tpl"
-check "template makes the handover an exception to the wait" $?
-grep -q 'Esc' "$tpl"; check "template says how a person interrupts the wait (Esc)" $?
-grep -q '#388' "$tpl"; check "template marks the hold as temporary (#388)" $?
-grep -q 'You have mail: run bash scripts/org --as secretary check_messages' "$tpl"; check "template quotes the nudge line" $?
-grep -qF "$(sed -n 's/.*m="\(You have mail:[^"]*\)".*/\1/p' "$here/scripts/org")" "$tpl"; check "the template's nudge line is the one scripts/org sends" $?
+! grep -Eq 'never end a turn idle|end every such turn' "$tpl"; check "template has no wait rule any more" $?
+grep -q 'scripts/org --as secretary wait --children' "$tpl" && grep -q 'manual tool' "$tpl"; check "template keeps org wait --children as a manual tool" $?
+! grep -Eq 'Stop. hook|secretary-stop-guard|#388|#385' "$tpl"; check "template names no Stop hook, nudge issue or TEMPORARY hold" $?
+grep -q 'You have mail: run bash scripts/org --as secretary check_messages' "$tpl"; check "template quotes the watcher's wake line" $?
+grep -qF "$(sed -n 's/.*msg="\(You have mail: run bash scripts\/org[^"]*\)".*/\1/p' "$here/skills/org-watch/scripts/org-watch.sh")" "$tpl"; check "the template's wake line is the one org-watch sends" $?
+! grep -q 'nudge' "$here/scripts/org"; check "scripts/org has no nudge left" $?
+! grep -q '"Stop"' "$here/templates/secretary-settings.json" && grep -q 'secretary-bash-guard' "$here/templates/secretary-settings.json"; check "secretary settings: no Stop hook, the Bash guard stays" $?
+! grep -Eq '"PostToolUse"|nudge' "$here/templates/worker-settings.json"; check "worker settings: no PostToolUse nudge hook" $?
+! grep -q 'stop-guard' "$here/skills/org-start/scripts/org-start.sh"; check "org-start copies no Stop hook script" $?
 
 exit $fail
