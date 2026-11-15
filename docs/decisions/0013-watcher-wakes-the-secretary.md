@@ -1,6 +1,6 @@
 # 0013. A deterministic watcher wakes the secretary on unread mail and worker events
 
-Status: **Proposed** (2026-11-15; open questions 1 and 2 decided by the owner). Refs #391, #392. This file records the proposal only; nothing is built for it. The choices the owner still has to make are in [Open questions](#open-questions).
+Status: **Proposed** (2026-11-15; all four open questions decided by the owner). Refs #391, #392. This file records the proposal only; nothing is built for it. The owner's answers to its open questions are in [Open questions](#open-questions).
 
 ## The question, in plain words
 
@@ -27,7 +27,7 @@ The secretary is a model. Today it is kept awake by rules it must follow itself 
 
 `org-watch` takes the job, not a separate dispatcher (owner, 2026-11-15, open question 1). It already polls the facts this needs, already has a ledger, and already starts and ends with the organization. A second resident loop would read the same `hc ls` and `org-state` on its own clock and need its own start, stop and ledger.
 
-The cost is that `org-watch` stops being read-only: it would type one fixed line into one terminal. The line is a constant (no text from a worker or a person is ever typed), it goes only to the secretary, and only on an exact status.
+The cost is that `org-watch` stops being read-only: it types one fixed line into the secretary's or an idle worker's terminal (open question 4), and it runs CI watches (open question 2). The line is a constant per target (no text from a worker or a person is ever typed), and it is sent only on an exact status and never over typed input (open question 3).
 
 ### What it notices each pass
 
@@ -35,7 +35,8 @@ Each item becomes one line in the secretary's mailbox (written by the watcher as
 
 | Item | Fact it reads | Mailbox line |
 | --- | --- | --- |
-| Unread secretary mail | `check_messages --peek` for the secretary is not empty (card `ANSWER`, a worker's report or question, `ci_completed`) | none: the mail is the line; only the wake |
+| Unread secretary mail | `check_messages --peek` for the secretary is not empty (card `ANSWER`, a worker's report or question, the watcher's CI line) | none: the mail is the line; only the wake |
+| Unread worker mail | `check_messages --peek` for a `w-<task>` with a live terminal is not empty (an answer forwarded by `org-escalation answer`, a message from the secretary) | none: only the wake (open question 4) |
 | Blocked worker | a `task_id` terminal is `blocked` (and, for the person's toast, Q3's still secretary as today) | `w-<task> is blocked` |
 | Worker done without a report | status `done`, no `run_completed` to the secretary since its latest `run_started` (the rule `org wait` uses for `unreported`) | `w-<task> is done and sent no report` |
 | Worker gone | a `work` entry whose terminal is not found or `finished`, with no done record (`gone`) | `w-<task> has no terminal and sent no done report` |
@@ -57,15 +58,17 @@ The watcher, not the secretary, watches CI (owner, 2026-11-15, open question 2).
 
 ### How it wakes
 
-- **One typed line, constant:** `You have mail: run bash scripts/org --as secretary check_messages and act on it.` (the line `nudge` sends today).
-- **Never into a working secretary.** `hc send --if idle`; for `done`, `hc get` and then a plain `hc send` (hc has no `--if done`). `working`, `blocked`, no status, or not found: no send this pass.
+- **Who is woken.** The secretary, and every `w-<task>` worker with unread mail (open question 4). The same rules below hold for each target.
+- **One typed line, constant per target:** for the secretary `You have mail: run bash scripts/org --as secretary check_messages and act on it.` (the line `nudge` sends today); for a worker `You have mail: run bash "$PADDOCK_ORG" --as w-<task> check_messages and act on it.` No text from a worker or a person is ever typed.
+- **Never into a working target.** `hc send --if idle`; for `done`, `hc get` and then a plain `hc send` (hc has no `--if done`). `working`, `blocked`, no status, or not found: no send this pass.
+- **Never over typed input (open question 3).** Just before a send, the watcher reads the target's last screen line once (`hc read --lines 1`); when it holds typed input after the prompt marker, that pass sends nothing and the next pass tries again. One read per wake attempt, and only to decide not to type: the screen never says whether to wake or what the status is.
 - **No race by retry, not by timing.** The loop looks again every pass while the mail stays unread, so a write during a working turn is announced on the first pass after the turn ends.
 - **Rate limit per unread batch.** A batch is keyed by the highest unread `seq` per sender. At most one wake per batch per `PADDOCK_WATCH_WAKE` seconds (proposed default 60). New mail is a new batch and is woken on the next pass.
-- **Log.** Each wake and each mailbox line is printed on the watcher's terminal and appended to `watcher/woke` in the state folder: time, batch key, the secretary's status read, the send's exit code.
+- **Log.** Each wake and each mailbox line is printed on the watcher's terminal and appended to `watcher/woke` in the state folder: time, target, batch key, the status read, whether typed input held it off, the send's exit code.
 
 ### What stays with the secretary
 
-All judgment. The watcher does not answer a worker, close one, press a key, rerun a skill, merge, or choose which item matters. It writes facts into the mailbox and types one constant line. The secretary reads the mailbox on its turn and decides, as today.
+All judgment. Waking a worker is not answering it: the worker reads what the secretary sent. The watcher does not answer a worker, close one, press a key, rerun a skill, merge, or choose which item matters. It writes facts into the mailbox and types one constant line. The secretary reads the mailbox on its turn and decides, as today.
 
 The secretary then ends its turns idle. `org wait` stays as a manual tool (a person or a skill may still call it); nothing requires it.
 
@@ -73,7 +76,7 @@ The secretary then ends its turns idle. `org wait` stays as a manual tool (a per
 
 1. **Beside.** Build the watcher's wake, mailbox lines and CI watch; keep the secretary's wait, the `Stop` hook and the per-write nudge as they are. The secretary inside `org wait` is `working`, so the watcher does not type into it; the per-write nudge and the watcher may both announce the same mail to an idle secretary (harmless, one extra `check_messages`). `org-pull-request` writes `ci_requested` and still watches CI itself as today, so each head gets two results: the skill's (`from: secretary`) and the watcher's (`from: watcher`).
 2. **Compare.** On the host, run the [host checks](#host-checks) and read `watcher/woke` against the secretary's `check_messages` acks: every unread batch must be read, and every worker event must have its mailbox line, within one pass of the secretary going idle. Every `ci_requested` must have exactly one watcher line, and where the skill also recorded one, the two agree.
-3. **Remove.** In one change: the template's wait rule (it becomes a hint: "check the mailbox at the end of a turn"), the `Stop` hook's work hold and its unread-mail refusal, the per-write `nudge` in `scripts/org` and the worker's `PostToolUse` hook that calls it; and `org-pull-request`'s own watch (steps 3 to 5: run lookup, the `ci-<pr>` child, `hc wait`, its `ci_completed` write, exits 7, 8 and 12 for those). `org wait` and its `--children` stay as commands.
+3. **Remove.** In one change: the template's wait rule (it becomes a hint: "check the mailbox at the end of a turn"), the `Stop` hook's work hold and its unread-mail refusal, the per-write `nudge` in `scripts/org` and the worker's `PostToolUse` hook that calls it; the worker nudge after `org-escalation answer` (#282); and `org-pull-request`'s own watch (steps 3 to 5: run lookup, the `ci-<pr>` child, `hc wait`, its `ci_completed` write, exits 7, 8 and 12 for those). `org wait` and its `--children` stay as commands.
 
 On acceptance, Q18 is reopened and amended toward a wake by a resident process; decision 0002's #385 paragraph is replaced by a pointer here; architecture §3 and §5 and `org-watch`'s "types into nothing" are corrected.
 
@@ -88,11 +91,13 @@ These are the "Done when" of #391, with nobody typing into the secretary:
 5. The watcher never types into a working secretary (`watcher/woke` shows no send whose status read was `working`, and the secretary's screen shows no joined line mid-turn).
 6. From #392: a normal host watch records `ci_completed` for the requested head and the secretary is woken with its line.
 7. From #392: a watch that fails (no run for the head, `gh` error, the watch process killed) still leaves one `ci_watch_failed` line and a mailbox message.
+8. An answer forwarded to an idle worker by `org-escalation answer` is read by it within one pass, with no #282 nudge.
+9. With a half-typed line in the secretary's prompt, no wake is typed; once the line is sent or cleared, the next pass wakes it if mail is still unread.
 
 ## Why
 
 - **Principle 1 (nothing runs inside the watched agents).** The wait is a rule the model must keep; the `Stop` hook and the worker's `PostToolUse` hook are moving parts on files an agent can reach. The watcher is outside both.
-- **Principle 2 (recorded facts, not screens).** Every trigger above is the mailbox history or hc status. The screen is not read to decide a wake.
+- **Principle 2 (recorded facts, not screens).** Every trigger above is the mailbox history or hc status. One stated exception (open question 3): the last screen line is read once per wake attempt, only to decide not to type over a person's input; it never stands in for a status or a reason to wake, and a skipped pass is simply retried on the next one.
 - **Principle 3 (judgment with the secretary).** The watcher only notices and wakes.
 - **Principle 4 (in stages).** Today's behaviour stays until the comparison shows the watcher covers it.
 - **The race goes away.** A one-shot sender has to be right at the moment of the write; a loop only has to be right once in the minutes that follow.
@@ -101,7 +106,7 @@ These are the "Done when" of #391, with nobody typing into the secretary:
 
 - `org-watch` types into a terminal. A bug can now wake the secretary needlessly (a turn and its cost), bounded by the per-batch rate limit.
 - Latency: up to one pass (30 s) plus the rate limit for a repeat. Today's per-write nudge is faster when it works.
-- A typed line while the person has half-typed input in the secretary is joined to it and submitted (decision 0002's measurement). See open question 3.
+- The input check reads a screen line, so it can misjudge: a false "input" delays a wake by a pass; a missed one joins the line to the person's input (decision 0002's measurement). Bounded to one read per attempt.
 - The watcher lives in the core: if the core stops, nothing wakes the secretary (as in [0008](0008-who-tells-the-person-outside-the-window.md)). If the watcher terminal ends, the secretary is woken by nothing until `org-start` is rerun; stage 3 makes that a real loss, where today the secretary's own wait would still run.
 - The watcher now uses `gh` and the network with the person's own login (the kept terminal's environment), and holds one `gh run watch` per open request (polling every 30 s). It is no longer a loop that only reads the core.
 - While the watcher is down, no CI is watched; open requests are watched again when it comes back, so a result is late, not lost.
@@ -154,14 +159,26 @@ This record is Proposed and changes no file. The implementation PR fixes each pl
 | [docs/design/routine-procedures.md](../design/routine-procedures.md):15, :36, :44 | Stage 3: "On each return of `org wait`" becomes "on each wake". |
 | [tests/org-nudge-secretary.test.sh](../../tests/org-nudge-secretary.test.sh), [tests/secretary-stop-guard.test.sh](../../tests/secretary-stop-guard.test.sh), [tests/org-wait.test.sh](../../tests/org-wait.test.sh):148-149, [tests/org-commands.test.sh](../../tests/org-commands.test.sh):142-143 | Stage 3: remove or rewrite with the code they test; the template's nudge line check follows the watcher's line. |
 
-Not stale: [templates/worker-rules.md](../../templates/worker-rules.md):38 and [skills/org-escalation](../../skills/org-escalation/SKILL.md):60 describe the worker nudge of #282, which stays unless open question 4 is answered Yes. The prototype reports in `docs/design/prototype-*.md` record past runs and stay as they are.
+Worker wake (open question 4), stage 3:
+
+| Place | What must change |
+| --- | --- |
+| [skills/org-escalation/SKILL.md](../../skills/org-escalation/SKILL.md):60 | The `hc send --if idle` to an idle worker after the send goes; the watcher wakes it. |
+| [skills/org-escalation/scripts/org-escalation.sh](../../skills/org-escalation/scripts/org-escalation.sh):384-387 | Remove the #282 send. |
+| [skills/org-escalation/references/rationale.md](../../skills/org-escalation/references/rationale.md):7 | "An idle worker is nudged once" is replaced by a pointer to the watcher. |
+| [templates/worker-rules.md](../../templates/worker-rules.md):38 | "the secretary nudges an idle worker once after an answer, but a nudge can be refused" becomes the watcher's wake. |
+| [docs/decisions/0002-org-mailbox-not-hc-send.md](0002-org-mailbox-not-hc-send.md):24 | On acceptance: the #282 paragraph is replaced by a pointer here. |
+| [tests/org-answer-wakes-idle-worker.test.sh](../../tests/org-answer-wakes-idle-worker.test.sh) | Rewritten against the watcher's wake. |
+| [templates/worker.md](../../templates/worker.md):23, templates/worker-rules.md:41-47 | To check, not decided here: the worker's own `wait` after `report blocked` may become a hint once the watcher wakes workers; the implementation PR asks the owner before changing it. |
+
+The prototype reports in `docs/design/prototype-*.md` record past runs and stay as they are.
 
 ## Open questions
 
 1. **Does `org-watch` take the wake job, rather than a separate dispatcher terminal?** **Decided (owner, 2026-11-15): Yes.** Recommended was Yes. It already reads every fact needed, has the ledger and the start/stop wiring; a second loop doubles that for one constant line. Yes: `org-watch` gains the mailbox lines and the wake, and loses its "types into nothing" property. No: a new kept terminal (for example `dispatcher`) with its own script, ledger and `org-start`/`org-down` wiring; `org-watch` stays read-only.
 2. **Should the watcher also read CI state of open PRs from GitHub directly, instead of only noticing a `ci-<pr>` watch that ended without `ci_completed`?** **Decided (owner, 2026-11-15): Yes, and further: the watcher owns CI watching itself** (see [CI watching](#ci-watching)). The secretary no longer watches CI with a background terminal; #392 (a watch that vanishes without telling) is closed by this shape, since the watcher owns the watch and always writes a line. Recommended was No (no network or login in the loop); the owner chose the stronger shape, and its costs are listed above.
-3. **Should the watcher hold off the wake while the person has typed something into the secretary's prompt?** Recommended: **No.** hc reports no fact about the input line, so this would mean reading the screen (against principle 2); the line is joined only in that rare moment, and the rate limit keeps it to once per batch. Yes: each wake first reads the secretary's last screen line and skips when it holds input. No: the join is accepted as a known nuisance.
-4. **Should the watcher wake idle workers with unread mail too (and so replace the worker nudge after `org-escalation answer`, #282)?** Recommended: **No, not in this decision.** The owner's scope is the secretary; workers wait in `org wait` when blocked, and the #282 nudge is a single send that has not been reported broken. Yes: the same rule and rate limit for every `w-*` terminal, and #282's nudge goes in stage 3. No: workers keep today's path; revisit if a worker misses an answer.
+3. **Should the watcher hold off the wake while the person has typed something into the secretary's prompt?** **Decided (owner, 2026-11-15): Yes.** Recommended was No. Before each wake the watcher reads the target's last screen line and skips that pass when it holds typed input ([How it wakes](#how-it-wakes)). This is a stated exception to principle 2: the screen is read only to decide not to type, never to infer status, once per wake attempt, retried on the next pass.
+4. **Should the watcher wake idle workers with unread mail too (and so replace the worker nudge after `org-escalation answer`, #282)?** **Decided (owner, 2026-11-15): Yes.** Recommended was No. Idle `w-*` workers with unread mail are woken with the same rule, the same rate limit and the same input check; the #282 nudge is removed in stage 3.
 
 ## What is not measured
 
