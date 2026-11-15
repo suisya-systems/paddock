@@ -115,7 +115,7 @@ if hc read "$W" 2>/dev/null | grep -q "trust this folder"; then
   p=$(esc prompt --task "$ID" 2>"$WORK/prompt.err"); rc=$?
   if [ "$rc" -eq 3 ] && hc read "$W" 2>/dev/null | grep -q "trust this folder"; then res trust-held PASS; else res trust-held FAIL "prompt exit $rc: $p"; fi
   aid=$(esc ask --task "$ID" --question "Probe: trust the folder of $repo?" --prompt "${p#PROMPT=}" --background "Host probe for the clone step." --if-yes "The probe worker starts." --if-no "It stays stopped." --recommend yes --why "Probe." --lang en 2>/dev/null | sed -n 's/^APPROVAL_ID=//p')
-  if [ -n "$aid" ] && esc answer --id "$aid" --text yes --then-send "$TASK" >"$WORK/answer.out" 2>&1; then
+  if [ -n "$aid" ] && esc answer --from-conversation "probe: the probe answers for the person" --id "$aid" --text yes --then-send "$TASK" >"$WORK/answer.out" 2>&1; then
     s=0; until hc get --json "$W" 2>/dev/null | tr -d '\n' | grep -Eq '"status": *\{'; do s=$((s + 3)); [ "$s" -lt 30 ] || break; sleep 3; done
     [ "$s" -lt 30 ] && res trust-answer PASS || res trust-answer FAIL "no status after the answer"
   else res trust-answer FAIL "ask/answer failed: $(tr '\n' ' ' < "$WORK/answer.out" 2>/dev/null | cut -c1-200)"; [ -z "$aid" ] || esc remove --id "$aid" >/dev/null 2>&1; fi

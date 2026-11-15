@@ -96,10 +96,10 @@ $2"
 # A failed resend leaves a card; yes on it sends the message and writes the entry once the worker reports a status.
 fresh; : > "$STUB/noidle"
 envrun "$delegate" --project "$proj" --task-id t5 --title "Retry" --task "Do eps." >/dev/null
-id=$(card t5); envrun "$escalation" answer --id "$id" --text yes >/dev/null
+id=$(card t5); envrun "$escalation" answer --from-conversation "test: the person typed it" --id "$id" --text yes >/dev/null
 cid=$(envrun "$escalation" list | awk -F'\t' '$2=="t5"{print $1}'); [ -n "$cid" ]; check "the resend card exists" $?
 echo idle > "$STUB/state"; : > "$STUB/calls"
-envrun "$escalation" answer --id "$cid" --text yes >/dev/null; rc=$?
+envrun "$escalation" answer --from-conversation "test: the person typed it" --id "$cid" --text yes >/dev/null; rc=$?
 [ "$rc" -eq 0 ] && [ "$(cat "$STUB/sent-text" 2>/dev/null)" = "$(expected t5 'Do eps.')" ] && grep -q '"task_id":"t5","title"' "$STUB/docval-org-state" \
   && [ -z "$(envrun "$escalation" list)" ] && ! grep -q 'Answer to your question' "$STUB/calls"; check "yes on the card: sent, entry written, card gone, no mail to the worker ($rc)" $?
 cleanup t5
@@ -107,22 +107,22 @@ cleanup t5
 # No on the card drops the saved message; the terminal stays.
 fresh; : > "$STUB/noidle"
 envrun "$delegate" --project "$proj" --task-id t6 --title "Drop" --task "Do zeta." >/dev/null
-id=$(card t6); envrun "$escalation" answer --id "$id" --text yes >/dev/null
+id=$(card t6); envrun "$escalation" answer --from-conversation "test: the person typed it" --id "$id" --text yes >/dev/null
 cid=$(envrun "$escalation" list | awk -F'\t' '$2=="t6"{print $1}'); : > "$STUB/calls"
-envrun "$escalation" answer --id "$cid" --text no >/dev/null; rc=$?
+envrun "$escalation" answer --from-conversation "test: the person typed it" --id "$cid" --text no >/dev/null; rc=$?
 [ "$rc" -eq 0 ] && [ ! -e "$tmp/state/resend/t6" ] && [ -z "$(envrun "$escalation" list)" ] && ! grep -q '^send\|^kill\|^rm ' "$STUB/calls" && [ -e "$STUB/term-w-t6" ]; check "no on the card: message dropped, card gone, terminal kept ($rc)" $?
 cleanup t6
 # A word other than yes/no keeps the card and the saved message; an ordinary worker question for the same task is not a
 # resend card: its answer goes to the mailbox and the saved message stays.
 fresh; : > "$STUB/noidle"
 envrun "$delegate" --project "$proj" --task-id t7 --title "Odd" --task "Do eta." >/dev/null
-id=$(card t7); envrun "$escalation" answer --id "$id" --text yes >/dev/null
+id=$(card t7); envrun "$escalation" answer --from-conversation "test: the person typed it" --id "$id" --text yes >/dev/null
 cid=$(envrun "$escalation" list | awk -F'\t' '$2=="t7"{print $1}')
-envrun "$escalation" answer --id "$cid" --text maybe >/dev/null; rc=$?
+envrun "$escalation" answer --from-conversation "test: the person typed it" --id "$cid" --text maybe >/dev/null; rc=$?
 [ "$rc" -eq 2 ] && envrun "$escalation" list | grep -q "^$cid" && [ -f "$tmp/state/resend/t7/message" ]; check "a bad answer keeps the card and the saved message ($rc)" $?
 envrun "$escalation" remove --id "$cid" >/dev/null
 qid=$(envrun "$escalation" ask --task t7 --question "Which flag?" | sed -n 's/^APPROVAL_ID=//p')
-envrun "$escalation" answer --id "$qid" --text "use -x" >/dev/null; rc=$?
+envrun "$escalation" answer --from-conversation "test: the person typed it" --id "$qid" --text "use -x" >/dev/null; rc=$?
 [ "$rc" -eq 0 ] && [ -f "$tmp/state/resend/t7/message" ] && [ -z "$(envrun "$escalation" list)" ]; check "an ordinary question of that task is answered by mail; the saved message stays ($rc)" $?
 cleanup t7
 exit $fail

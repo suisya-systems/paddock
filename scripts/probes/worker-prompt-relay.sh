@@ -123,7 +123,7 @@ relay() { # relay <task> <dir> <yes|no> [template] [result prefix]: start, reach
   id=$(bash "$ESC" ask --task "$t" --question "p260 probe: let $w run touch?" --prompt "$p" \
          --background "Probe for Issue #260; answered by the probe itself." --if-yes "The file is made." \
          --if-no "Nothing runs." --recommend "$3" --why "probe" 2>&1 | sed -n 's/^APPROVAL_ID=//p')
-  a=$(bash "$ESC" answer --id "$id" --text "$3" 2>&1); arc=$?
+  a=$(bash "$ESC" answer --from-conversation "probe: the probe answers for the person" --id "$id" --text "$3" 2>&1); arc=$?
   if [ "$arc" -eq 10 ]; then # what changed between the recorded prompt and the screen now
     echo "-- recorded: $p"; echo "-- now     : $(bash "$ESC" prompt --task "$t" 2>&1 | sed -n 's/^PROMPT=//p')"
     echo "-- full screen now:"; hc read "$w" 2>&1

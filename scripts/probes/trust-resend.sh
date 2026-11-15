@@ -75,7 +75,7 @@ else res delegate-stops FAIL "org-delegate exit $rc; see: $(tr '\n' ' ' < "$WORK
 
 p=$(esc prompt --task "$ID" 2>/dev/null)
 aid=$(esc ask --task "$ID" --question "Probe: trust the folder of the probe repository?" --prompt "${p#PROMPT=}" --background "Host probe for the resend after the trust card." --if-yes "The probe worker gets its task." --if-no "It stays stopped." --recommend yes --why "Probe." --lang en 2>/dev/null | sed -n 's/^APPROVAL_ID=//p')
-out=$(esc answer --id "${aid:-none}" --text yes 2>&1); rc=$?
+out=$(esc answer --from-conversation "probe: the probe answers for the person" --id "${aid:-none}" --text yes 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q RESENT; then res answer PASS; else res answer FAIL "exit $rc: $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-200)"; [ -z "$aid" ] || esc remove --id "$aid" >/dev/null 2>&1; fi
 
 s=0; until hc get --json "$W" 2>/dev/null | tr -d '\n' | grep -Eq '"status": *\{' && hc read "$W" 2>/dev/null | grep -q "Issue #368"; do s=$((s + 3)); [ "$s" -lt 60 ] || break; sleep 3; done

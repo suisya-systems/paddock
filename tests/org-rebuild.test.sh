@@ -71,7 +71,7 @@ bash "$esc" ask --task t1 --question 'Run "npm publish"?' >/dev/null 2>&1
 export PADDOCK_NOW=2026-11-10T04:00:00Z
 bash "$esc" ask --task t2 --question 'Allow it?' >/dev/null 2>&1
 export PADDOCK_NOW=2026-11-10T05:00:00Z
-bash "$esc" answer --id t1-20261110T030000Z --text yes >/dev/null 2>&1
+bash "$esc" answer --from-conversation "test: the person typed it" --id t1-20261110T030000Z --text yes >/dev/null 2>&1
 bash "$org" --as w-t3 report done --task t3 "finished" >/dev/null
 bash "$close" --task t3 >/dev/null 2>&1
 live=$(cat "$STUB/docval")

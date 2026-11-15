@@ -104,7 +104,7 @@ envrun "$delegate" --project "$proj" --task-id t1 --title "Trust resend" --task 
 ! grep -q '"task_id": *"t1"' <<<"$(grep -v approvals <<<"$(doc)")" && ! grep -q '^send' "$STUB/calls"; check "before the answer: nothing sent, no work entry" $?
 id=$(card t1); [ -n "$id" ]; check "the trust card is recorded" $?
 : > "$STUB/calls"
-envrun "$escalation" answer --id "$id" --text yes >/dev/null; rc=$?
+envrun "$escalation" answer --from-conversation "test: the person typed it" --id "$id" --text yes >/dev/null; rc=$?
 [ "$rc" -eq 0 ]; check "answer yes (no --then-send) exits 0 ($rc)" $?
 [ "$(grep -c '^keys w-t1 enter' "$STUB/calls")" = 1 ]; check "the dialog is pressed once" $?
 [ "$(cat "$STUB/sent-text" 2>/dev/null)" = "$(expected t1 'Do alpha.')" ]; check "the first message is the template body, the id lines and the task" $?
@@ -119,7 +119,7 @@ cleanup t1
 # 2. Yes without a title: the message is sent, org-state gets no work entry.
 fresh
 envrun "$delegate" --project "$proj" --task-id t2 --task "Do beta." >/dev/null
-id=$(card t2); envrun "$escalation" answer --id "$id" --text yes >/dev/null; rc=$?
+id=$(card t2); envrun "$escalation" answer --from-conversation "test: the person typed it" --id "$id" --text yes >/dev/null; rc=$?
 [ "$rc" -eq 0 ] && [ "$(cat "$STUB/sent-text" 2>/dev/null)" = "$(expected t2 'Do beta.')" ] && ! grep -q '"task_id": *"t2"' <<<"$(doc)"; check "no --title: sent, and no work entry ($rc)" $?
 cleanup t2
 
@@ -127,7 +127,7 @@ cleanup t2
 fresh
 envrun "$delegate" --project "$proj" --task-id t3 --title "Declined" --task "Do gamma." >/dev/null
 id=$(card t3); : > "$STUB/calls"
-envrun "$escalation" answer --id "$id" --text no >/dev/null; rc=$?
+envrun "$escalation" answer --from-conversation "test: the person typed it" --id "$id" --text no >/dev/null; rc=$?
 [ "$rc" -eq 0 ] && grep -q '^keys w-t3 esc' "$STUB/calls" && ! grep -q '^send' "$STUB/calls" && ! grep -q '"task_id": *"t3"' <<<"$(doc)" \
   && [ -e "$STUB/term-w-t3" ] && ! grep -q '^kill\|^rm ' "$STUB/calls" && [ -e "$marker" ]; check "no: esc only; nothing sent, no entry, terminal and marker kept ($rc)" $?
 [ ! -e "$tmp/state/resend/t3" ]; check "no: the saved first message is dropped" $?
@@ -137,7 +137,7 @@ cleanup t3
 fresh; : > "$STUB/noidle"
 envrun "$delegate" --project "$proj" --task-id t4 --title "Late" --task "Do delta." >/dev/null
 id=$(card t4); : > "$STUB/calls"
-envrun "$escalation" answer --id "$id" --text yes >/dev/null; rc=$?
+envrun "$escalation" answer --from-conversation "test: the person typed it" --id "$id" --text yes >/dev/null; rc=$?
 [ "$rc" -eq 12 ]; check "a failed resend exits 12 ($rc)" $?
 [ -e "$STUB/term-w-t4" ] && ! grep -q '^kill\|^rm ' "$STUB/calls" && ! grep -q '"task_id": *"t4"' <<<"$(doc | sed 's/"approvals".*//')"; check "failed resend: terminal kept, no work entry yet" $?
 n=$(envrun "$escalation" list | grep -c 't4'); [ "$n" -eq 1 ]; check "failed resend: one card tells the person ($n)" $?
