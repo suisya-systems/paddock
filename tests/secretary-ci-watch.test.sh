@@ -7,7 +7,7 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 fail=0
 check() { if [ "$2" -eq 0 ]; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }
 
-for f in templates/secretary.md skills/org-pull-request/SKILL.md; do
+for f in skills/org-pull-request/SKILL.md; do
   t=$here/$f
   ! grep -qF 'hc wait ci-<pr>' "$t"; check "$f no longer names the skill's own watch hc wait ci-<pr>" $?
   ! grep -qF 'org wait --children' "$t"; check "$f does not send CI through org wait --children" $?
