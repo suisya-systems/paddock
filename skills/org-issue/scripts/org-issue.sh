@@ -23,7 +23,16 @@ Exit codes: 0 opened, 2 bad argument or missing section, 3 gh not found,
 USAGE
 }
 
-die() { code=$1; shift; echo "org-issue: $*" >&2; exit "$code"; }
+die() { # die <code> <message>: the message, then one next: line (decision 0014, the secretary's contract)
+  code=$1; shift; echo "org-issue: $*" >&2
+  case $code in
+    2) echo "next: fix the call (bash org-issue.sh --help) and run it again; nothing was created" ;;
+    3) echo "next: ask the person: gh is not installed or not on PATH; can they install it and log in?" ;;
+    4) echo "next: fix the --depends number (it must be an issue of --repo) and run it again; nothing was created" ;;
+    *) echo "next: ask the person: creating the issue failed (see the line above); retry or give up?" ;;
+  esac >&2
+  exit "$code"
+}
 
 repo=; kind=; title=; goal=; deps=()
 question=; known=; options=; why=; seen=; ask=; done_=
@@ -41,7 +50,7 @@ while [ $# -gt 0 ]; do
         --seen) seen=$2; set_seen=1 ;; --ask) ask=$2; set_ask=1 ;; --done) done_=$2; set_done=1 ;;
       esac
       shift 2 ;;
-    *) echo "org-issue: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+    *) usage >&2; die 2 "unknown argument: $1" ;;
   esac
 done
 

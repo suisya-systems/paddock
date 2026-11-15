@@ -1,6 +1,8 @@
 ---
 name: org-issue
-description: Open a GitHub issue from sections and a goal clause, with the dependency written as one "Depends on #N #M" line at the end of the body. Run it from the secretary.
+description: Open a GitHub issue from sections and a goal clause, with the dependency written as one "Depends on #N #M" line at the end of the body.
+when_to_use: A decision, a piece of work or a follow-up needs an issue in a repository; you would otherwise write an issue body by hand.
+allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/scripts/org-issue.sh *)
 ---
 
 # org-issue
@@ -8,12 +10,15 @@ description: Open a GitHub issue from sections and a goal clause, with the depen
 Opens an issue whose body the triage parser can read. The parser reads dependency references only from the same line as the keyword (`Blocked by` / `Depends on` / `Requires`); references under a heading were silently treated as unblocked. This script builds the body, so the line is always right. The secretary runs it from a shell in its own terminal. Bash only, plus `gh`.
 
 ```sh
-bash skills/org-issue/scripts/org-issue.sh --repo OWNER/NAME --kind build --title "<English title>" \
+bash ${CLAUDE_SKILL_DIR}/scripts/org-issue.sh --repo OWNER/NAME --kind decide|build|followup --title "<English title>" --goal "<clause>" [--depends N]... <section options>
+
+# example
+bash ${CLAUDE_SKILL_DIR}/scripts/org-issue.sh --repo OWNER/NAME --kind build --title "<English title>" \
   --why "<why>" --done "<definition of done>" --goal "G2 Permissions and hooks are distributed at delegation time and take effect" \
   --depends 60 --depends 61
 ```
 
-`--repo` is always given; it is never guessed. Prints the issue URL.
+Open every issue through this skill, not by hand, so `Depends on #N` stays on one line at the end. `--repo` is always given; it is never guessed. Prints the issue URL; a non-zero exit ends with one `next:` line. The issue title and body are in English.
 
 ## Kinds and sections
 

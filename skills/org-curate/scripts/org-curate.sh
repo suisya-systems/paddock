@@ -25,7 +25,15 @@ socket folder (PADDOCK_CORE_SOCKET_DIR, else the folder of HC_TERMINAL_SOCKET).
 Exit codes: 0 ok, 1 a check failed, 2 bad argument or note, 4 the note file already exists.
 USAGE
 }
-die() { code=$1; shift; echo "org-curate: $*" >&2; exit "$code"; }
+die() { # die <code> <message>: the message, then one next: line (decision 0014, the secretary's contract)
+  code=$1; shift; echo "org-curate: $*" >&2
+  case $code in
+    2) echo "next: fix the call (bash org-curate.sh --help) and run it again" ;;
+    4) echo "next: save again with another --topic (a note is never overwritten)" ;;
+    *) echo "next: read the curator's screen with hc read curator, then answer it through the org-escalation skill" ;;
+  esac >&2
+  exit "$code"
+}
 
 state=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
 k=$state/knowledge
@@ -129,7 +137,7 @@ case "$cmd" in
     done
     [ -n "$p" ] && [ -n "$s" ] || die 2 "--pattern and --skill are required"
     repo=${repo:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}
-    bad() { echo "org-curate: link $1 FAILED: $2" >&2; exit 1; }
+    bad() { echo "org-curate: link $1 FAILED: $2" >&2; echo "next: fix link $1 (the line above), then run chain again" >&2; exit 1; }
     # 1. Records: 3+ notes from 3+ different tasks name the pattern, with a one-sentence trigger.
     g=$(gate "$k/curated/$p.md" 2>/dev/null) || bad 1 "no curated note $p with a one-sentence 'When:' line"
     [ "${g%% *}" -ge 3 ] || bad 1 "only ${g%% *} different tasks among the notes of $p (need 3)"
@@ -215,5 +223,5 @@ $brief"
     fi
     ;;
 
-  *) usage >&2; exit 2 ;;
+  *) usage >&2; die 2 "unknown command: $cmd" ;;
 esac

@@ -120,7 +120,7 @@ done
 grep -qiE 'all (the )?(accumulated |kept )?(raw )?notes|every (raw )?note' "$c" 2>/dev/null; check "curator template says it reads all notes every run" $?
 grep -qiE 'keep|kept' "$c" 2>/dev/null && grep -qiE 'never (create|write) a skill|creates? no skill|no skill' "$c" 2>/dev/null; check "curator template keeps notes and creates no skill" $?
 grep -q '## Where it applies' "$here/templates/worker-rules.md"; check "worker rules ask for the four-heading note at the end of the report" $?
-grep -q 'org-curate.sh save' "$here/templates/secretary.md"; check "secretary rules save the note and start the curator" $?
+grep -q 'org-curate.sh save' "$here/skills/org-curate/SKILL.md"; check "the skill says how the secretary saves the note and starts the curator" $?
 grep -q 'org-curate.sh count' "$here/skills/org-close/scripts/org-close.sh"; check "org-close prints the curator count" $?
 
 exit $fail
