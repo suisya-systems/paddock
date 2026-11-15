@@ -44,10 +44,10 @@ for bad in $'/tmp/out\n' $'/tmp/a\nb' $'/tmp/a\tb'; do
   check "--allow-write with a control character exits 2, nothing created: $(printf '%q' "$bad")" $?
 done
 
-# The secretary template describes the recovery paths of the exit codes it can get.
-t=$here/templates/secretary.md
-grep -q 'Exit 12: the start record could not be written and nothing was started' "$t"; check "secretary template: exit 12 means nothing was started" $?
-! grep -q 'Exit 12: the worker runs' "$t"; check "secretary template no longer calls exit 12 a running worker" $?
-grep -q 'hc get w-<task_id>' "$t"; check "secretary template: exit 5 with names says to check the terminal" $?
+# The recovery paths of the exit codes moved from the secretary template into the script's next: lines (decision 0014).
+sc=$script
+grep -q '12) nx=".*(nothing was started)"' "$sc"; check "next: line of exit 12 says nothing was started" $?
+! grep -q '12) nx=".*the worker runs' "$sc"; check "next: line of exit 12 does not call it a running worker" $?
+grep -q 'run hc get \$name before anything else' "$sc"; check "next: line of exit 5 with names says to check the terminal" $?
 
 exit $fail
