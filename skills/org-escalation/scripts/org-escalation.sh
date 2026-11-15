@@ -14,7 +14,7 @@ Usage: org-escalation.sh prompt --task TASK_ID [--then-send TEXT]
                            [--background TEXT] [--if-yes TEXT] [--if-no TEXT]
                            [--recommend yes|no --why TEXT] [--lang CODE]
        org-escalation.sh lang --lang CODE
-       org-escalation.sh answer --id APPROVAL_ID --text TEXT
+       org-escalation.sh answer --id APPROVAL_ID --text TEXT [--note TEXT]
        org-escalation.sh remove --id APPROVAL_ID
        org-escalation.sh list
        org-escalation.sh sweep
@@ -43,6 +43,9 @@ Usage: org-escalation.sh prompt --task TASK_ID [--then-send TEXT]
           then remove the entry. A prompt entry takes yes or no: only while w-<task_id> is
           blocked and its screen still shows the recorded prompt, yes presses enter on
           "1. Yes" (once, never "don't ask again") and no presses esc
+          --note: the person's note with the answer (at most 1000 bytes). An ordinary
+          question sends it to the worker after the answer; a prompt or resend entry never
+          passes it on (prints NOTE <id> <note>: it is the secretary's to act on)
   remove  remove the entry only (answered in the worker's terminal, withdrawn, task dropped)
   list    print "<id><TAB><task_id><TAB><question>" per entry
   sweep   remove every prompt entry whose terminal w-<task_id> shows working, idle or
@@ -188,13 +191,13 @@ ctx() {
 
 cmd=${1:-}; [ $# -eq 0 ] || shift
 case $cmd in -h|--help|help) usage; exit 0 ;; esac
-task=; question=; text=; id=
+task=; question=; text=; id=; note=
 unset background if_yes if_no recommend why lang prompt then_send
 while [ $# -gt 0 ]; do
   case $1 in
-    --task|--question|--text|--id|--prompt|--then-send|--background|--if-yes|--if-no|--recommend|--why|--lang)
+    --task|--question|--text|--id|--note|--prompt|--then-send|--background|--if-yes|--if-no|--recommend|--why|--lang)
       [ $# -ge 2 ] || die 2 "$1 needs a value"
-      case $1 in --task) task=$2 ;; --question) question=$2 ;; --text) text=$2 ;; --id) id=$2 ;; --prompt) prompt=$2 ;; --then-send) then_send=$2 ;;
+      case $1 in --task) task=$2 ;; --question) question=$2 ;; --text) text=$2 ;; --note) note=$2 ;; --id) id=$2 ;; --prompt) prompt=$2 ;; --then-send) then_send=$2 ;;
         --background) background=$2 ;; --if-yes) if_yes=$2 ;; --if-no) if_no=$2 ;; --recommend) recommend=$2 ;; --why) why=$2 ;; --lang) lang=$2 ;; esac
       shift 2 ;;
     *) echo "org-escalation: unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -325,6 +328,10 @@ case $cmd in
     valid_aid "$id" || die 2 "answer needs --id <approval_id>"
     t=$(clean "$text")
     [ -n "${t//[ ]/}" ] || die 2 "answer needs --text <answer>"
+    n=$(clean "$note"); [ -n "${n//[ ]/}" ] || n=
+    [ "${#n}" -le 1000 ] || die 2 "--note is over 1000 bytes"
+    # A note never goes into a worker's prompt: the secretary, who has it from the card, acts on it.
+    keep_note() { [ -z "$n" ] || echo "NOTE $id $n"; }
     f=$(edit find "$id"); st=$?
     case $st in 0) ;; 4) die 6 "no approval with id $id in org-state" ;; *) die 5 "org-state is not a JSON object (or cannot be read)" ;; esac
     wtask=${f%%$'\t'*}; sum=${f#*$'\t'}
@@ -349,7 +356,7 @@ case $cmd in
           m=$(trust_marker "$wtask") && rm -f "$m" # the person trusted this clone: later workers are not held
         fi
         ( update remove "$id" ) || die 9 "answered $w but entry $id could not be removed; run: remove --id $id"
-        echo "RELAYED $id $key -> $w"
+        echo "RELAYED $id $key -> $w"; keep_note
         [ "$key" = esc ] && exit 0
         if [ -d "$(rdir "$wtask")" ]; then finish_resend "$wtask" # --then-send is not needed: org-delegate saved the message
         elif [ -n "${then_send+set}" ]; then send_first; fi
@@ -367,18 +374,19 @@ case $cmd in
         || die 10 "the cursor of $w is not on '1. Yes' alone; nothing pressed, entry $id kept"
       hc keys "$w" "$key" >/dev/null 2>&1 || die 8 "hc keys $key failed on $w; entry $id kept"
       ( update remove "$id" ) || die 9 "answered $w but entry $id could not be removed; run: remove --id $id"
-      echo "RELAYED $id $key -> $w"; exit 0
+      echo "RELAYED $id $key -> $w"; keep_note; exit 0
     fi
     if [ -d "$(rdir "$wtask")" ] && [ "$(edit list "" | awk -F'\t' -v i="$id" '$1 == i { print substr($3, 1, length(RQ)) }' RQ="$resend_q")" = "$resend_q" ]; then
       # The card finish_resend raised (the worker has no first message, so it asked nothing): yes tries again, no leaves the terminal.
       case $(printf '%s' "$t" | tr 'A-Z' 'a-z' | tr -d ' ') in yes) ra=yes ;; no) ra=no ;;
         *) die 2 "entry $id is a resend card: the answer is yes or no; nothing done, entry kept" ;; esac
       ( update remove "$id" ) || die 9 "entry $id could not be removed; run: remove --id $id"
+      keep_note
       if [ "$ra" = yes ]; then finish_resend "$wtask"; exit 0; fi
       rm -f "$(rdir "$wtask")/message" "$(rdir "$wtask")/entry"; rmdir "$(rdir "$wtask")" 2>/dev/null
       echo "DROPPED $id: w-$wtask is left as it is"; exit 0
     fi
-    secretary send_message "w-$wtask" "Answer to your question ($id): $t" >/dev/null \
+    secretary send_message "w-$wtask" "Answer to your question ($id): $t${n:+ (note from the person: $n)}" >/dev/null \
       || die 8 "the answer could not be put in the mailbox of w-$wtask; entry $id kept"
     # an idle worker is woken for this mail by org-watch (decision 0013), not here
     ( update remove "$id" ) || die 9 "answer sent to w-$wtask but entry $id could not be removed; run: remove --id $id"

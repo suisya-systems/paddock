@@ -46,6 +46,9 @@ EOF
 import { el } from "gpui-kit";
 export const v_flex = () => el("v_flex");
 export const h_flex = () => el("h_flex");
+// The note field: a state whose value a test sets through globalThis.__note.
+export const InputState = { new: () => { let v = ""; const s = { value: () => v, set_value: (x) => { v = x; }, on: () => true }; globalThis.__note = s; return s; } };
+export const Input = { new: () => el("input") };
 EOF
   cat > "$m/node_modules/herdr/index.js" <<'EOF'
 const H = globalThis.__h;

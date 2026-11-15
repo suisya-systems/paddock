@@ -7,6 +7,8 @@
 # Checked: a click on the card's Yes / No sends `ANSWER <approval id> yes|no` from `person`
 # to `secretary` through the mailbox, for the oldest approval; a second click sends nothing
 # more; the mod never writes org-state; the card is gone once the secretary removes the entry.
+# With a note typed in the card's note field (Issue #386) the line is
+# `ANSWER <id> yes|no; note: <note>`, line breaks folded into spaces, and the field is emptied.
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
@@ -56,6 +58,9 @@ cat > "$tmp/m/node_modules/gpui-base/index.js" <<'EOF'
 import { el } from "gpui-kit";
 export const v_flex = () => el("v_flex");
 export const h_flex = () => el("h_flex");
+// The note field: a state whose value a test sets through globalThis.__note.
+export const InputState = { new: () => { let v = ""; const s = { value: () => v, set_value: (x) => { v = x; }, on: () => true }; globalThis.__note = s; return s; } };
+export const Input = { new: () => el("input") };
 EOF
 cat > "$tmp/m/node_modules/herdr/index.js" <<'EOF'
 import { spawnSync } from "node:child_process";
@@ -84,7 +89,7 @@ EOF
 # drive <answer>: render the card, click the button whose text starts with <answer> twice,
 # then remove the approvals and refresh. Prints one result line per step for the checks.
 cat > "$tmp/m/drive.mjs" <<'EOF'
-const answer = process.argv[2];
+const answer = process.argv[2], note = process.argv[3] ?? "";
 const OLD = "task-a-20261110T090000Z", NEW = "task-b-20261110T091500Z";
 globalThis.__h = { calls: [], runs: [], doc: { version: 3, value: { work: [], approvals: [
   { id: NEW, task_id: "task-b", question: "Merge PR 12?", asked_at: "2026-11-10T09:15:00Z" },
@@ -105,11 +110,14 @@ let tree = v.render(cx);
 const b = button(tree, answer);
 console.log(`button ${b ? "found" : "missing"}`);
 console.log(`open ${button(tree, "Open") ? "found" : "missing"}`);
+console.log(`note-field ${all(tree).some((n) => n.kind === "input") ? "found" : "missing"}`);
+globalThis.__note.set_value(note);
 if (b) {
   // A double click: the second must send nothing (the card may meanwhile show the next approval).
   b._click({}, {}, cx); b._click({}, {}, cx); await settle();
   b._click({}, {}, cx); await settle();
 }
+console.log(`note-after [${globalThis.__note.value()}]`);
 console.log(`writes ${globalThis.__h.calls.filter((c) => /doc\.set|\bdoc (set|update)\b/.test(c)).length}`);
 globalThis.__h.doc = { version: 4, value: { work: [], approvals: [] } };
 v.refresh(cx); await settle();
@@ -117,9 +125,11 @@ tree = v.render(cx);
 console.log(`after-removal ${["Yes", "No"].some((w) => button(tree, w)) ? "buttons" : "none"}`);
 EOF
 
-run_case() { # run_case <answer>
-  export PADDOCK_STATE_DIR=$tmp/state-$1
-  out=$(cd "$tmp/m" && node drive.mjs "$1" 2>&1)
+run_case() { # run_case <answer> <expected text after the id> [<note typed>]
+  export PADDOCK_STATE_DIR=$tmp/state-$1-${3:+note}
+  out=$(cd "$tmp/m" && node drive.mjs "$1" "${3-}" 2>&1)
+  echo "$out" | grep -q '^note-field found$'; check "$1: the card has a note field" $?
+  echo "$out" | grep -q '^note-after \[\]$'; check "$1: the note field is empty after the send" $?
   echo "$out" | grep -q '^button found$'; check "$1: the approval card has a $1 button" $?
   echo "$out" | grep -q '^open found$'; check "$1: the card still has an Open control (the secretary's pane, Issue #127)" $?
   msgs=$(bash "$here/scripts/org" --as secretary check_messages --peek 2>&1)
@@ -135,5 +145,8 @@ run_case() { # run_case <answer>
 command -v node >/dev/null 2>&1; check "node is available" $?
 run_case Yes yes
 run_case No no
+run_case Yes "yes; note: also bump the lock file" "  also bump
+the lock file "
+run_case No "no; note: use pnpm instead" "use pnpm instead"
 
 exit $fail

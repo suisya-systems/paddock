@@ -154,6 +154,14 @@ case $(doc) in *"$id"*) r=1 ;; *) r=0 ;; esac; check "yes: the entry is removed"
 setup; out=$(esc answer --id "$id" --text no); rc=$?
 [ $rc -eq 0 ] && [ "$(keys)" = "keys w-t2 esc;" ]; check "no: one esc ($(keys))" $?
 
+# A note with the answer (the card's "anything to add", Issue #386) stays with the secretary.
+setup; out=$(esc answer --id "$id" --text yes --note "also check the registry"); rc=$?
+[ $rc -eq 0 ] && [ "$(keys)" = "keys w-t2 enter;" ]; check "yes with a note: still exactly one enter ($(keys))" $?
+grep -qx "NOTE $id also check the registry" <<<"$out"; check "yes with a note: the note is printed for the secretary ($out)" $?
+! grep -q '^send ' "$STUB/calls"; check "yes with a note: nothing is typed into the worker" $?
+! grep -rq 'also check the registry' "$tmp/state" 2>/dev/null
+check "yes with a note: the note reaches no mailbox" $?
+
 setup; printf '%s\n' "${bashprompt/npm publish --registry/rm -rf}" > "$STUB/screen-w-t2"
 out=$(esc answer --id "$id" --text yes); rc=$?
 [ $rc -eq 10 ] && [ -z "$(keys)" ]; check "a different prompt on the screen: exit 10, nothing pressed ($rc)" $?
