@@ -19,7 +19,9 @@ A folder-trust dialog on the secretary is answered once (Yes, checked on the scr
 no hc call, no core, no secretary, no watcher, no herdr-app command. It may run inside an agent
 (the secretary runs it after a landing). It keeps the recorded claude-path and codex-path. --from-origin
 BRANCH first runs git fetch origin BRANCH in the paddock folder and places origin/BRANCH, not the
-checkout. It prints the placed files that changed, and a renewal line when secretary.md changed.
+checkout; then it fast-forwards the paddock checkout to origin/BRANCH when it is clean, on BRANCH and
+behind (otherwise it leaves it alone and prints one line with why and what to run; still exit 0).
+It prints the placed files that changed, and a renewal line when secretary.md changed.
 
 --check only checks the first-run steps (hc, agent shell, claude, notes = false, hc on the running core's PATH,
 the folder trust of each --project clone, and the herdr-app mods folder with whether its cockpit equals the
@@ -301,9 +303,26 @@ else
 fi
 if [ -n "$placeonly" ]; then # what each change needs; Claude Code re-reads a changed settings file's hooks
   from=${fromorigin:+origin/}${fromorigin:-$root}
+  # Issue #402: org-delegate and the secretary's own scripts read the checkout, so bring it to the
+  # landed base too, but only a clean checkout on that branch that is behind it; otherwise say why.
+  if [ -n "$fromorigin" ]; then
+    o=origin/$fromorigin fix="git -C $root switch $fromorigin && git -C $root merge --ff-only origin/$fromorigin"
+    cur=$(git -C "$root" symbolic-ref -q --short HEAD)
+    if [ "$cur" != "$fromorigin" ]; then
+      echo "org-start: the checkout $root was left alone: it is on ${cur:-a detached HEAD}, not $fromorigin; to update it: $fix"
+    elif [ -n "$(git -C "$root" status --porcelain --untracked-files=no)" ]; then
+      echo "org-start: the checkout $root was left alone: it has uncommitted changes; commit or drop them, then: $fix"
+    elif ! git -C "$root" merge-base --is-ancestor HEAD "$o"; then
+      echo "org-start: the checkout $root was left alone: its $fromorigin has commits $o lacks (diverged); bring them together by hand, then: $fix"
+    elif [ "$(git -C "$root" rev-parse HEAD)" != "$(git -C "$root" rev-parse "$o")" ]; then
+      git -C "$root" merge --ff-only -q "$o" \
+        && echo "org-start: fast-forwarded the checkout $root to $o" \
+        || echo "org-start: the checkout $root was left alone: git merge --ff-only $o failed (an untracked file in the way?); fix it, then: $fix"
+    fi
+  fi
   [ -n "$changed" ] || { echo "org-start: placed again from $from; nothing changed"; exit 0; }
   echo "org-start: placed again from $from; changed:$changed"
-  echo "org-start: the bin copies (the workers' org script, the review gate, hooks, secretary-settings.json) take effect now; the secretary's own scripts/org and skills run from $root, which this does not update; worker.md, worker-rules.md, worker-settings.json and curator.md reach new workers or a new curator fully only once that checkout is updated too (git pull --ff-only in $root), since org-delegate reads some of them from it; running ones keep the old ones"
+  echo "org-start: the bin copies (the workers' org script, the review gate, hooks, secretary-settings.json) take effect now; worker.md, worker-rules.md, worker-settings.json and curator.md reach new workers or a new curator, and the secretary's own scripts/org and skills change, once the checkout $root is at the landed commit too (the line above says when it is not), since org-delegate reads some of them from it; running ones keep the old ones"
   exit 0
 fi
 # The app's check needs a display; a failure warns and does not stop the start.
