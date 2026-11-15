@@ -76,7 +76,7 @@ fi
 if ! git -C "$wt" merge --no-edit "origin/$base" >/dev/null 2>&1; then
   git -C "$wt" merge --abort >/dev/null 2>&1
   die 6 "merging origin/$base conflicts; aborted, the branch is unchanged. Resolve by hand" \
-    "send the worker back to resolve the conflict with origin/$base in $wt (its branch is unchanged), then it pushes; or resolve it by hand"
+    "send the worker back to resolve the conflict with origin/$base in $wt (its branch is unchanged) and commit; then run the org-pull-request skill with --pr <n> to send the branch (a worker cannot push); or resolve it by hand"
 fi
 echo "merged origin/$base into $(git -C "$wt" symbolic-ref --short HEAD) at $(git -C "$wt" rev-parse --short HEAD)"
 echo "$next_ok"
