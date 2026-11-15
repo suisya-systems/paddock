@@ -7,12 +7,19 @@ usage() {
   cat <<'USAGE'
 Usage: org-start.sh [-h|--help]
        org-start.sh --check [--project DIR]...
+       org-start.sh --place-only [--from-origin BRANCH]
 
 Starts the paddock secretary on the running herdr core (the first hc command
 starts a core if none runs; run this from a login shell, never from an agent).
 Idempotent: a second run starts no second secretary and copies the same files.
 A secretary terminal that has finished is removed (hc rm) before a new one starts.
 A folder-trust dialog on the secretary is answered once (Yes, checked on the screen first).
+
+--place-only places the files again (templates, the bin folder, mods, layout) and starts nothing:
+no hc call, no core, no secretary, no watcher, no herdr-app command. It may run inside an agent
+(the secretary runs it after a landing). It keeps the recorded claude-path and codex-path. --from-origin
+BRANCH first runs git fetch origin BRANCH in the paddock folder and places origin/BRANCH, not the
+checkout. It prints the placed files that changed, and a renewal line when secretary.md changed.
 
 --check only checks the first-run steps (hc, agent shell, claude, notes = false, hc on the running core's PATH,
 and the folder trust of each --project clone) and prints 'ok <step>: ...' or 'TODO <step>: <exact fix>' for
@@ -40,15 +47,19 @@ Exit codes: 0 ready (7 also prints the terminal exit code and last line), 2 bad 
 8 herdr-core notes are on (no notes = false in the core config).
 9 claude not found from org-start's shell (the templates need its absolute path).
 10 hc is not on the running core's PATH (restart herdr from a login shell that has it).
+--place-only: 0 placed, 2 bad argument, 6 files could not be placed (or the fetch failed).
 --check: 0 nothing left for a person, 1 a TODO is printed, 2 bad argument.
 USAGE
 }
 
-check= projects=
+check= projects= placeonly= fromorigin=
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --check) check=1; shift ;;
+    --place-only) placeonly=1; shift ;;
+    --from-origin) [ $# -ge 2 ] || { echo "org-start: --from-origin needs a value" >&2; exit 2; }
+      fromorigin=$2; shift 2 ;;
     --project) [ $# -ge 2 ] || { echo "org-start: --project needs a value" >&2; exit 2; }
       projects="$projects
 $2"; shift 2 ;;
@@ -56,6 +67,8 @@ $2"; shift 2 ;;
   esac
 done
 [ -z "$projects" ] || [ -n "$check" ] || { echo "org-start: --project only goes with --check" >&2; exit 2; }
+[ -z "$fromorigin" ] || [ -n "$placeonly" ] || { echo "org-start: --from-origin only goes with --place-only" >&2; exit 2; }
+[ -z "$placeonly" ] || [ -z "$check" ] || { echo "org-start: --place-only and --check do not go together" >&2; exit 2; }
 
 die() { code=$1; shift; echo "org-start: $*" >&2; exit "$code"; }
 
@@ -67,7 +80,7 @@ agentvar() { # the first agent session variable set in this environment
   return 1
 }
 
-if [ -z "$check" ]; then
+if [ -z "$check$placeonly" ]; then # place-only calls no hc, so it may run inside an agent
   command -v hc >/dev/null 2>&1 || die 3 "hc not found on PATH (install herdr-core)"
   # Q17 (d): never start a core from inside an agent. The first hc command starts a
   # core that inherits this environment, so refuse before any hc call.
@@ -111,10 +124,12 @@ if [ -n "$check" ]; then # every step, read-only; the first TODO does not hide t
   exit "$todo"
 fi
 
+if [ -z "$placeonly" ]; then
 fr_notes_ok "$coreconf" || die 8 "herdr-core's notes are on: $FR_NOTES_FIX"
 # Decision 0007: hc must be on the running core's PATH. Read from the core's own environment;
 # silent where /proc is not readable (Linux and WSL only) or no core runs yet (the first hc starts one from here).
 fr_core_path || { [ $? -eq 2 ] || die 10 "$FR_PATH_FIX"; }
+fi
 # on WSL, herdr-app for Windows reads the Windows user's .config/herdr-app and sees this
 # core as another machine (wsl). A herdr-app on PATH that is not an .exe is a Linux app: WSL's folder.
 app=$(command -v herdr-app 2>/dev/null); appcfg=$cfg/herdr-app; appmachine=
@@ -149,6 +164,26 @@ case "$orgbin" in /*) ;; *) die 2 "PADDOCK_BIN_DIR must be an absolute path: $or
 tries=${PADDOCK_READY_TRIES:-15}
 name=${PADDOCK_SECRETARY_NAME:-secretary} # terminal name only; the template stays "secretary"
 
+# the files placed come from src: the checkout, or with --from-origin the fetched origin branch.
+src=$root
+if [ -n "$fromorigin" ]; then
+  git -C "$root" fetch -q origin "+refs/heads/$fromorigin:refs/remotes/origin/$fromorigin" || die 6 "git fetch origin $fromorigin failed in $root"
+  src=$(mktemp -d) || die 6 "cannot make a temporary folder"
+  trap 'rm -rf "$src"' EXIT
+  git -C "$root" archive "refs/remotes/origin/$fromorigin" templates scripts mods layouts | tar -x -C "$src" \
+    || die 6 "cannot read templates, scripts, mods and layouts from origin/$fromorigin"
+fi
+changed=
+put() { # put <from> <to>: copy, and note the target when it changes
+  cmp -s "$1" "$2" && { cp -f "$1" "$2"; return; }
+  changed="$changed ${2##*/}"
+  cp -f "$1" "$2" || return
+  # said at once, so a later failed copy (and a retry that finds it equal) cannot lose it
+  [ -z "$placeonly" ] || [ "${2##*/}" != secretary.md ] \
+    || echo "org-start: RENEWAL NEEDED: secretary.md changed, and a template body reaches only a new secretary. Ask the person to renew the secretary (secretary-handover)."
+}
+
+if [ -z "$placeonly" ]; then
 # 1. Reuse the core (this starts one from this shell if none runs).
 hc ls >/dev/null 2>&1 || die 5 "cannot reach the herdr core (hc ls failed)"
 
@@ -156,6 +191,7 @@ hc ls >/dev/null 2>&1 || die 5 "cannot reach the herdr core (hc ls failed)"
 # absolute path found here; the templates exec it (and fall back to plain claude if the file is stale).
 claudebin=$(command -v claude 2>/dev/null)
 case "$claudebin" in /*) ;; *) die 9 "claude not found on PATH in this shell: put its folder on PATH (often ~/.local/bin) and run org-start again" ;; esac
+fi
 
 # 2. Place the template and the mods. Plain copies: re-running changes nothing.
 mkdir -p "$templates" || die 6 "cannot create $templates"
@@ -164,16 +200,17 @@ mkdir -p "$orgbin" || die 6 "cannot create $orgbin"
 # the new copies, and hc would list the rules file. Both exist now, so cd -P resolves symlinks and "..".
 pt=$(cd -P "$templates" && pwd) && pb=$(cd -P "$orgbin" && pwd) || die 6 "cannot resolve $templates or $orgbin"
 case "$pb/" in "$pt"/*) die 2 "PADDOCK_BIN_DIR must not be the templates folder or inside it: $orgbin" ;; esac
-cp -f "$root/templates/secretary.md" "$templates/secretary.md" || die 6 "cannot copy the secretary template"
-cp -f "$root/templates/worker.md" "$templates/worker.md" || die 6 "cannot copy the worker template"
+put "$src/templates/secretary.md" "$templates/secretary.md" || die 6 "cannot copy the secretary template"
+put "$src/templates/worker.md" "$templates/worker.md" || die 6 "cannot copy the worker template"
 # Decision 0009: the curator, which the secretary starts with `org-curate.sh start` (it writes the curator's settings file first).
-cp -f "$root/templates/curator.md" "$templates/curator.md" || die 6 "cannot copy the curator template"
+put "$src/templates/curator.md" "$templates/curator.md" || die 6 "cannot copy the curator template"
 # The org commands, and the worker's rules and settings files its template command names
 # (Q10, Q12): a worker may read this folder and may not write it (worker-settings.json).
 # Not in the templates folder: hc lists every *.md there as a template.
 for f in scripts/org scripts/second-model-review.sh scripts/hooks/premise-reminder.sh scripts/hooks/secretary-bash-guard.sh templates/secretary-settings.json templates/worker-rules.md templates/worker-settings.json; do
-  cp -f "$root/$f" "$orgbin/${f##*/}" || die 6 "cannot copy $f to $orgbin"
+  put "$src/$f" "$orgbin/${f##*/}" || die 6 "cannot copy $f to $orgbin"
 done
+if [ -z "$placeonly" ]; then # place-only keeps the paths an earlier org-start recorded from a login shell
 printf '%s\n' "$claudebin" > "$orgbin/claude-path" || die 6 "cannot write $orgbin/claude-path"
 # same for the review gate's CLI, which often lives in a Node version manager's folder. Optional:
 # without it the gate ends "unavailable" and prepare's codex-cli check says so. Drop a stale record.
@@ -208,22 +245,23 @@ if [ -n "$codexbin" ]; then
   To use another, put its folder first on PATH and run org-start again, or remove the ones you do not want." >&2
   fi
 fi
+fi
 # Copies an older org-start placed beside the templates.
 rm -f "$templates/worker-rules.md" "$templates/worker-settings.json" \
   || die 6 "cannot remove the old worker-rules.md / worker-settings.json from $templates"
 
-if [ ! -d "$mods/org-agents" ] && [ -z "${PADDOCK_APP_MODS_DIR:-}" ] && [ -n "$app" ]; then
+if [ -z "$placeonly" ] && [ ! -d "$mods/org-agents" ] && [ -z "${PADDOCK_APP_MODS_DIR:-}" ] && [ -n "$app" ]; then
   # First time: let herdr-app create the folder so it gets the type files.
   "$app" do mod.clone '{"name":"agents","as":"org-agents"}' >/dev/null 2>&1 \
     || echo "org-start: mod.clone failed; copying the mod without type files" >&2
 fi
 mkdir -p "$mods/org-agents" || die 6 "cannot create $mods/org-agents"
-cp -f "$root/mods/org-agents/main.js" "$root/mods/org-agents/mod.json" "$mods/org-agents/" \
+cp -f "$src/mods/org-agents/main.js" "$src/mods/org-agents/mod.json" "$mods/org-agents/" \
   || die 6 "cannot copy the org-agents mod"
 
 # the screen. The cockpit mod and the layout go to the app's host too.
 mkdir -p "$mods/org-cockpit" "$layouts" || die 6 "cannot create $mods/org-cockpit or $layouts"
-cp -f "$root/mods/org-cockpit/main.js" "$root/mods/org-cockpit/mod.json" "$mods/org-cockpit/" \
+cp -f "$src/mods/org-cockpit/main.js" "$src/mods/org-cockpit/mod.json" "$mods/org-cockpit/" \
   || die 6 "cannot copy the org-cockpit mod"
 # Keep the "secretary" prop (a secretary on another machine) the person put in the installed layout.
 # ponytail: the first prop found goes into every org-cockpit block; per-block props if they differ.
@@ -234,10 +272,17 @@ machine=${PADDOCK_APP_MACHINE:-$(printf '%s' "$keep" | sed -n 's|.*:[[:space:]]*
 machine=${machine:-$appmachine}
 [ -z "$machine" ] || keep="\"secretary\": \"$machine/$name\""
 if [ -n "$keep" ]; then
-  sed "s|\"props\": { \"role\"|\"props\": { $keep, \"role\"|" "$root/layouts/paddock.json" > "$layouts/paddock.json.new" \
+  sed "s|\"props\": { \"role\"|\"props\": { $keep, \"role\"|" "$src/layouts/paddock.json" > "$layouts/paddock.json.new" \
     && mv -f "$layouts/paddock.json.new" "$layouts/paddock.json" || die 6 "cannot place the layout"
 else
-  cp -f "$root/layouts/paddock.json" "$layouts/paddock.json" || die 6 "cannot place the layout"
+  cp -f "$src/layouts/paddock.json" "$layouts/paddock.json" || die 6 "cannot place the layout"
+fi
+if [ -n "$placeonly" ]; then # what each change needs; Claude Code re-reads a changed settings file's hooks
+  from=${fromorigin:+origin/}${fromorigin:-$root}
+  [ -n "$changed" ] || { echo "org-start: placed again from $from; nothing changed"; exit 0; }
+  echo "org-start: placed again from $from; changed:$changed"
+  echo "org-start: the bin copies (the workers' org script, the review gate, hooks, secretary-settings.json) take effect now; the secretary's own scripts/org and skills run from $root, which this does not update; worker.md, worker-rules.md, worker-settings.json and curator.md reach new workers or a new curator fully only once that checkout is updated too (git pull --ff-only in $root), since org-delegate reads some of them from it; running ones keep the old ones"
+  exit 0
 fi
 # The app's check needs a display; a failure warns and does not stop the start.
 if [ -n "$app" ]; then

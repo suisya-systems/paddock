@@ -10,3 +10,4 @@
 - **A worker holds no GitHub credential.** It reads its base from the project clone's `origin/*`, which the secretary fetches, so org-start asks the person for no token.
 - **A worker writes only its own files in the state folder,** named in its own settings file, so the shared settings never grant the state folder to the sandbox.
 - **Layout and secretary prop.** An installed layout's `"secretary"` prop is kept on reinstall; when the app sees the core as another machine, the prop is written `<machine>/<secretary name>`; on WSL the Windows app is used when only its socket exists.
+- **Placing again needs no login shell.** The login-shell rule exists because the first `hc` call can start a core that inherits the shell. `--place-only` calls no `hc` and starts nothing, so it is safe inside the secretary; that lets a landing reach the placed copies without a person. It places from the fetched origin branch, since a merge on GitHub leaves the local checkout as it was.

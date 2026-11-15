@@ -1,11 +1,11 @@
 ---
 name: org-start
-description: Start the paddock organization. Reuses the herdr core, starts the secretary from templates/secretary.md with --keep, places the org-agents mod, and reports readiness. Run it from your own login shell.
+description: Start the paddock organization. Reuses the herdr core, starts the secretary from templates/secretary.md with --keep, places the org-agents mod, and reports readiness. Run it from your own login shell; --place-only places the files again and starts nothing, so the secretary runs it after a landing.
 ---
 
 # org-start
 
-Starts the organization. Why it is built this way: [references/rationale.md](references/rationale.md). Run this from the person's login shell (or a service). Never from inside an agent.
+Starts the organization. Why it is built this way: [references/rationale.md](references/rationale.md). Run this from the person's login shell (or a service). Never from inside an agent, except `--place-only` (below), which starts nothing.
 
 ```sh
 bash skills/org-start/scripts/org-start.sh
@@ -25,6 +25,18 @@ Bash only. There is no `.ps1` yet: the pwsh path could not be tested, so it is n
 7. **Folder trust.** While there is no status, it reads the secretary's screen (`hc read`). When Claude Code's folder-trust dialog is there (`Quick safety check` / `Yes, I trust this folder`), it presses `down`, reads the screen again and presses `enter` only when the cursor `❯` is on "Yes, I trust this folder" (the default is "No, exit"; never a blind Enter). A cursor that did not get there stops with exit 7 and nothing confirmed. Then it waits up to 15 s for the status again and, since the dialog kept the first message from arriving, sends it with one `hc send`: the body of the installed `secretary.md` (what hc sends first), plus a blank line and the launch task when there is one (the conversation-language line). It does this only for a secretary this run started (its `--cwd` is the paddock folder); an existing secretary at the dialog, which may sit in another folder, keeps the plain exit 7. This is the one-time step for the secretary's own root; it never writes `~/.claude.json`, and for worker worktrees org-delegate presses no keys. A screen without the dialog keeps the old exit 7.
 
 It never runs `hc server stop` or `hc server restart`.
+
+## Place again (`--place-only`)
+
+`bash skills/org-start/scripts/org-start.sh --place-only [--from-origin BRANCH]` does step 2 and the file copies of step 3 and nothing else: no `hc` call (so no core starts), no secretary, no watcher, no `herdr-app` command (no `mod.clone`, `check` or `layout.switch`). It skips the agent check, the notes and core-PATH checks, and keeps the `claude-path` and `codex-path` an earlier run recorded. So the secretary may run it after a landing that changed a placed file; nobody reruns org-start from a login shell for that. With `--from-origin BRANCH` it runs `git fetch origin BRANCH` in the paddock folder and places the files of `origin/BRANCH` (by `git archive`), not the checkout, which a landing does not update. [org-pull-request](../org-pull-request/SKILL.md) runs it after its own merge in the paddock repository; after a merge by hand the secretary runs `--place-only --from-origin main`.
+
+It prints the placed template and bin files that changed (or `nothing changed`) and what each needs:
+
+- The bin copies (`org`, which workers run as `PADDOCK_ORG`, the review gate, the hook scripts) and `secretary-settings.json`: in effect at once. A script is read on each run, and Claude Code re-reads the hooks of a settings file that changed, so no restart is needed. The secretary's own `scripts/org` and skill scripts run from the paddock folder's checkout, which this does not update.
+- `worker.md`, `worker-rules.md`, `worker-settings.json`, `curator.md`: they reach new workers or a new curator fully only once the paddock folder's checkout is updated too (`git pull --ff-only` there), because org-delegate builds each worker's settings from that checkout's `templates/worker-settings.json` and resends the checkout's `worker.md` after a folder-trust dialog. Running ones keep the old ones.
+- `secretary.md`: a template body reaches only a new secretary. It then prints a `RENEWAL NEEDED: ...` line as soon as that file is copied (so a failed later copy cannot hide it), and the secretary asks the person to renew it (`secretary-handover`).
+
+Exit 0 placed, 2 bad argument, 6 a file could not be placed or the fetch failed.
 
 ## First-run check (`--check`, decision 0007)
 
