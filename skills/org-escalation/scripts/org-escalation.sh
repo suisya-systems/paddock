@@ -182,7 +182,7 @@ nextfor() {
     7) echo "run list and use the entry that exists" ;;
     8) if [ "${cmd:-}" = prompt ]; then echo "hc read ${w:-the terminal} and run prompt again; tell the person if it repeats"; else echo "fix the cause, then run answer --id ${id:-<approval_id>} again"; fi ;;
     9) echo "run remove --id ${id:-<approval_id>}; do not send the answer again" ;;
-    10) echo "run prompt ${curator:+--curator}${curator:---task ${task:-${wtask:-<task_id>}}} again; tell the person if it repeats" ;;
+    10) if [ -n "${curator:-}" ]; then echo "run prompt --curator again; tell the person if it repeats"; else echo "run prompt --task ${task:-${wtask:-<task_id>}} again; tell the person if it repeats"; fi ;;
     11) echo "hc get the worker's terminal to see why its screen cannot be read" ;;
     12) echo "send the first message with hc send" ;;
     13) echo "write the work entry as the card says" ;;
