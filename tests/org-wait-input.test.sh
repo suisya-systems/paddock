@@ -25,4 +25,5 @@ out=$(PADDOCK_STATE_DIR="$tmp/state" PADDOCK_WAIT_POLL=0.2 PATH="$tmp/bin:$PATH"
   bash "$here/scripts/org" --as secretary wait --children --timeout 20 2>&1)
 printf '%s' "$out" | grep -q '"reason":"message"'; check "typed input ends the wait with reason message" $?
 [ $((SECONDS - start)) -lt 10 ]; check "it returns within seconds, not at the bound" $?
+grep -q 'reason":"message' "$here/templates/secretary.md"; check "template tells the secretary what reason message means" $?
 exit $fail
