@@ -62,7 +62,7 @@ cleanup() {
   rm -f "$TPL"
   echo "CLEANUP done. Folder kept: $ROOT"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT; trap 'exit 130' INT TERM
 
 echo "== versions"; hc --version 2>&1; claude --version 2>&1
 
@@ -112,6 +112,8 @@ wait_idle() { # $1 = max seconds
   echo "-- wait_idle timed out after $1 s"; return 1
 }
 # Waits until blocked shows up (the control) or the terminal is idle.
+# A turn that does not finish stops the probe: going on would send the next step into it.
+must_idle() { wait_idle "$1" || { echo "RESULT void: a turn did not finish in $1 s; read the screen"; show timeout 30; exit 1; }; }
 wait_blocked_or_idle() {
   BLOCKED=no; sleep 10; i=10
   while [ $i -lt "$1" ]; do
@@ -176,7 +178,7 @@ fi
 
 echo "== S1 skill list"
 hc send $NAME "List the names of the skills you have whose name starts with the prefix paddock and a colon. One name per line, nothing else."
-wait_idle 180
+must_idle 180
 show S1 30
 a=$(count 'paddock:h4-marker'); b=$(count 'paddock:org-issue')
 # The question itself holds neither name, so any line with both is the answer.
@@ -185,7 +187,7 @@ a=$(count 'paddock:h4-marker'); b=$(count 'paddock:org-issue')
 echo "== S2 situation match (ZEBRA-PLUM) and allowed-tools"
 rm -f "$ROOT/marker-ran"
 hc send $NAME "ZEBRA-PLUM"
-wait_idle 240
+must_idle 240
 show S2 30
 v1=$(count 'SKILL-TEXT-V1')
 [ "$v1" -ge 1 ]; verdict "RESULT H4-invoke" $?
@@ -199,7 +201,7 @@ sed 's/SKILL-TEXT-V1/SKILL-TEXT-V2/' "$f" > "$f.new" && cat "$f.new" > "$f" && r
 grep -c 'SKILL-TEXT-V2' "$f" | sed 's/^/-- V2 lines in the edited file: /'
 sleep 5
 hc send $NAME "ZEBRA-PLUM again. Invoke the skill again now; do not reuse the text you already have."
-wait_idle 240
+must_idle 240
 show S3 30
 n2=$(count 'SKILL-TEXT-V2')
 [ "$n2" -ge 1 ]; verdict "RESULT H4-edit-live" $?
@@ -216,17 +218,17 @@ Reply with one line: SKILL-NEW-TEXT-N1.
 EOF
 sleep 5
 hc send $NAME "NARWHAL-3"
-wait_idle 240
+must_idle 240
 show S4 30
 n3=$(count 'SKILL-NEW-TEXT-N1')
 [ "$n3" -ge 1 ]; verdict "RESULT H4-new-skill" $?
 if [ "$n3" -lt 1 ]; then
   echo "-- not picked up; typing /reload-plugins, then NARWHAL-3 again"
   hc send $NAME "/reload-plugins"
-  wait_idle 120
+  must_idle 120
   show S4-reload 15
   hc send $NAME "NARWHAL-3 again"
-  wait_idle 240
+  must_idle 240
   show S4-retry 30
   n3b=$(count 'SKILL-NEW-TEXT-N1')
   [ "$n3b" -ge 1 ]; verdict "RESULT H4-new-skill-after-reload" $?
