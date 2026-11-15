@@ -148,12 +148,18 @@ mail_once() {
   wlog mail secretary "$1" - - "$rc"
   [ "$rc" -ne 0 ] || mark "$1"
 }
-# typed <line>: the screen line holds input after the prompt marker (open question 3 of 0013).
-# ponytail: the marker is Claude Code's ❯ (or >), inside an optional box; not measured on the host.
+# bare: each line with NBSP made a space and the leading spaces and box (│ or |) cut.
 # Alternation, not a bracket, for the multibyte box and marker: the kept terminal may run in the C locale.
-typed() { printf '%s\n' "$1" | sed -E 's/^([[:space:]]|│|\|)*//' | grep -Eq '^(❯|>)[[:space:]]+[^[:space:]│|]'; }
+nbsp=$(printf '\302\240')
+bare() { sed -E "s/$nbsp/ /g; s/^([[:space:]]|│|\|)*//"; }
+# prompt_line <screen>: the last line whose first mark (after bare) is the prompt marker ❯ or >.
+prompt_line() { printf '%s\n' "$1" | bare | grep -E '^(❯|>)' | tail -1; }
+# typed <line>: the prompt line holds input after the marker (open question 3 of 0013).
+# ponytail: measured on the host (#396): the prompt is "❯" + NBSP + input, between two rule lines,
+# above the status bar, so the last screen line is not it; a newer Claude Code screen may move it again.
+typed() { printf '%s\n' "$1" | bare | grep -Eq '^(❯|>)[[:space:]]+[^[:space:]│|]'; }
 # wake <terminal> <org id>: the one constant line when <org id> has unread mail and <terminal> is
-# idle or done, its last screen line holds no typed input, and this batch was not woken in WAKE s.
+# idle or done, its screen shows a prompt line with no typed input, and this batch was not woken in WAKE s.
 # A batch is the highest unread seq per sender.
 wake() {
   local t=$1 oid=$2 peek batch last st line rc msg
@@ -166,8 +172,9 @@ wake() {
   st=$(term_status "$t") || st=not_found
   case "$st" in idle|done) ;; *) wlog skip "$t" "$batch" "$st" - -; return 0 ;; esac
   # a screen that cannot be read is not a screen without input: no wake this pass
-  line=$(hc read --lines 1 "$t" 2>/dev/null) || { wlog skip "$t" "$batch" "$st" unreadable -; return 0; }
-  line=$(printf '%s\n' "$line" | tail -1)
+  line=$(hc read "$t" 2>/dev/null) || { wlog skip "$t" "$batch" "$st" unreadable -; return 0; }
+  # no prompt line found is not a prompt without input either
+  line=$(prompt_line "$line"); [ -n "$line" ] || { wlog skip "$t" "$batch" "$st" noprompt -; return 0; }
   if typed "$line"; then wlog skip "$t" "$batch" "$st" yes -; return 0; fi
   if [ "$oid" = secretary ]; then msg="You have mail: run bash scripts/org --as secretary check_messages and act on it."
   else msg="You have mail: run bash \"\$PADDOCK_ORG\" --as $oid check_messages and act on it."; fi

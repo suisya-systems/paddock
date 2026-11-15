@@ -79,8 +79,13 @@ term() { # term <name> <label|-> <state|none>
   st="{\"app\":\"claude-code\",\"state\":\"$3\"}"; [ "$3" != none ] || st=null
   printf '{\n  "name": "%s",\n  "state": "live",\n  "labels": %s,\n  "status": %s,\n  "status_ms": %s,\n  "turn": 1,\n  "created_ms": %s\n}\n' \
     "$1" "$lab" "$st" $((T0*1000)) $((T0*1000)) > "$tmp/stub/t-$1"
+  [ -e "$tmp/stub/screen-$1" ] || hostscreen "$1" ''
 }
 screen() { printf '%s\n' "$2" > "$tmp/stub/screen-$1"; }
+# hostscreen <name> <typed>: the tail of a Claude Code screen as measured on the host (#396):
+# rule, "❯" + NBSP + typed text, rule, then the status bar as the last line
+NB=$(printf '\302\240'); RULE='────────────────────'
+hostscreen() { screen "$1" "$(printf 'output\n%s\n❯%s%s\n%s\n  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt' "$RULE" "$NB" "$2" "$RULE")"; }
 E=(PATH="$tools" HOME="$tmp" STUB="$tmp/stub" PADDOCK_STATE_DIR="$tmp/state" PADDOCK_NOW="$NOW"
    PADDOCK_HC_HOLD=0 PADDOCK_NUDGE_RETRY=0 PADDOCK_RUN_TRIES=2 PADDOCK_RUN_SLEEP=0)
 pass() { # pass <epoch> [env...]
@@ -134,13 +139,22 @@ term secretary - idle; pass $((T0 + 30))
 
 reset; term secretary - idle; screen secretary '❯ half a sentence'; o person send_message secretary "hello" >/dev/null; pass $T0
 [ "$(sent secretary)" -eq 0 ] && woke | grep -q '	skip	secretary	person#1	idle	yes	-$'; check "typed input on the last screen line: no wake, skip logged" $?
-grep -q '^read --lines 1 secretary' "$tmp/stub/calls"; check "the input check reads one screen line" $?
+grep -q '^read secretary' "$tmp/stub/calls"; check "the input check reads the whole screen" $?
 screen secretary '│ > also typed  │'; pass $((T0 + 30))
 [ "$(sent secretary)" -eq 0 ]; check "typed input inside a box with > is held off too" $?
 screen secretary '❯ '; pass $((T0 + 45)) STUB_READ_FAIL=1
 [ "$(sent secretary)" -eq 0 ] && woke | grep -q '	skip	secretary	person#1	idle	unreadable	-$'; check "a screen that cannot be read: no wake (fail closed), skip logged" $?
 pass $((T0 + 60))
 [ "$(sent secretary)" -eq 1 ]; check "once the line is cleared, the next pass wakes" $?
+# the host's screen (#396): the prompt line is above a rule and the status bar, with NBSP
+reset; term secretary - idle; hostscreen secretary 'half a sentence'; o person send_message secretary "hello" >/dev/null; pass $T0
+[ "$(sent secretary)" -eq 0 ] && woke | grep -q '	skip	secretary	person#1	idle	yes	-$'; check "host screen, text after ❯ NBSP: no wake, typed yes" $?
+pass $((T0 + 30)) LC_ALL=C
+[ "$(sent secretary)" -eq 0 ]; check "host screen, typed text, C locale: no wake" $?
+hostscreen secretary ''; pass $((T0 + 45)) LC_ALL=C
+[ "$(sent secretary)" -eq 1 ] && woke | grep -q '	wake	secretary	person#1	idle	no	0$'; check "host screen, empty ❯ NBSP prompt (C locale): woken" $?
+reset; term secretary - idle; screen secretary "$(printf 'output\n  ⏵⏵ auto mode on')"; o person send_message secretary "hello" >/dev/null; pass $T0
+[ "$(sent secretary)" -eq 0 ] && woke | grep -q '	skip	secretary	person#1	idle	noprompt	-$'; check "a screen with no prompt line: no wake, skip noprompt" $?
 
 reset; term secretary - working; term w-t1 t1 idle; o secretary send_message w-t1 "your answer" >/dev/null; pass $T0
 [ "$(sent w-t1)" -eq 1 ] && grep -qF 'You have mail: run bash "$PADDOCK_ORG" --as w-t1 check_messages and act on it.' "$tmp/stub/sent"; check "idle worker with unread mail: woken with its own constant line" $?

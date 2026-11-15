@@ -44,7 +44,7 @@ Each item is one line, written with `scripts/org --as watcher send_message secre
 The secretary and every `w-<task>` worker with a live terminal and unread mail (`check_messages --peek` as that id) are sent one constant line: `You have mail: run bash scripts/org --as secretary check_messages and act on it.` for the secretary, `You have mail: run bash "$PADDOCK_ORG" --as w-<task> check_messages and act on it.` for a worker. No text from a worker or a person is ever typed.
 
 - Only on an exact status: `idle` with `hc send --if idle`; `done` (read with `hc get`, since hc has no `--if done`) with a plain `hc send`. `working`, `blocked`, no status or not found: nothing this pass.
-- Never over typed input: just before a send it reads the last screen line once (`hc read --lines 1`); a line that holds text after the prompt marker (`❯` or `>`, inside an optional box) holds the wake off for that pass, and so does a screen that cannot be read.
+- Never over typed input: just before a send it reads the screen once (`hc read`) and checks the prompt line, the last line that starts (after spaces and an optional box) with the marker `❯` or `>`; text after the marker and a space or NBSP holds the wake off for that pass, and so does a screen that cannot be read or shows no prompt line (`noprompt` in `watcher/woke`).
 - One wake per unread batch (the highest unread `seq` per sender) per `PADDOCK_WATCH_WAKE` seconds (default 60); new mail is a new batch. A failed send is tried again on the next pass.
 - Every wake, every skip (status, typed input, rate limit) and every mailbox line is printed and appended to `watcher/woke` in the state folder, one tab-separated line: time (epoch), `wake`/`skip`/`mail`, target, batch or ledger key, status read, typed input (`yes`/`no`/`unreadable`/`-`), send exit code (`rate` for a rate-limit skip, `-` when nothing was sent).
 
@@ -70,7 +70,7 @@ The first that works, per message:
 ## Not covered
 
 - A stopped core stops the watcher with it, and nothing says so. With it stop the wakes and the CI watches; open requests are watched again when it is back (a result late, not lost).
-- Not measured on a host (decision 0013, stage 2): whether `hc send` to a `done` secretary lands, the last screen line of a real Claude Code prompt (the typed-input check is built on the `❯` marker the repository already reads), `gh` on the kept terminal's PATH and login, a real `gh run watch` and its signals. Tested against stubbed `hc` and `gh` (`tests/org-watch-wake.test.sh`).
+- Not measured on a host (decision 0013, stage 2): whether `hc send` to a `done` secretary lands, `gh` on the kept terminal's PATH and login, a real `gh run watch` and its signals. Tested against stubbed `hc` and `gh` (`tests/org-watch-wake.test.sh`).
 - The first-message-not-sent case of a launch is not visible to `hc get`; the N-minute no-status rule catches that terminal later.
 - A watcher started during a freeze waits N minutes before telling, since "unchanged" is what it saw itself.
 - Measured on the host (WSL2, powershell.exe 5.1): toasts from the person's shell and from a kept terminal by the absolute path reached the Windows notification centre (shown as from Windows PowerShell); by name from the kept terminal it was not found. Not confirmed: whether the sound played. Not measured: a long run, or a core with many terminals (`scripts/probes/toast-from-kept-terminal.sh`).
