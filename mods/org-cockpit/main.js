@@ -2,7 +2,8 @@
 // roles placed by layouts/paddock.json through props.role:
 //   "workers"  left: one tile per worker terminal (labelled task_id): status colour, its last
 //              lines, "Needs you" when blocked. Click opens the terminal to answer there.
-//              Above them, always: "Back to the secretary" (Issue #389).
+//              Above them, always: "Back to the secretary" (Issue #389). Below them, always: the
+//              watcher strip (Issue #411): alive or not, its open CI watches, its last wakes and lines.
 //   "approval" bottom right: the oldest org-state approval as one card, answered Yes / No, with
 //              an optional note, through the secretary (a worker's prompt too: the secretary
 //              relays it, #260; the note stays with the secretary there, #386).
@@ -106,6 +107,13 @@ const STR = {
     nothingWaiting: "Nothing waiting for you.", nothingElse: "Nothing else waiting for you.",
     nothingWritten: "The secretary has not written anything yet.", answered: (n) => `+${n} answered`,
     sent: (word, task, late, d) => `${word} · ${task} · ${late ? `not passed on yet, ${d}` : "passing on"}`,
+    sec: (n) => `${n}s`, watcher: "WATCHER", watching: "WATCHING", lastActions: "LAST ACTIONS",
+    watcherGone: "The watcher is not running. Nothing wakes the secretary or the workers, and no CI is watched. Run org-start again.",
+    lastPass: (d) => `alive · last pass ${d} ago`, noPass: (d) => `no pass for ${d}`, noPassEver: "no pass recorded",
+    cantRead: "Can't read the watcher's files.", noCi: "No CI watch open.",
+    ci: (pr, repo, sha, d) => `PR ${pr} (${repo}) · head ${sha} · ${d}`,
+    woke: (who, from) => `woke ${who} (mail from ${from})`, wakeFailed: (who, rc) => `wake of ${who} failed (exit ${rc})`,
+    nothingYet: "Nothing yet.",
   },
   ja: {
     asking: "窓口からの確認です", waitingForYou: "あなたの回答を待っています。",
@@ -126,6 +134,13 @@ const STR = {
     nothingWaiting: "確認待ちはありません。", nothingElse: "ほかに確認待ちはありません。",
     nothingWritten: "窓口からの書き込みはまだありません。", answered: (n) => `ほか${n}件回答済み`,
     sent: (word, task, late, d) => `${word} · ${task} · ${late ? `${d}経過、まだ伝わっていません` : "窓口に伝えています"}`,
+    sec: (n) => `${n}秒`, watcher: "ウォッチャー", watching: "監視中", lastActions: "最近の動き",
+    watcherGone: "ウォッチャーが止まっています。窓口とワーカーを起こすものがなく、CI も見ていません。org-start を実行し直してください。",
+    lastPass: (d) => `稼働中 · 最終巡回 ${d}前`, noPass: (d) => `${d}巡回がありません`, noPassEver: "巡回の記録がありません",
+    cantRead: "ウォッチャーのファイルを読めません。", noCi: "監視中の CI はありません。",
+    ci: (pr, repo, sha, d) => `PR ${pr}（${repo}）· head ${sha} · ${d}`,
+    woke: (who, from) => `${who} を起こしました（${from} からのメール）`, wakeFailed: (who, rc) => `${who} を起こせませんでした（終了コード ${rc}）`,
+    nothingYet: "まだありません。",
   },
 };
 const words = (lang) => STR[String(lang ?? "").slice(0, 2).toLowerCase()] ?? STR.en;
@@ -149,6 +164,8 @@ function ink(hex) {
   const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
   return (l + 0.05) / 0.05 >= 1.05 / (l + 0.05) ? "#000000" : "#ffffff";
 }
+// Seconds as "12s" under a minute, else duration's words.
+const ago = (s, L) => (s < 60 ? L.sec(Math.max(0, Math.floor(s))) : duration(s * 1000, L));
 const since = (iso, now, L) => (iso ? duration(now - Date.parse(iso), L) : "");
 
 // The last meaningful lines of a screen. Claude Code draws an input box and footer hints at the
@@ -164,6 +181,45 @@ function lastLines(text, n = 2) {
     .filter(Boolean)
     .slice(-n);
 }
+
+// The watcher's own files (skills/org-watch), read only, on the secretary's machine, as lines:
+//   now <epoch>                          that machine's clock
+//   pass <epoch>                         newest change in watcher/ (0: none). Every pass rewrites
+//                                        watcher/told once it exists, so this is the last pass.
+//   ci <pr> <sha> <repo> <since epoch>   each pid file whose pid still runs ci-watch.sh
+//   wake <woke line>                     the last wakes of watcher/woke (time kind target batch status input rc)
+//   mail <json line>                     the last messages the watcher wrote to a mailbox
+// ponytail: a pass that cannot read org-state or work_check leaves told unchanged, so it reads
+// as stale (the strip then shows the watcher's last screen line); a per-pass stamp would be exact.
+// ponytail: the state folder is this shell's default; a watcher started with another
+// PADDOCK_STATE_DIR is not found. /proc is Linux's: elsewhere no CI watch is listed.
+const WATCH_SH = 's=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}; w=$s/watcher\n' +
+  'echo "now $(date +%s)"\n' +
+  'p=0; for f in "$w/told" "$w/secretary.seen" "$w/wake" "$w/woke"; do [ -f "$f" ] || continue; m=$(date -r "$f" +%s 2>/dev/null) || continue; [ "$m" -le "$p" ] || p=$m; done; echo "pass $p"\n' +
+  'for f in "$w"/ci/*.pid; do [ -f "$f" ] || continue; read -r pid sha repo pr < "$f"; ' +
+  'tr "\\0" " " < "/proc/$pid/cmdline" 2>/dev/null | grep -q "ci-watch\\.sh" || continue; ' +
+  'printf "ci\\t%s\\t%s\\t%s\\t%s\\n" "$pr" "$sha" "$repo" "$(date -r "$f" +%s)"; done\n' +
+  'awk -F "\\t" \'$2 == "wake"\' "$w/woke" 2>/dev/null | tail -n 5 | sed "s/^/wake\t/"\n' +
+  'cat "$s"/events/*/watcher.jsonl 2>/dev/null | grep "\\"kind\\":\\"message\\"" | tail -n 5 | sed "s/^/mail\t/"\n';
+function parseWatch(out) {
+  const r = { now: 0, pass: 0, ci: [], acts: [] };
+  for (const l of out.split("\n")) {
+    const f = l.split("\t");
+    if (l.startsWith("now ")) r.now = Number(l.slice(4));
+    else if (l.startsWith("pass ")) r.pass = Number(l.slice(5));
+    else if (f[0] === "ci") r.ci.push({ pr: f[1], sha: f[2].slice(0, 7), repo: f[3].split("/").pop(), at: Number(f[4]) });
+    else if (f[0] === "wake") r.acts.push({ at: Number(f[1]), wake: true, to: f[3], from: f[4].split(",").map((b) => b.split("#")[0]), rc: f[7] });
+    else if (f[0] === "mail") {
+      try { const m = JSON.parse(f.slice(1).join("\t")); r.acts.push({ at: Date.parse(m.ts) / 1000, to: m.to, text: m.text }); } catch {}
+    }
+  }
+  r.acts = r.acts.filter((a) => a.at > 0).sort((a, b) => b.at - a.at).slice(0, 4);
+  return r;
+}
+// The watcher's pass sleeps 30 s (PADDOCK_WATCH_INTERVAL) after a pass of a few seconds: two
+// intervals and a margin with no pass is stale.
+const STALE_S = 90;
+const clock = (epoch) => new Date(epoch * 1000).toTimeString().slice(0, 5);
 
 // Most urgent first: what needs the person, then what broke, then what moves.
 const RANK = { blocked: 0, error: 1, working: 2, done: 3, idle: 4 };
@@ -199,6 +255,9 @@ export default class Cockpit extends View {
     if (this.role === "workers") {
       this.readLines(cx);
       cx.timer.every(3000, (cx) => this.readLines(cx));
+      this.watch = null; // parseWatch's result, or { error }
+      this.readWatch(cx);
+      cx.timer.every(10000, (cx) => this.readWatch(cx));
     }
   }
 
@@ -241,6 +300,36 @@ export default class Cockpit extends View {
         this.reading = false;
       }
     });
+  }
+
+  // The watcher strip's data: its files, and when it is stale its terminal's last line (the why).
+  readWatch(cx) {
+    if (this.watchReading) return;
+    this.watchReading = true;
+    cx.spawn(async (cx) => {
+      let w;
+      try {
+        const r = await exec("sh", ["-c", WATCH_SH], { on: this.secretaryMachine() });
+        w = r.code === 0 ? parseWatch(r.stdout) : { error: r.stderr.trim() || `sh exited with ${r.code}` };
+        const term = this.watcherTerminal();
+        if (!w.error && term && w.now - w.pass > STALE_S) {
+          w.why = await hc(["read", term.address]).then((x) => (x.code === 0 ? lastLines(x.stdout, 1)[0] : null), () => null);
+        }
+      } catch (e) {
+        w = { error: String(e?.message ?? e) };
+      } finally {
+        this.watchReading = false;
+      }
+      this.watch = w;
+      cx.notify();
+    });
+  }
+
+  // The watcher's terminal (org-start labels it paddock_role=watcher), live, on the secretary's machine.
+  watcherTerminal() {
+    const m = this.secretaryMachine();
+    return terminals().find((x) => x.state === "live" && x.labels?.paddock_role === "watcher"
+      && (m ? x.address?.startsWith(`${m}/`) : !x.address?.includes("/")));
   }
 
   // "wsl/secretary" -> "wsl"; a bare name -> null (this machine).
@@ -362,19 +451,56 @@ export default class Cockpit extends View {
       .child(sec ? L.backToSecretary : L.secretaryDown);
   }
 
+  // Issue #411: the watcher is the only thing that wakes the secretary and the workers and watches
+  // CI. Always shown, nothing behind a click: alive (or a warning), what it watches, what it did.
+  watcherStrip(t, L) {
+    const term = this.watcherTerminal();
+    const w = this.watch;
+    const row = (s, color) => div().truncate().text_size(11).text_color(color ?? t.muted).child(s);
+    // An action is shown whole (the CI line names every run it read), wrapped, never cut.
+    const said = (s) => div().text_size(11).line_height(1.35).text_color(t.muted).whitespace_normal().child(s);
+    if (!term) {
+      const c = t.blocked;
+      return v_flex().id("watcher").flex_none().gap(4).rounded(8).px(12).py(10).bg(c + "2e").border(1).border_color(c)
+        .child(this.label(t, L.watcher, c))
+        .child(div().text_size(12).font_semibold().line_height(1.4).text_color(t.foreground).whitespace_normal().child(L.watcherGone));
+    }
+    const age = w && !w.error ? w.now - w.pass : null;
+    const stale = w?.error || (age != null && (w.pass === 0 || age > STALE_S));
+    const head = !w ? "…" : w.error ? L.cantRead : w.pass === 0 ? L.noPassEver : stale ? L.noPass(ago(age, L)) : L.lastPass(ago(age, L));
+    const c = stale ? t.blocked : t.done ?? t.working;
+    return v_flex().id("watcher").flex_none().gap(6).rounded(8).px(12).py(10).bg(stale ? c + "1f" : t.raised)
+      .child(h_flex().gap(8).items_center()
+        .child(div().size(8).flex_none().rounded(4).bg(c))
+        .child(this.label(t, L.watcher, stale ? c : t.dim))
+        .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(stale ? t.foreground : t.muted).child(head)))
+      .when(Boolean(w?.error || w?.why), (el) => el.child(row(w.error || w.why, t.foreground)))
+      .when(Boolean(w && !w.error), (el) => el
+        .child(this.label(t, L.watching))
+        .when(w.ci.length === 0, (e) => e.child(row(L.noCi)))
+        .children(w.ci.map((x) => row(L.ci(x.pr, x.repo, x.sha, ago(w.now - x.at, L)), t.foreground)))
+        .child(this.label(t, L.lastActions))
+        .when(w.acts.length === 0, (e) => e.child(row(L.nothingYet)))
+        .children(w.acts.map((a) => said(`${clock(a.at)} ${a.wake
+          ? (a.rc === "0" ? L.woke(a.to, a.from.join(", ")) : L.wakeFailed(a.to, a.rc))
+          : `→ ${a.to}: ${a.text}`}`))));
+  }
+
   renderWorkers(t) {
     const now = Date.now();
     const titles = new Map((this.value()?.work ?? []).map((w) => [w.task_id, w]));
     const ws = this.workers().sort((a, b) =>
       (RANK[a.status] ?? 5) - (RANK[b.status] ?? 5) || String(a.labels.task_id).localeCompare(String(b.labels.task_id)));
+    const L = words(this.value()?.conversation_lang);
     return v_flex().size_full().min_h(0).gap(12)
-      .child(this.backButton(t, words(this.value()?.conversation_lang)))
+      .child(this.backButton(t, L))
       .child(h_flex().px(2).pt(4).items_center().justify_between()
         .child(this.label(t, "WORKERS"))
         .when(Boolean(this.error), (el) => el.child(div().text_size(11).text_color(t.blocked).child("hc unreachable"))))
       .child(v_flex().id("tiles").flex_1().min_h(0).gap(8).overflow_y_scrollbar()
         .when(ws.length === 0, (el) => el.child(div().px(2).child(this.quiet(t, "No workers running."))))
-        .children(ws.map((w) => this.tile(t, w, titles.get(w.labels.task_id), now))));
+        .children(ws.map((w) => this.tile(t, w, titles.get(w.labels.task_id), now))))
+      .child(this.watcherStrip(t, L));
   }
 
   // ---- approval -------------------------------------------------------------
