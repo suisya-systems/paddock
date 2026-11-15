@@ -218,12 +218,12 @@ ci_pass() {
   for pf in "$cidir"/*.pid; do
     [ -f "$pf" ] || continue
     read -r pid psha prepo ppr < "$pf"
-    ci_alive "$pid" || dead="$dead$pf $psha $prepo $ppr
+    ci_alive "$pid" || dead="$dead$pf$tab$psha$tab$prepo$tab$ppr
 "
   done
   lines=$(ci_lines)
   # a watch gone with no line of its own (SIGKILL, no trap ran): vanished
-  while read -r pf psha prepo ppr; do
+  while IFS="$tab" read -r pf psha prepo ppr; do  # tabs: the state path may hold spaces
     [ -n "$pf" ] || continue
     rm -f "${pf:?}"
     IFS="$tab" read -r kind pr sha repo tk <<< "$(printf '%s\n' "$lines" | awk -F'\t' -v p="$ppr" -v s="$psha" -v r="$prepo" '$2 == p && $3 == s && $4 == r' | head -1)"
