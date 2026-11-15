@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Issue #380: the secretary's Stop hook refuses to end a turn idle while org-state has a work or
-# approvals entry (unless secretary-handover is written), and fails open when org-state cannot be read.
+# Issue #380, #385: the secretary's Stop hook refuses to end a turn while it has unread mail
+# (unless secretary-handover is written), and fails open when the mailbox cannot be read.
 # The hook runs the installed org copy beside it; hc is a stub that answers doc.get per document.
 # Needs bash and node (to read the settings).
 set -u
@@ -32,27 +32,27 @@ fire() { # fire <org-state> <handover> [stop_hook_active]
   err=$(printf '{"hook_event_name":"Stop","stop_hook_active":%s}' "${3:-false}" |
         STUB=$tmp/stub PATH="$tmp/path:$PATH" PADDOCK_HC_HOLD=0 PADDOCK_STATE_DIR=$tmp/state XDG_STATE_HOME=$tmp/xdg PADDOCK_BIN_DIR=$bin sh -c "$hook" 2>&1 >/dev/null)
 }
-w='{"approvals":[],"work":[{"task_id":"t1","title":"x ] y","since":"2026-11-15T00:00:00Z"}]}'
-a='{"approvals":[{"id":"a1","task_id":"t1","question":"Merge?"}],"work":[]}'
-e='{"approvals":[],"work":[]}'
-fire "$w" null; rc=$?
-[ $rc -eq 2 ] && grep -q 'wait --children' <<<"$err"; check "refused with work non-empty ($rc)" $?
-fire "$a" null; rc=$?
-[ $rc -eq 2 ] && grep -q 'wait --children' <<<"$err"; check "refused with approvals non-empty ($rc)" $?
-fire "$a" null true; rc=$?
-[ $rc -eq 2 ] && grep -q 'wait --children' <<<"$err"; check "refused again when stop_hook_active is true ($rc)" $?
-fire "$e" null; rc=$?
-[ $rc -eq 0 ] && [ -z "$err" ]; check "allowed when both are empty ($rc)" $?
-fire '{ "approvals" : [ ], "work" : [ ] }' null; rc=$?
-[ $rc -eq 0 ]; check "allowed when both are empty, spaced ($rc)" $?
-fire '{"approvals":[],"work":[{"task_id":"t2","title":"the \"work\":[x] text"}]}' null; rc=$?
-[ $rc -eq 2 ]; check "refused: a title quoting the key does not confuse it ($rc)" $?
-fire '{"approvals":[],"work":[],"note":"\"work\":[x]"}' null; rc=$?
-[ $rc -eq 0 ]; check "allowed: an escaped \"work\":[ in a string is not an entry ($rc)" $?
+st=$tmp/state
+mail() { PADDOCK_STATE_DIR=$st bash "$here/scripts/org" --as "$1" "${@:2}" >/dev/null 2>&1; }
 fire null null; rc=$?
-[ $rc -eq 0 ]; check "allowed when org-state was never written ($rc)" $?
+[ $rc -eq 0 ] && [ -z "$err" ]; check "allowed with no mail ($rc)" $?
+w='{"approvals":[],"work":[{"task_id":"t1","title":"x","since":"2026-11-15T00:00:00Z"}]}'
+fire "$w" null; rc=$?
+[ $rc -eq 0 ]; check "allowed with open work and no unread mail: no wait is held (#385) ($rc)" $?
+mail w-t1 report done --task t1 "finished"
+fire "$w" null; rc=$?
+[ $rc -eq 2 ] && grep -q 'check_messages' <<<"$err" && ! grep -q 'wait' <<<"$err"; check "refused with unread mail, told to read it, not to wait ($rc)" $?
+fire "$w" null true; rc=$?
+[ $rc -eq 2 ]; check "refused again when stop_hook_active is true ($rc)" $?
 fire "$w" '{"written_at":"2026-11-15T00:00:00Z","open_threads":{}}'; rc=$?
-[ $rc -eq 0 ] && [ -z "$err" ]; check "allowed when secretary-handover is written ($rc)" $?
+[ $rc -eq 0 ] && [ -z "$err" ]; check "allowed with unread mail when secretary-handover is written ($rc)" $?
 STUB_FAIL=1 fire "$w" null; rc=$?
-[ $rc -eq 0 ] && grep -q 'cannot read org-state, stop allowed' <<<"$err"; check "fails open when org-state is unreadable ($rc)" $?
+[ $rc -eq 0 ] && grep -q 'cannot read secretary-handover, stop allowed' <<<"$err"; check "fails open when the handover cannot be read ($rc)" $?
+mail secretary check_messages
+fire "$w" null; rc=$?
+[ $rc -eq 0 ]; check "allowed once the mail is read ($rc)" $?
+chmod 000 "$st/events"
+fire "$w" null; rc=$?
+chmod 755 "$st/events"
+[ $rc -eq 0 ]; check "fails open (or finds nothing) when the mailbox cannot be read ($rc)" $?
 exit $fail

@@ -21,7 +21,7 @@ allowed() { fire "$1"; local rc=$?; [ $rc -eq 0 ]; check "allowed ($rc): $1" $?;
 
 for c in 'gh pr checks 377 --watch' 'gh pr checks --watch --interval 10 377' 'gh run watch 123' \
          'cd /x && gh run watch' 'gh pr checks 5 --required --watch'; do
-  refused "$c" 'org wait --children'
+  refused "$c" 'wakes you'
 done
 for c in 'sleep 60' 'sleep 6' 'sleep 2m' 'sleep infinity' 'echo a; sleep 30 && echo b' 'sleep 1 30'; do
   refused "$c" 'hc run --bg'
