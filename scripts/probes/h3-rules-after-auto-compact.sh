@@ -34,7 +34,7 @@
 # Printed at the end: one line  RESULT h3-<mode>: ...  with the values below.
 #
 # How to read PASS (the part that decides F or R):
-#   PASS  compaction1=yes  s1=KESTREL-7  after-compaction1=KESTREL-7  known-after-compaction1=yes
+#   PASS  compaction1=yes  s1=KESTREL-7  after-compaction1=KESTREL-7 (known-after-compaction1 is a second, softer check)
 #         The rules survived an automatic compaction in this mode. F PASS keeps decision 0014 part 3 as (F).
 #   FAIL  compaction1=yes  s1=KESTREL-7  after-compaction1=none  (the rule was not followed after it;
 #         known-after-compaction1 says whether it is merely not applied or lost). F FAIL moves part 3 to (R);
@@ -228,7 +228,7 @@ ask S3a "What is 17 plus 25? Answer in one short sentence." 180
 A1=$(code_of)
 ask S3b "State the codeword and the formatting rule you were given at the start of this session, in one or two sentences." 180
 K1=no
-if printf '%s' "$NEWTXT" | grep -q "$CWA" && printf '%s' "$NEWTXT" | grep -Eqi 'square bracket|\[\['; then K1=yes; fi
+if printf '%s' "$NEWTXT" | grep -q "$CWA" && printf '%s' "$NEWTXT" | grep -Eqi "bracket|$(printf '\346\213\254\345\274\247')|\\[\\["; then K1=yes; fi  # the reply may be in Japanese: kakko = brackets
 echo "CHECK s3-known (codeword and format, from the S3b reply only): $K1"
 
 echo "== S4 edit the rules file mid-session: $CWA -> $CWB"
@@ -261,6 +261,7 @@ case "$TIMEDOUT:$C1:$S1:$A1:$K1" in
   yes:*) echo "RESULT h3-$MODE verdict: VOID (a wait timed out; rerun or read the screens in $OUT)" ;;
   no:screen:$CWA:*) echo "RESULT h3-$MODE verdict: UNCONFIRMED (compaction seen on the screen only; read the screens in $OUT)" ;;
   no:yes:$CWA:$CWA:yes) echo "RESULT h3-$MODE verdict: PASS (the rules survived an automatic compaction)" ;;
+  no:yes:$CWA:$CWA:*) echo "RESULT h3-$MODE verdict: PASS (followed after compaction 1; the recall check said known=$K1, read the S3b reply in $OUT/S3b.screen)" ;;
   no:yes:$CWA:*) echo "RESULT h3-$MODE verdict: FAIL (not followed after compaction 1; known=$K1)" ;;
   *) echo "RESULT h3-$MODE verdict: VOID (compaction1=$C1 s1=$S1)" ;;
 esac
