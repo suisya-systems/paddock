@@ -25,6 +25,8 @@ Options:
   --mode MODE        human | acceptance (default: merge_approval_mode in org-config.md, else human)
   --pr N             use an open PR instead of creating one (still pushes), and act on
                      the watcher's CI record for its head
+  --recheck          with --pr: request the head again although the watcher recorded a result
+                     (CI was rerun on the same commit); never while a request is open
   -h, --help         this text
 
 Environment overrides:
@@ -42,10 +44,11 @@ USAGE
 
 die() { code=$1; shift; echo "org-pull-request: $*" >&2; exit "$code"; }
 
-wt=.; repo=; base=; project=; task=; mode=; pr=; title=; body=; bodyfile=
+wt=.; repo=; base=; project=; task=; mode=; pr=; title=; body=; bodyfile=; recheck=
 while [ $# -gt 0 ]; do
   case $1 in
     -h|--help) usage; exit 0 ;;
+    --recheck) recheck=1; shift ;;
     --worktree|--repo|--project|--base|--task-id|--mode|--pr|--title|--body|--body-file)
       [ $# -ge 2 ] || die 2 "$1 needs a value"
       case $1 in
@@ -67,6 +70,7 @@ fi
 [ -n "$base" ] || base=main
 case $mode in ""|human|acceptance) ;; *) die 2 "--mode must be human or acceptance" ;; esac
 case $pr in ""|*[!0-9]*) [ -z "$pr" ] || die 2 "--pr must be a number" ;; esac
+[ -z "$recheck" ] || [ -n "$pr" ] || die 2 "--recheck needs --pr"
 [ -n "$pr" ] || [ -n "$title" ] || die 2 "--title is required unless --pr is given"
 [ -n "$pr" ] || [ -n "$body$bodyfile" ] || die 2 "--body-file or --body is required unless --pr is given"
 [ -z "$bodyfile" ] || [ -f "$bodyfile" ] || die 2 "body file not found: $bodyfile"
@@ -136,6 +140,8 @@ ci=$(for d in "$ev/$(printf '%04d-%02d' "$((10#$y))" "$m")" "$ev/$cur"; do
     { if (v("ts") >= dt) { dt = v("ts"); dk = v("kind"); dc = v("conclusion"); dr = v("run_id"); dw = v("reason") } }
     END { if (rt == "") print "none"; else if (dt == "" || dt < rt) print "open"
           else if (dk == "ci_completed") print dc, dr; else print "failed", dw, dt }')
+# --recheck: a recorded result is set aside, so the head is requested again (an open request stays one)
+[ -z "$recheck" ] || case $ci in none|open|failed*) ;; *) ci="failed recheck $(date -u +%Y-%m-%dT%H:%M:%SZ)" ;; esac
 case $ci in
   none|failed*)
     # no request for this head, or its watch failed: ask the watcher (once: an open request is not repeated)
@@ -146,6 +152,7 @@ case $ci in
     bash "$org" --as secretary ci_requested --pr "$pr" --sha "$sha" --repo "$repo" "${targs[@]}" \
       || die 12 "the ci_requested line could not be written (scripts/org --as secretary ci_requested); nothing watches PR $pr"
     w=; [ "$ci" = none ] || { w=${ci#failed }; w=" again (the last watch failed: ${w% *})"; }
+    [ -z "$recheck" ] || [ "$ci" = none ] || w=" again (--recheck)"
     echo "CI requested for $sha$w; the watcher mails the result. PR: $url" ;;
   open) echo "CI of $sha is still watched (requested before); the watcher mails the result. PR: $url" ;;
 esac

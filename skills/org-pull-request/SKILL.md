@@ -21,6 +21,7 @@ Bash only, plus `git` and `gh`. `--repo OWNER/NAME` is taken from a GitHub `orig
 3. Reads the CI state of the head from the records, this calendar month and the last ([decision 0004](../../docs/decisions/0004-records-documents-and-jsonl.md)): the secretary's latest `ci_requested` for the same `repo`, `pr` and `sha`, and [org-watch](../org-watch/SKILL.md)'s latest `ci_completed` or `ci_watch_failed` at or after it (decision 0013, `docs/decisions/0013-watcher-wakes-the-secretary.md`). A `ci_completed` the skill wrote itself before (`from: secretary`) does not count.
    - No request, or the watch failed: appends one `ci_requested` (`bash scripts/org --as secretary ci_requested --pr <n> --sha <head> --repo <r> [--task <id>]`); the watcher watches CI and mails its line. A request still open is never written twice, so a rerun does not make the watcher report a head twice. Exit 0 without `--pr` (PR opened), exit 4 with it.
    - A request with no result yet: exit 4 (nothing written).
+   - `--recheck` (with `--pr`): a recorded result is set aside and the head is requested again, for CI rerun on the same commit after a failure; still never while a request is open.
    - The watcher's `ci_completed`: `failure` exits 9; `success` goes on to step 4.
    `{"seq":1,"ts":"2026-11-10T01:02:03Z","kind":"ci_requested","from":"secretary","task_id":"t1","pr":42,"sha":"<head>","repo":"o/r"}`
 4. Acts by the approval mode, then prints the outcome.
@@ -39,7 +40,7 @@ The mode is `--mode`, else `merge_approval_mode` in `org-config.md` (read with `
 | 4 | `--pr`: no CI result recorded for the head yet (requested now, again after a failed watch, or still watched). | End the turn; rerun with `--pr <n>` on the watcher's line. |
 | 5 | Push failed. | Report; nothing was opened. |
 | 6 | PR could not be created. | Report; the branch is pushed. |
-| 9 | The watcher recorded CI failed on the head. | Send the worker back with the failure; never merge. |
+| 9 | The watcher recorded CI failed on the head. | Send the worker back with the failure; never merge. If CI was rerun on the same commit instead, rerun with `--pr <n> --recheck`. |
 | 10 | Merge refused: head moved after the watched run, or required checks not green. | Rerun with `--pr` so the new head is requested. |
 | 11 | `gh pr merge` failed. | Report. |
 | 12 | The `ci_requested` line could not be written; nothing watches the PR. | Report. |

@@ -136,6 +136,18 @@ out=$(run_script --pr 42); rc=$?
 run_script --pr 42 >/dev/null; rc=$?
 [ "$rc" -eq 4 ] && [ "$(nreq)" -eq 2 ]; check "and a further --pr does not request it a third time" $?
 
+# --recheck: CI rerun on the same commit after a recorded failure; the head is requested again, once.
+reset; run_script "${args[@]}" >/dev/null; CODE=1 watcher ci_completed
+run_script --recheck "${args[@]}" >/dev/null; rc=$?
+[ "$rc" -eq 2 ]; check "--recheck without --pr exits 2" $?
+out=$(run_script --pr 42 --recheck); rc=$?
+[ "$rc" -eq 4 ] && [ "$(nreq)" -eq 2 ]; check "--pr --recheck after a recorded failure requests the head again, exit 4 ($out)" $?
+run_script --pr 42 --recheck >/dev/null; rc=$?
+[ "$rc" -eq 4 ] && [ "$(nreq)" -eq 2 ]; check "--recheck while that request is open writes no third one" $?
+watcher ci_completed
+run_script --pr 42 >/dev/null; rc=$?
+[ "$rc" -eq 0 ]; check "the rerun's success is read for the same head" $?
+
 # The request line cannot be written: exit 12.
 reset; mkdir -p "$ev/$month"; : > "$evfile"; chmod a-w "$ev/$month" "$evfile"
 run_script "${args[@]}" >/dev/null; rc=$?
