@@ -228,7 +228,7 @@ ask S3a "What is 17 plus 25? Answer in one short sentence." 180
 A1=$(code_of)
 ask S3b "State the codeword and the formatting rule you were given at the start of this session, in one or two sentences." 180
 K1=no
-if printf '%s' "$NEWTXT" | grep -q "$CWA" && printf '%s' "$NEWTXT" | grep -Eqi "bracket|$(printf '\346\213\254\345\274\247')|\\[\\["; then K1=yes; fi  # the reply may be in Japanese: kakko = brackets
+if printf '%s' "$NEWTXT" | grep -q "$CWA" && printf '%s' "$NEWTXT" | grep -Eqi "bracket|$(printf '\346\213\254\345\274\247')|$(printf '\343\201\213\343\201\243\343\201\223')|\\[\\["; then K1=yes; fi  # the reply may be in Japanese: kakko = brackets, kakko in hiragana
 echo "CHECK s3-known (codeword and format, from the S3b reply only): $K1"
 
 echo "== S4 edit the rules file mid-session: $CWA -> $CWB"

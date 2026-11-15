@@ -198,6 +198,21 @@ None of these is assumed by the recommendation; each one can change it, as noted
 | H4 | `--plugin-dir` of the checkout in a template launch | Start a secretary-like template with `--plugin-dir`; check: no dialog at launch; `paddock:` skills in the skill list; a skill is invoked by situation; edit its `SKILL.md` and add a new skill folder while it runs, invoke again, see the new text and the new skill | If edits are not live or a dialog appears, part 2 falls back to (S) with symlinks |
 | H5 | `allowed-tools` pre-approves a skill's script call under the secretary's settings | Invoke a skill with `allowed-tools: Bash(bash skills/org-issue/scripts/org-issue.sh:*)` | Only decides whether the field is used |
 
+### Probe results
+
+**H3 (2026-11-16, `scripts/probes/h3-rules-after-auto-compact.sh` at 375572d, run on the host by the secretary; each mode ran until two automatic compactions with transcript markers, then a restart).**
+
+| Mode | Followed after compaction 1 | Edit of the codeword reaches the session | Reply after restart |
+| --- | --- | --- | --- |
+| F (`AGENTS.md` + `CLAUDE.md` = `@AGENTS.md`, non-git folder) | Yes (`[[KESTREL-7]]`); the rule was also stated correctly when asked | At the next compaction (before it: old codeword; after compaction 2: the new one) | New codeword |
+| R (`--append-system-prompt-file`) | Yes; stated correctly when asked | Not before a restart (after compaction 2: old codeword) | New codeword |
+
+- Both survive an automatic compaction; D11's two open points for (F) (a CLAUDE.md in a non-git folder, its `@AGENTS.md` import) hold. The difference is the edit: under (F) it takes effect at the next compaction, under (R) only at a restart. A restart is the one point at which every mode picks up an edit.
+- Measured once per mode, with one unrelated question per step; the replies were in Japanese. Not measured: whether an edit is picked up at some turn between two compactions.
+- Probe fixes found by these runs: the recall check read `known=no` because the replies said the rule in Japanese (角括弧, 角かっこ) and the check looked only for English words, and the verdict called "followed, known=no" a FAIL. Both are fixed after the runs (7e4b3fe and the commit after it); the results above are from the replies in the transcripts, not from the `known` values. The F run's `probe-exit=0`; the R run's `probe-exit=2` came from a shell syntax error at line 268 reported by the probe's own `sh` after the run's last step: the script file was committed with a changed verdict `case` while that run was still reading it, so it is most likely that edit, not a result (the current file passes `sh -n`).
+
+**Conclusion (owner question 4):** take (F). Both hold across an automatic compaction; (F) also lets an edit of the rules reach a running secretary at the next compaction, where (R) needs a restart. (R) stays the documented fallback.
+
 ## Build, in parallel units
 
 Each unit is one worker task. Units in the same wave touch different files and can run at once.
