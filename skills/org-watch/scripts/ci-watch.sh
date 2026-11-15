@@ -1,20 +1,26 @@
 #!/usr/bin/env bash
-# ci-watch: one CI watch for org-watch (decision 0013). Finds the run of a PR head, watches it, reads
-# its conclusion, and always writes exactly one record as watcher (ci_completed, or ci_watch_failed
-# with a reason) and one line to the secretary's mailbox. org-watch starts it in the background with
-# its output in watcher/ci/<pr>-<sha7>.log. Needs bash, coreutils and gh. See ../SKILL.md.
+# ci-watch: one CI watch for org-watch (decision 0013). Finds every run of a PR head (push and
+# pull_request alike), watches each until all have ended, reads their conclusions, and always writes
+# exactly one record as watcher (ci_completed, or ci_watch_failed with a reason) and one line to the
+# secretary's mailbox. org-watch starts it in the background with its output in
+# watcher/ci/<owner>_<name>-<pr>-<sha7>.log. Needs bash, coreutils and gh. See ../SKILL.md.
 set -u
 
 usage() {
   cat <<'USAGE'
 Usage: ci-watch.sh --pr N --sha SHA --repo OWNER/NAME [--task ID] [--fail REASON]
 
-Finds the CI run of SHA (gh run list --commit, PADDOCK_RUN_TRIES tries, default 10, every
-PADDOCK_RUN_SLEEP s, default 6), runs gh run watch <run> --exit-status --interval 30, then reads
-the run's conclusion (gh run view --json conclusion), so a gh error is not taken for a CI failure.
+Finds the CI runs of SHA (gh run list --commit, PADDOCK_RUN_TRIES tries, default 10, every
+PADDOCK_RUN_SLEEP s, default 6). While one of them has not completed, it runs
+gh run watch <run> --exit-status --interval 30 on it and lists the runs again, so the result
+waits for every run of the head (push and pull_request both). success: every run concluded
+success, skipped or neutral; failure: any other conclusion. A gh error is not taken for a
+CI failure.
 Whatever ends it, it writes one record with scripts/org --as watcher and one mailbox line to
 the secretary:
-  ci_completed (conclusion success or failure), or
+  ci_completed (conclusion success or failure; --run-id is the first failed run, else the
+  first listed), its line "CI <success|failure> on PR <n>, head <sha7>, run <id>. Runs read:
+  <id> <event> <conclusion>, ...", or
   ci_watch_failed with reason no_run, gh_error, signal (HUP, INT, TERM) or superseded (USR1).
 --fail REASON writes only ci_watch_failed with REASON (org-watch: vanished, superseded).
 Its log is watcher/ci/<owner>_<name>-<pr>-<sha7>.log; it removes watcher/ci/<owner>_<name>-<pr>.pid
@@ -46,7 +52,7 @@ org=${PADDOCK_ORG:-$here/../../../scripts/org}
 cidir=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/watcher/ci
 sha7=${sha:0:7}; key=${repo//\//_}-$pr; log=$cidir/$key-$sha7.log   # <owner>_<name>-<pr>: one PR of one repository
 ta=(); [ -z "$task" ] || ta=(--task "$task")
-run=; code=; child=; written=
+run=; code=; child=; written=; seen=
 
 # finish <reason|ok> [conclusion]: the one record and the one mailbox line, once
 finish() {
@@ -56,7 +62,7 @@ finish() {
   if [ "$1" = ok ]; then
     bash "$org" --as watcher ci_completed --pr "$pr" --sha "$sha" --repo "$repo" --run-id "$run" --exit-code "$code" "${ta[@]}" \
       || echo "ci-watch: the ci_completed line could not be written"
-    msg="CI $2 on PR $pr, head $sha7, run $run."
+    msg="CI $2 on PR $pr, head $sha7, run $run. Runs read: $seen."
   else
     [ -z "$run" ] || ra=(--run-id "$run"); [ -z "$code" ] || ca=(--exit-code "$code")
     bash "$org" --as watcher ci_watch_failed --pr "$pr" --sha "$sha" --repo "$repo" --reason "$1" --log "$log" "${ra[@]}" "${ca[@]}" "${ta[@]}" \
@@ -79,23 +85,36 @@ trap 'finish "$reason"' EXIT
 bg() { "$@" & child=$!; wait "$child"; local r=$?; child=; return "$r"; }
 
 echo "ci-watch: $(date -u +%Y-%m-%dT%H:%M:%SZ) PR $pr head $sha repo $repo"
-tries=${PADDOCK_RUN_TRIES:-10}; rc=0
+# runs: "<id> <status> <event> <conclusion>" per run of the head (conclusion empty until completed)
+runs() { gh run list --repo "$repo" --commit "$sha" --limit 50 --json databaseId,status,event,conclusion \
+           --jq '.[] | "\(.databaseId) \(.status) \(.event) \(.conclusion)"'; }
+tries=${PADDOCK_RUN_TRIES:-10}; rc=0; out=
 while [ "$tries" -gt 0 ]; do
-  out=$(gh run list --repo "$repo" --commit "$sha" --limit 1 --json databaseId --jq '.[0].databaseId'); rc=$?
-  echo "ci-watch: gh run list exit $rc: $out"
-  case "$rc:$out" in 0:[0-9]*) case "$out" in *[!0-9]*) ;; *) run=$out; break ;; esac ;; esac
+  out=$(runs); rc=$?
+  echo "ci-watch: gh run list exit $rc: $(printf '%s' "$out" | tr '\n' ';')"
+  [ "$rc" -ne 0 ] || [ -z "$out" ] || break
   tries=$((tries - 1)); [ "$tries" -le 0 ] || bg sleep "${PADDOCK_RUN_SLEEP:-6}"
 done
-if [ -z "$run" ]; then code=$rc; [ "$rc" -ne 0 ] || reason=no_run; exit 1; fi
+if [ -z "$out" ] || [ "$rc" -ne 0 ]; then code=$rc; [ "$rc" -ne 0 ] || reason=no_run; exit 1; fi
 
-bg gh run watch "$run" --repo "$repo" --exit-status --interval 30; w=$?
-echo "ci-watch: gh run watch exit $w"
-concl=$(gh run view "$run" --repo "$repo" --json conclusion --jq .conclusion); rc=$?
-echo "ci-watch: gh run view exit $rc: $concl"
-case "$rc:$concl" in
-  0:success) code=0; reason=ok; trap - EXIT; finish ok success; exit 0 ;;
-  0:null|0:) code=$w; exit 1 ;;   # no conclusion yet: the watch ended on a gh error
-  0:*)   # failure, cancelled, timed_out, ...: not green
-    code=$w; [ "$w" -ne 0 ] || code=1; trap - EXIT; finish ok failure; exit 0 ;;
-  *) code=$rc; exit 1 ;;   # gh run view failed
+# watch the first run not completed, list again; until every run of the head has completed
+watched=
+while :; do
+  pending=$(printf '%s\n' "$out" | awk '$2 != "completed" { print $1; exit }')
+  [ -n "$pending" ] || break
+  # the run just watched still not completed: gh failed, not CI
+  if [ "$pending" = "$watched" ]; then run=$pending; code=$w; [ "$w" -ne 0 ] || code=1; exit 1; fi
+  bg gh run watch "$pending" --repo "$repo" --exit-status --interval 30; w=$?; watched=$pending
+  echo "ci-watch: gh run watch $pending exit $w"
+  out=$(runs); rc=$?
+  echo "ci-watch: gh run list exit $rc: $(printf '%s' "$out" | tr '\n' ';')"
+  [ "$rc" -eq 0 ] && [ -n "$out" ] || { code=$rc; [ "$rc" -ne 0 ] || code=1; exit 1; }
+done
+# every run completed: a completed run with no conclusion is a gh error; else green or not
+bad=$(printf '%s\n' "$out" | awk '$4 == "" { print "none"; exit } $4 !~ /^(success|skipped|neutral)$/ { print $1; exit }')
+seen="$(printf '%s\n' "$out" | awk '{ printf "%s%s %s %s", (NR > 1 ? ", " : ""), $1, $3, $4 }')"
+case "$bad" in
+  none) run=$(printf '%s\n' "$out" | awk '$4 == "" { print $1; exit }'); exit 1 ;;
+  '') run=$(printf '%s\n' "$out" | awk '{ print $1; exit }'); code=0; trap - EXIT; finish ok success; exit 0 ;;
+  *) run=$bad; code=1; trap - EXIT; finish ok failure; exit 0 ;;
 esac

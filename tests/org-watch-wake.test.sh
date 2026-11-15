@@ -45,29 +45,37 @@ case "$cmd" in
 esac
 exit 0
 EOF
-# gh: run list prints 777 (STUB_RUN_NONE=1: nothing; STUB_LIST_FAIL=1: exit 1); run watch waits
-# while $STUB/hold exists (at most 20 s), then exits STUB_WATCH_CODE; run view prints
-# STUB_CONCL (default success; STUB_VIEW_FAIL=1: exit 1).
+# gh: the runs of the head are lines "<id> <status> <event> <final conclusion>" in $STUB/runs
+# (default: 777, in_progress, push, STUB_CONCL or success). run list prints them as ci-watch's --jq
+# does, the conclusion empty until completed (STUB_RUN_NONE=1: nothing; STUB_LIST_FAIL=1: exit 1;
+# STUB_RELIST_FAIL=1: exit 1 from the second list on). run watch <id> waits while $STUB/hold or
+# $STUB/hold-<id> exists (at most 60 s), marks the run completed, then exits STUB_WATCH_CODE.
 cat > "$tools/gh" <<'EOF'
 #!/bin/sh
 echo "gh $*" >> "$STUB/calls"
+[ -f "$STUB/runs" ] || echo "777 in_progress push ${STUB_CONCL:-success}" > "$STUB/runs"
 case "$1 $2" in
   "run list") [ -z "${STUB_LIST_FAIL:-}" ] || { echo 'gh: HTTP 502' >&2; exit 1; }
-    [ -n "${STUB_RUN_NONE:-}" ] || echo 777 ;;
-  "run watch") i=0; while [ -e "$STUB/hold" ] && [ $i -lt 200 ]; do sleep 0.1; i=$((i + 1)); done
+    echo x >> "$STUB/lists"
+    [ -z "${STUB_RELIST_FAIL:-}" ] || [ "$(wc -l < "$STUB/lists")" -lt 2 ] || { echo 'gh: HTTP 502' >&2; exit 1; }
+    [ -n "${STUB_RUN_NONE:-}" ] || awk '{ print $1, $2, $3, ($2 == "completed" ? $4 : "") }' "$STUB/runs" ;;
+  "run watch") i=0; while { [ -e "$STUB/hold" ] || [ -e "$STUB/hold-$3" ]; } && [ $i -lt 600 ]; do sleep 0.1; i=$((i + 1)); done
+    awk -v id="$3" '$1 == id { $2 = "completed" } { print }' "$STUB/runs" > "$STUB/runs.$$" && mv "$STUB/runs.$$" "$STUB/runs"
     exit "${STUB_WATCH_CODE:-0}" ;;
-  "run view") [ -z "${STUB_VIEW_FAIL:-}" ] || { echo 'gh: HTTP 502' >&2; exit 1; }
-    echo "${STUB_CONCL:-success}" ;;
 esac
 exit 0
 EOF
 chmod +x "$tools/hc" "$tools/gh"
-trap 'touch "$tmp/stub/released"; rm -f "$tmp/stub/hold"; sleep 0.3; rm -rf "$tmp"' EXIT
+# Every pass runs holding a shared flock on $tmp/live as fd 9, which each ci-watch it starts (and
+# their gh stubs) inherit: settle takes it exclusively, so it returns once every one has ended.
+# No fixed sleep stands in for "the watch is done" or "the watch has started".
+: > "$tmp/live"
+trap 'rm -f "$tmp/stub/hold" "$tmp/stub"/hold-*; flock -x -w 60 "$tmp/live" true; rm -rf "$tmp"' EXIT
 
 T0=1800000000
 NOW=2027-01-15T01:00:00Z; MON=2027-01
 reset() {
-  rm -f "$tmp/stub/hold"; sleep 0.2
+  rm -f "$tmp/stub/hold" "$tmp/stub"/hold-*; settle
   rm -rf "$tmp/stub" "$tmp/state"; mkdir -p "$tmp/stub" "$tmp/state"; : > "$tmp/stub/calls"
   doc '[]'
 }
@@ -91,7 +99,7 @@ E=(PATH="$tools" HOME="$tmp" STUB="$tmp/stub" PADDOCK_STATE_DIR="$tmp/state" PAD
    PADDOCK_HC_HOLD=0 PADDOCK_NUDGE_RETRY=0 PADDOCK_RUN_TRIES=2 PADDOCK_RUN_SLEEP=0)
 pass() { # pass <epoch> [env...]
   local now=$1; shift
-  out=$(env -i "${E[@]}" PADDOCK_WATCH_NOW="$now" "$@" bash "$script" --once 2>&1); rc=$?
+  out=$({ flock -s 9; env -i "${E[@]}" PADDOCK_WATCH_NOW="$now" "$@" bash "$script" --once; } 9>>"$tmp/live" 2>&1); rc=$?
 }
 # o <id> <args>: the real org, with no hc on PATH (so the test's own writes nudge nobody)
 o() { local who=$1; shift; env -i PATH="$tmp/nohc" HOME="$tmp" PADDOCK_STATE_DIR="$tmp/state" PADDOCK_NOW="$NOW" "$BASH" "$org" --as "$who" "$@"; }
@@ -100,9 +108,14 @@ sent() { grep -c "^$1	" "$tmp/stub/sent" 2>/dev/null || echo 0; }
 woke() { cat "$tmp/state/watcher/woke" 2>/dev/null; }
 wev() { cat "$tmp/state/events/$MON/watcher.jsonl" 2>/dev/null; }
 unread() { o "$1" check_messages --peek; }
-settle() { # wait until no ci-watch runs (pid files gone), at most 10 s
-  local i=0; while ls "$tmp/state/watcher/ci/"*.pid >/dev/null 2>&1 && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+settle() { # wait until every ci-watch the passes started has ended; 60 s at most, then a failed check
+  flock -x -w 60 "$tmp/live" true || check "settle: every ci-watch ended within 60 s" 1
 }
+# wait_for <command...>: until it succeeds, polled every 0.1 s; 60 s at most, then a failed check
+wait_for() {
+  local i=0; until "$@"; do [ $i -lt 600 ] || { check "wait_for $*: true within 60 s" 1; return 1; }; sleep 0.1; i=$((i + 1)); done
+}
+watching() { grep -q "^gh run watch $1 --repo ${2:-o/r} " "$tmp/stub/calls"; }   # ci-watch has its traps and is in gh run watch
 SECLINE='You have mail: run bash scripts/org --as secretary check_messages and act on it.'
 
 bash -n "$ciw"; check "ci-watch.sh parses" $?
@@ -240,17 +253,18 @@ failcase() { # failcase <reason> <env...>
 failcase no_run STUB_RUN_NONE=1
 failcase gh_error STUB_LIST_FAIL=1
 grep -q '"exit_code":1' <<<"$l"; check "gh_error keeps gh's exit code" $?
-failcase gh_error STUB_VIEW_FAIL=1
-reset; term secretary - working; req; touch "$tmp/stub/hold"; pass $T0; sleep 0.5
-read -r pid _ < "$tmp/state/watcher/ci/o_r-42.pid"; kill -TERM "$pid"; settle
+failcase gh_error STUB_RELIST_FAIL=1
+reset; term secretary - working; req; touch "$tmp/stub/hold"; pass $T0; wait_for watching 777
+read -r pid _ < "$tmp/state/watcher/ci/o_r-42.pid"; kill -TERM "$pid"; rm -f "$tmp/stub/hold"; settle
 l=$(wev | grep ci_watch_failed); grep -q '"reason":"signal","exit_code":143' <<<"$l"; check "signal (TERM): ci_watch_failed with reason signal ($l)" $?
 unread secretary | grep -q "CI watch failed on PR 42, head $SHA7: signal"; check "signal: the mailbox line" $?
-reset; term secretary - working; req; touch "$tmp/stub/hold"; pass $T0; sleep 0.5
-read -r pid _ < "$tmp/state/watcher/ci/o_r-42.pid"; kill -KILL "$pid"; sleep 0.2
+reset; term secretary - working; req; touch "$tmp/stub/hold"; pass $T0; wait_for watching 777
+read -r pid _ < "$tmp/state/watcher/ci/o_r-42.pid"; kill -KILL "$pid"
+gone() { ! tr '\0' ' ' 2>/dev/null < "/proc/$1/cmdline" | grep -q 'ci-watch\.sh'; }; wait_for gone "$pid"
 pass $((T0 + 30))
 l=$(wev | grep ci_watch_failed); grep -q '"reason":"vanished","exit_code":null' <<<"$l" && [ "$(wev | grep -c ci_watch_failed)" -eq 1 ]; check "a watch killed with no trap: vanished on the next pass ($l)" $?
 unread secretary | grep -q "CI watch failed on PR 42, head $SHA7: vanished"; check "vanished: the mailbox line" $?
-pass $((T0 + 60)); settle
+rm -f "$tmp/stub/hold"; pass $((T0 + 60)); settle
 [ "$(wev | grep -c '"kind":"ci_')" -eq 1 ]; check "a vanished request is closed: not watched again" $?
 # a recorded pid that is now another process (a restart) is not taken for the watch, nor signalled
 reset; term secretary - working; req; sleep 30 >/dev/null 2>&1 & other=$!
@@ -259,8 +273,8 @@ req 42 "$SHB"; pass $T0; settle
 kill -0 "$other" 2>/dev/null && wev | grep -q "\"sha\":\"$SHA\".*\"reason\":\"vanished\""; check "a pid of another process: the old watch is vanished, that process is not signalled" $?
 kill "$other" 2>/dev/null
 
-reset; term secretary - working; req; touch "$tmp/stub/hold"; pass $T0; sleep 0.5
-req 42 "$SHB"; pass $((T0 + 30)); sleep 1
+reset; term secretary - working; req; touch "$tmp/stub/hold"; pass $T0; wait_for watching 777
+req 42 "$SHB"; pass $((T0 + 30)); wait_for eval 'wev | grep -q superseded' 
 wev | grep -q "\"sha\":\"$SHA\".*\"reason\":\"superseded\""; check "a newer head of the PR ends the older watch: superseded" $?
 unread secretary | grep -q "CI watch failed on PR 42, head $SHA7: superseded"; check "superseded: the mailbox line" $?
 rm -f "$tmp/stub/hold"; pass $((T0 + 60)); settle
@@ -272,12 +286,35 @@ wev | grep -q "\"sha\":\"$SHA\".*\"reason\":\"superseded\"" && wev | grep -q "\"
 # the same PR number in two repositories is two PRs (repo + pr + sha)
 reset; term secretary - working; touch "$tmp/stub/hold"
 req 12 "$SHA"; o secretary ci_requested --pr 12 --sha "$SHB" --repo o/other >/dev/null
-pass $T0; sleep 0.5
+pass $T0; wait_for watching 777; wait_for watching 777 o/other
 [ -f "$tmp/state/watcher/ci/o_r-12.pid" ] && [ -f "$tmp/state/watcher/ci/o_other-12.pid" ]; check "two repositories, same PR number: two watches, one pid file each" $?
-pass $((T0 + 30)); sleep 0.3
-! wev | grep -q superseded; check "a request of another repository does not supersede" $?
+pass $((T0 + 30))
 rm -f "$tmp/stub/hold"; settle
+! wev | grep -q superseded; check "a request of another repository does not supersede" $?
 wev | grep -q "\"sha\":\"$SHA\",\"repo\":\"o/r\".*\"conclusion\":\"success\"" && wev | grep -q "\"sha\":\"$SHB\",\"repo\":\"o/other\".*\"conclusion\":\"success\"" \
   && [ "$(wev | grep -c '"kind":"ci_')" -eq 2 ]; check "each repository's PR gets its own result" $?
+
+# every run of the head (push and pull_request): no result while one has not ended; all green is
+# success, one red is failure; the line names the runs it read (Issue #415)
+reset; term secretary - working; req
+printf '777 completed push success\n778 in_progress pull_request success\n' > "$tmp/stub/runs"; touch "$tmp/stub/hold-778"
+pass $T0; wait_for watching 778
+! wev | grep -q '"kind":"ci_' && ! grep -q '^gh run watch 777 ' "$tmp/stub/calls"; check "two runs, one pending: nothing recorded while it runs" $?
+rm -f "$tmp/stub/hold-778"; settle
+wev | grep -q '"kind":"ci_completed".*"run_id":777,"exit_code":0,"conclusion":"success"' && [ "$(wev | grep -c '"kind":"ci_')" -eq 1 ]; check "two runs, both green once the second ends: success" $?
+unread secretary | grep -qF "CI success on PR 42, head $SHA7, run 777. Runs read: 777 push success, 778 pull_request success."; check "the success line names both runs it read" $?
+reset; term secretary - working; req
+printf '777 completed push success\n778 in_progress pull_request failure\n' > "$tmp/stub/runs"; touch "$tmp/stub/hold-778"
+pass $T0; wait_for watching 778
+! wev | grep -q '"kind":"ci_'; check "a run that will fail, still pending: nothing recorded yet" $?
+rm -f "$tmp/stub/hold-778"; settle
+wev | grep -q '"kind":"ci_completed".*"run_id":778,"exit_code":1,"conclusion":"failure"'; check "one red run of two: failure, its run named" $?
+unread secretary | grep -qF "CI failure on PR 42, head $SHA7, run 778. Runs read: 777 push success, 778 pull_request failure."; check "the failure line names both runs" $?
+reset; term secretary - working; req
+printf '777 in_progress push failure\n778 in_progress pull_request success\n' > "$tmp/stub/runs"; touch "$tmp/stub/hold-778"
+pass $T0; wait_for watching 778
+! wev | grep -q '"kind":"ci_'; check "the first run red, the second still pending: not reported until both end" $?
+rm -f "$tmp/stub/hold-778"; settle
+wev | grep -q '"kind":"ci_completed".*"run_id":777,"exit_code":1,"conclusion":"failure"'; check "then failure, the red run named" $?
 
 exit "$fail"
