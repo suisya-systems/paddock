@@ -92,6 +92,41 @@ These are the "Done when" of #391, with nobody typing into the secretary:
 - The watcher lives in the core: if the core stops, nothing wakes the secretary (as in [0008](0008-who-tells-the-person-outside-the-window.md)). If the watcher terminal ends, the secretary is woken by nothing until `org-start` is rerun; stage 3 makes that a real loss, where today the secretary's own wait would still run.
 - The CI-ended check sees only a `ci-<pr>` it saw alive; a watch that starts and ends between two passes, or while the watcher is down, is missed.
 
+## Text this decision makes stale
+
+This record is Proposed and changes no file. The implementation PR fixes each place below in the same change (or says in its body why not). Lines are as of 3a04e71. "Stage 3" places change only with the removal; "watcher" places change when the watcher starts typing (stage 1).
+
+| Place | What must change |
+| --- | --- |
+| [templates/secretary.md](../../templates/secretary.md):28 | Stage 3: drop "never end a turn idle ... end every such turn in `org wait --children`" and the `Stop`-hook sentence; keep the return-reason handling only for a manual `org wait`; say the watcher wakes it. |
+| templates/secretary.md:29 | Stage 3: drop "while you wait, the person sees your Bash call running" (no routine wait). |
+| templates/secretary.md:30 | Stage 3: "Only `org wait` may hold you ... await it with `org wait --children`" becomes: run it in a background terminal and end the turn; the watcher wakes you. |
+| templates/secretary.md:31 | Stage 3: the per-write nudge paragraph becomes the watcher's wake line, and the `Stop`-hook and TEMPORARY sentences go. |
+| templates/secretary.md:26 | Stage 3: "Check the mailbox at the end of every turn" stays as a hint only. |
+| templates/secretary.md:83 | Stage 3: "CI is watched only by the script's child and your `org wait --children`" and the exit 8 "go back to `org wait --children`": end the turn; the watcher writes "CI watch ended" and wakes you; then rerun `--pr <n>`. |
+| [templates/secretary-settings.json](../../templates/secretary-settings.json):10 | Stage 3: remove the `Stop` hook entry. |
+| [scripts/hooks/secretary-stop-guard.sh](../../scripts/hooks/secretary-stop-guard.sh) (whole file) | Stage 3: delete. |
+| [skills/org-start/scripts/org-start.sh](../../skills/org-start/scripts/org-start.sh):174 | Stage 3: stop copying `secretary-stop-guard.sh`. |
+| [scripts/hooks/secretary-bash-guard.sh](../../scripts/hooks/secretary-bash-guard.sh):45 | Stage 3: `wait_hint` says "then end the turn in org wait --children"; it becomes "then end the turn". |
+| [scripts/org](../../scripts/org):218 | Stage 3: remove the `nudge` call in `put`. |
+| scripts/org:221-243 (`nudge()`) and :280-283 (`nudge` command), :116 (command list) | Stage 3: remove; the watcher's wake replaces it. |
+| scripts/org:386-388 (`wait` comment "the secretary ends its turns here") and :26-35 (usage) | Stage 3: `wait` is a manual tool; its `watch` moves to a subcommand the watcher also calls. |
+| [templates/worker-settings.json](../../templates/worker-settings.json):51 | Stage 3: remove the `PostToolUse` hook that runs `org nudge`. |
+| [skills/org-watch/SKILL.md](../../skills/org-watch/SKILL.md):3, :26 | Watcher: "Read-only" and "It types into nothing" become: it writes mailbox lines as `watcher` and types one line into an idle or done secretary. Add the new items and `watcher/woke`. |
+| [skills/org-watch/references/rationale.md](../../skills/org-watch/references/rationale.md):4 | Watcher: "read only ... nothing typed into a terminal ... never destructive" is replaced by why the one typed line is safe. |
+| [skills/org-watch/scripts/org-watch.sh](../../skills/org-watch/scripts/org-watch.sh):17 | Watcher: the usage line "it never types into a terminal". |
+| [README.md](../../README.md):18 | Watcher: "a read-only shell loop" and what it does. |
+| [skills/org-pull-request/SKILL.md](../../skills/org-pull-request/SKILL.md):41, :49 | Stage 3: exit 8 row and "Watching CI without holding the secretary" say `org wait --children`; the watcher's "CI watch ended" line replaces it. |
+| [docs/decisions/0002-org-mailbox-not-hc-send.md](0002-org-mailbox-not-hc-send.md):26, :31 | On acceptance: replace the #385 paragraph with a pointer here; "The secretary does so at the end of every turn" becomes "when the watcher wakes it". |
+| [docs/decisions/0008-who-tells-the-person-outside-the-window.md](0008-who-tells-the-person-outside-the-window.md):63 | On acceptance: a note that the watcher now also wakes the secretary (0013). |
+| [docs/design/open-questions.md](../design/open-questions.md):727-741 (Q18) | On acceptance: amend toward (b) by a resident process; the "needs a resident process paddock does not have" reason no longer holds. |
+| docs/design/open-questions.md:61 (Q2), :322 | On acceptance: "may block on `hc wait --children`" and "learns of the exit from `org wait --children`" become the watcher's lines. |
+| [docs/design/architecture.md](../design/architecture.md):34, :75, :87 | On acceptance: "No dispatcher", "Nothing wakes agents: the secretary waits with `org wait --children`", and step 5 "each time its `org wait` returns". |
+| [docs/design/routine-procedures.md](../design/routine-procedures.md):15, :36, :44 | Stage 3: "On each return of `org wait`" becomes "on each wake". |
+| [tests/org-nudge-secretary.test.sh](../../tests/org-nudge-secretary.test.sh), [tests/secretary-stop-guard.test.sh](../../tests/secretary-stop-guard.test.sh), [tests/org-wait.test.sh](../../tests/org-wait.test.sh):148-149, [tests/org-commands.test.sh](../../tests/org-commands.test.sh):142-143 | Stage 3: remove or rewrite with the code they test; the template's nudge line check follows the watcher's line. |
+
+Not stale: [templates/worker-rules.md](../../templates/worker-rules.md):38 and [skills/org-escalation](../../skills/org-escalation/SKILL.md):60 describe the worker nudge of #282, which stays unless open question 4 is answered Yes. The prototype reports in `docs/design/prototype-*.md` record past runs and stay as they are.
+
 ## Open questions
 
 1. **Does `org-watch` take the wake job, rather than a separate dispatcher terminal?** Recommended: **Yes.** It already reads every fact needed, has the ledger and the start/stop wiring; a second loop doubles that for one constant line. Yes: `org-watch` gains the mailbox lines and the wake, and loses its "types into nothing" property. No: a new kept terminal (for example `dispatcher`) with its own script, ledger and `org-start`/`org-down` wiring; `org-watch` stays read-only.
