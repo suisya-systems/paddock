@@ -200,6 +200,21 @@ None of these is assumed by the recommendation; each one can change it, as noted
 
 **H1 result (2026-11-16, `scripts/probes/h1-precedence.sh` at 0210a64, hc 0.1.18, Claude Code 2.1.325):** control PASS (without the rules the worker pushed to the local bare repository, so the repository's `AGENTS.md` does pull), at launch PASS, after `/compact` PASS (committed, not pushed); verdict PASS. Under (A), with the precedence section, the rules won in both stages, and the worker said which instruction it did not follow and still followed the repository's commit-message line. **Not established:** that the compaction completed. The screen after `/compact` showed only the input box, with no completion text, so `s3-compacted: yes` is the probe's grep on the echoed command, not proof. The after-compact PASS therefore stands only as "after sending `/compact`"; an automatic compaction was not measured. One run, mechanism (A) only; (B) was not measured.
 
+### Probe results
+
+**H4 and H5, run 2026-11-15** on the host (paddock `6ff88e3`, hc 0.1.18, Claude Code 2.1.325), `scripts/probes/plugin-dir-skills.sh`, a throwaway plugin named `paddock` loaded with `--plugin-dir`, default permission mode:
+
+| Question | Result |
+| --- | --- |
+| Dialog at launch | None from the plugin. The folder-trust dialog appeared, as it does without a plugin. `H4-dialog` PASS. |
+| `paddock:` skills in the skill list; invoked by situation (`when_to_use`) | Yes, both. `H4-list`, `H4-invoke` PASS. |
+| Edited `SKILL.md` seen while running | `H4-edit-live` **FAIL**: the new text did not appear. The run printed no evidence of what the agent did instead (it may have reused the old copy or the skill may be stale), so this is a failure to see the text, not a measured "stale". The probe now prints the matching lines and adds the step below. |
+| New skill folder seen while running | `H4-new-skill` **FAIL**; after `/reload-plugins`, `H4-new-skill-after-reload` PASS. A new skill in a plugin needs a reload command, not a renewal. |
+| Edited `SKILL.md` seen after `/reload-plugins` | **Not measured yet** (`H4-edit-after-reload`, added to the probe). If it passes, (P) stands with "run `/reload-plugins` after a landing"; if not, part 2 falls back to (S) as above. |
+| `allowed-tools` pre-approves the script call | `H5-allowed-tools` **FAIL** with `Bash(bash <absolute path>/marker.sh:*)`: the script ran only after a permission prompt. The control (a call the field does not cover) was prompted, so prompts were on. |
+
+Why H5 failed is **not established**. What is known: the form used was the `:*` suffix with an absolute path inside a plugin skill, and the prompt's text was not captured. The skills page (read through a summary of it, not verbatim) shows the forms `Bash(git add *)` and `Bash(${CLAUDE_SKILL_DIR}/scripts/render.sh *)`, says the grant lasts for the turn that invokes the skill, and does not say anything specific about plugin skills. The probe now also tries the space-star form with an absolute path (`H5-allowed-tools-b`) and with `${CLAUDE_SKILL_DIR}` (`-c`), and prints the prompt text, which tells a form problem from "plugin skills are not pre-approved". Until it is rerun, nothing here supports writing `allowed-tools` into a paddock skill.
+
 ## Build, in parallel units
 
 Each unit is one worker task. Units in the same wave touch different files and can run at once.

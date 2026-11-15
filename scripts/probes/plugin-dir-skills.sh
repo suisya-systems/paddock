@@ -33,6 +33,12 @@
 #               RESULT H4-new-skill PASS = SKILL-NEW-TEXT-N1 appears. If not, /reload-plugins is
 #               typed and NARWHAL-3 sent again: RESULT H4-new-skill-after-reload says whether
 #               that was enough (then a new skill needs a reload command, not a renewal).
+#   S2b variants: the same script call under allowed-tools "bash <abs> *" (RESULT
+#               H5-allowed-tools-b) and "bash ${CLAUDE_SKILL_DIR}/... *" (-c), the forms the docs
+#               show; A (S2) uses the older "<abs>:*" form. Whichever PASSes is the form to use.
+#               The permission prompt's text is printed when one appears.
+#   S4b edit+reload  rewrites SKILL-TEXT-V2 to V3, types /reload-plugins, invokes again.
+#               RESULT H4-edit-after-reload PASS = V3 appears (a reload picks up an edit).
 #   S5 control  asks for a script call that allowed-tools does NOT cover (other.sh). It must be
 #               blocked; RESULT H5-control PASS = it was. If it was not, the terminal is not
 #               asking at all and H5-allowed-tools is void.
@@ -84,6 +90,23 @@ cat > "$PLUG/skills/h4-marker/scripts/marker.sh" <<EOF
 echo ran > "$ROOT/marker-ran"
 echo MARKER-OUT
 EOF
+# H5 variants: the same script call under other allowed-tools forms (A above: "<abs>:*").
+#   h4-b: "bash <abs> *" (space-star, the form the docs show)   h4-c: "bash ${CLAUDE_SKILL_DIR}/... *"
+for v in b c; do
+  mkdir -p "$PLUG/skills/h4-$v/scripts"
+  if [ $v = b ]; then W=KIWI-B1; AT="Bash(bash $PLUG/skills/h4-b/scripts/marker.sh *)"
+  else W=MANGO-C1; AT='Bash(bash ${CLAUDE_SKILL_DIR}/scripts/marker.sh *)'; fi
+  cat > "$PLUG/skills/h4-$v/SKILL.md" <<EOF2
+---
+name: h4-$v
+description: Probe skill for H5, allowed-tools form $v. Prints a marker line by running its script.
+when_to_use: When the message contains the word $W.
+allowed-tools: $AT
+---
+Run \`bash $PLUG/skills/h4-$v/scripts/marker.sh\` once. Then reply with one line: SKILL-TEXT-$v followed by what the script printed.
+EOF2
+  printf '#!/bin/sh\necho ran > "%s/marker-ran-%s"\necho MARKER-OUT-%s\n' "$ROOT" $v $v > "$PLUG/skills/h4-$v/scripts/marker.sh"
+done
 cat > "$PLUG/skills/h4-marker/scripts/other.sh" <<EOF
 #!/bin/sh
 echo OTHER-OUT
@@ -106,7 +129,10 @@ wait_idle() { # $1 = max seconds
   BLOCKED=no; sleep 10; i=10
   while [ $i -lt "$1" ]; do
     is_idle && return 0
-    if state_is blocked; then BLOCKED=yes; hc keys $NAME enter >/dev/null 2>&1; fi
+    if state_is blocked; then
+      [ $BLOCKED = no ] && { echo "-- BLOCKED, the prompt on screen (then answered with Enter):"; screen | tail -22; }
+      BLOCKED=yes; hc keys $NAME enter >/dev/null 2>&1
+    fi
     i=$((i + 3)); sleep 3
   done
   echo "-- wait_idle timed out after $1 s"; return 1
@@ -195,6 +221,18 @@ if [ -f "$ROOT/marker-ran" ] && [ "$BLOCKED" = no ]; then echo "RESULT H5-allowe
 elif [ -f "$ROOT/marker-ran" ]; then echo "RESULT H5-allowed-tools: FAIL (script ran only after a permission prompt)"
 else echo "RESULT H5-allowed-tools: NO DATA (the script did not run; was the skill invoked?)"; fi
 
+echo "== S2b allowed-tools forms (H5 variants)"
+for v in b c; do
+  rm -f "$ROOT/marker-ran-$v"
+  if [ $v = b ]; then W=KIWI-B1; else W=MANGO-C1; fi
+  hc send $NAME "$W"
+  must_idle 240
+  show S2$v 20
+  if [ -f "$ROOT/marker-ran-$v" ] && [ "$BLOCKED" = no ]; then echo "RESULT H5-allowed-tools-$v: PASS (script ran, never blocked)"
+  elif [ -f "$ROOT/marker-ran-$v" ]; then echo "RESULT H5-allowed-tools-$v: FAIL (script ran only after a permission prompt)"
+  else echo "RESULT H5-allowed-tools-$v: NO DATA (the script did not run)"; fi
+done
+
 echo "== S3 edit SKILL.md while the terminal runs"
 f="$PLUG/skills/h4-marker/SKILL.md"
 sed 's/SKILL-TEXT-V1/SKILL-TEXT-V2/' "$f" > "$f.new" && cat "$f.new" > "$f" && rm -f "$f.new"
@@ -203,6 +241,7 @@ sleep 5
 hc send $NAME "ZEBRA-PLUM again. Invoke the skill again now; do not reuse the text you already have."
 must_idle 240
 show S3 30
+echo "-- SKILL-TEXT lines on screen:"; screen | grep 'SKILL-TEXT'
 n2=$(count 'SKILL-TEXT-V2')
 [ "$n2" -ge 1 ]; verdict "RESULT H4-edit-live" $?
 
@@ -233,6 +272,19 @@ if [ "$n3" -lt 1 ]; then
   n3b=$(count 'SKILL-NEW-TEXT-N1')
   [ "$n3b" -ge 1 ]; verdict "RESULT H4-new-skill-after-reload" $?
 fi
+
+echo "== S4b edit SKILL.md again, then /reload-plugins, then invoke again"
+sed 's/SKILL-TEXT-V2/SKILL-TEXT-V3/' "$f" > "$f.new" && cat "$f.new" > "$f" && rm -f "$f.new"
+grep -c 'SKILL-TEXT-V3' "$f" | sed 's/^/-- V3 lines in the edited file: /'
+hc send $NAME "/reload-plugins"
+must_idle 120
+show S4b-reload 15
+hc send $NAME "ZEBRA-PLUM once more. Invoke the skill again now; do not reuse the text you already have."
+must_idle 240
+show S4b 30
+echo "-- SKILL-TEXT lines on screen:"; screen | grep 'SKILL-TEXT'
+n4=$(count 'SKILL-TEXT-V3')
+[ "$n4" -ge 1 ]; verdict "RESULT H4-edit-after-reload" $?
 
 echo "== S5 control: a script call allowed-tools does not cover"
 hc send $NAME "Run bash $PLUG/skills/h4-marker/scripts/other.sh and tell me what it printed."
