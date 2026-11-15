@@ -5,3 +5,19 @@
 - **Acceptance has no local gate.** The check is the repository's CI as a required status check (the `acceptance` job). The script only confirms the PR head still equals the watched sha and the required checks are green, then merges with `--match-head-commit`, never `--admin` or `--auto`, so a push after the watched run cannot be merged unreviewed.
 - **The request line goes through the secretary's own writer** (its folder, sequence and lock), so the sequence number never repeats one a reader has acknowledged.
 - **A missing second-model review is stated in the PR body.** The script reads the task's last diff-review record; if there is none (or it did not pass) it appends that fact to the body it sends, so a body written without it still says so.
+- **A landing places the files in both modes, by the script.** The secretary used to remember a placing step after a hand merge; a step that is remembered is skipped. A `--pr` rerun that finds the PR merged places the files, so the `human` mode needs no extra call, and the acceptance merge does the same through one function. The `next:` line on every exit replaces the exit-code table the secretary read.
+
+## What it reads and writes
+
+- The CI state of a head, from this calendar month and the last (decision 0004): the secretary's latest `ci_requested` for the same `repo`, `pr` and `sha`, and the watcher's latest `ci_completed` or `ci_watch_failed` at or after it. A `ci_completed` the skill wrote itself (`from: secretary`) does not count. Request and result are matched by `ts`, which has whole seconds: a request is open only when it is later than the watcher's last line for that head, so a re-request in the same second as a `ci_watch_failed` waits for the next second.
+- A `ci_requested` line: `{"seq":1,"ts":"2026-11-10T01:02:03Z","kind":"ci_requested","from":"secretary","task_id":"t1","pr":42,"sha":"<head>","repo":"o/r"}`, written with `bash scripts/org --as secretary ci_requested --pr <n> --sha <head> --repo <r> [--task <id>]`. The events folder is `scripts/org`'s: `$PADDOCK_STATE_DIR/events`, default `${XDG_STATE_HOME:-~/.local/state}/paddock/events`.
+- The approval mode is `--mode`, else `merge_approval_mode` in `org-config.md`, else `human`; any other value means `human`. It lives in `org-config.md`, not in `org-state`.
+
+## Assumptions (open points left open)
+
+- The base branch is `--base`, else the base in the `--project <name>` row of `projects.md` (same file and columns as org-delegate; only the base is read, since `--worktree` is the worker's), else `main`. An unknown name or a missing file exits 2 before the branch is sent anywhere. The title and body are written by the secretary in English.
+- `--task-id` may hold only letters, digits, `.`, `_` and `-` (it goes into a JSON line); anything else exits 2 before the push.
+- `ci-watch.sh` waits for every run of the head (push and pull_request) and records `success` only when all are green; a run that starts after all the others ended is not waited for, and in `acceptance` mode the required checks cover it.
+- Known limit: the final line "Merged" means the merge call succeeded. On a branch with a merge queue that only enqueues the PR; the script does not query the merge state afterwards. This repository has no merge queue.
+- The required-checks query exits non-zero when a required check fails, is pending, or none is configured; all of those refuse the merge.
+- Reviews are not handled here; handling review and closing the worker stay with the secretary.
