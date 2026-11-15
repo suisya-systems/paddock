@@ -1,6 +1,7 @@
 ---
 name: <skill-name>
 description: <When to use it, in one sentence, with searchable words. Copy the "when" sentence of the queue entry.>
+when_to_use: <The situation that calls for this skill, in the secretary's words. Without it the skill is not matched to the situation.>
 ---
 
 # <skill-name>
