@@ -9,10 +9,10 @@ when_to_use: A task is ready to hand to a worker (also when the request names a 
 Starts one worker for one task. Why it is built this way, and the measurements behind it: [references/rationale.md](references/rationale.md). The secretary runs it once per task, from a shell in its own terminal (unlike [org-start](../org-start/SKILL.md), it is meant to run inside an agent). Flags, exit codes and what to do after each are in `--help` and in the `next:` line that ends every non-zero exit: do what that line says.
 
 ```sh
-bash skills/org-delegate/scripts/org-delegate.sh \
+bash "$PADDOCK_HOME/skills/org-delegate/scripts/org-delegate.sh" \
   --project <git repository or projects.md name> --task-id <id> --title "<a few words>" --task "<task text>" \
   [--task-file <file>] [--base main] [--branch work/<id>] [--allow-write <path>]...
-bash skills/org-delegate/scripts/org-delegate.sh --repo OWNER/NAME --task-id <id> --title "..." --task "..."
+bash "$PADDOCK_HOME/skills/org-delegate/scripts/org-delegate.sh" --repo OWNER/NAME --task-id <id> --title "..." --task "..."
 ```
 
 Give the task one worker with an exact scope (what to change, what not to touch, how to report). `--title` adds the `work` entry to `org-state` after the launch, with its `worktree` and `task`; `--task-file <file>` (or `-` for stdin) is for a long text. `--project` may be a name from `projects.md` (the row gives the path and the base; `--base` overrides it), a path, or, with `--repo`, nothing. `--repo OWNER/NAME` (or a github.com URL) clones the repository with the secretary's own login when it is not on the machine, records it in `projects.md`, then delegates into it; a recorded one is reused. A bare name is never guessed: ask the person for `OWNER/NAME`.
@@ -34,15 +34,15 @@ Delegate with `--repo OWNER/NAME`: it clones when needed and stops only at the t
 Make a repository for the task, then delegate as above (worktree, settings and review-gate base work unchanged, with no `origin`):
 
 ```sh
-repo=$(bash skills/org-delegate/scripts/local-repo.sh --task-id <id>)   # $PADDOCK_LOCAL_DIR/<id>, default ~/paddock-local/<id>
-bash skills/org-delegate/scripts/org-delegate.sh --project "$repo" --task-id <id> --task "<task text>" --title "<a few words>"
+repo=$(bash "$PADDOCK_HOME/skills/org-delegate/scripts/local-repo.sh" --task-id <id>)   # $PADDOCK_LOCAL_DIR/<id>, default ~/paddock-local/<id>
+bash "$PADDOCK_HOME/skills/org-delegate/scripts/org-delegate.sh" --project "$repo" --task-id <id> --task "<task text>" --title "<a few words>"
 ```
 
 `local-repo.sh` runs `git init` on `main` plus one empty commit, one repository per task. A person who wants reuse adds a `projects.md` row and names it; that is the ordinary path. A path that exists is refused (exit 6). Each new repository raises the folder-trust dialog once (the parent folder being trusted is not enough): after exit 10, read the screen with `hc read w-<id>` and ask the person; never a blind Enter, the default is "No, exit".
 
 **Task text for such a task.** Tell the worker: no PR (it has no GitHub access anyway), and its `report done` carries a short summary and the worktree path. Do not accept an `Acceptance-Test:` declaration for it: acceptance mode needs a required CI job and a repository with no CI has none, so it closes in `human` mode whatever `merge_approval_mode` says. The Codex review gate stays (its base is the recorded `main`).
 
-**Close.** Tell the owner the summary and the path. After the owner agrees: `bash skills/org-close/scripts/merge-local.sh --task <id>` (fast-forwards the repository's `main`), then [org-close](../org-close/SKILL.md); to throw it away, `org-close --drop`. Never `org-pull-request`. Pushing to a new remote happens only when the owner asks. Folders under `$PADDOCK_LOCAL_DIR` are never cleaned up by paddock.
+**Close.** Tell the owner the summary and the path. After the owner agrees: `bash "$PADDOCK_HOME/skills/org-close/scripts/merge-local.sh" --task <id>` (fast-forwards the repository's `main`), then [org-close](../org-close/SKILL.md); to throw it away, `org-close --drop`. Never `org-pull-request`. Pushing to a new remote happens only when the owner asks. Folders under `$PADDOCK_LOCAL_DIR` are never cleaned up by paddock.
 
 ## A worker says "base is stale"
 
@@ -54,7 +54,7 @@ A worker holds no GitHub credential: its `command` gives it an empty `GH_CONFIG_
 2. **Worktree:** `git fetch origin` when the project has an `origin` and branches from `origin/<base>` when it exists, then `git worktree add` under the workers folder (`PADDOCK_WORKERS_DIR`, default `~/paddock-workers`, an absolute path). The base is recorded for the review gate.
 3. **Settings:** the worktree's `.claude/settings.local.json` (socket folder deny, cache env), a `.claude/.gitignore` for what paddock places, and the worker's own `--settings` file in the state folder (own files, `--allow-write` paths, the review gate's two exact calls).
 4. **Record:** `report start` before the launch, so the worker's later `done` or `blocked` is the latest record.
-5. **Launch:** `hc run --bg ...` with the task in the launch; `first_message.sent` must be `true`, else exit 10 with the first message (and the `--title` entry) saved for `org-escalation answer` or `scripts/resend.sh <id>`.
+5. **Launch:** `hc run --bg ...` with the task in the launch; `first_message.sent` must be `true`, else exit 10 with the first message (and the `--title` entry) saved for `org-escalation answer` or `bash "$PADDOCK_HOME/skills/org-delegate/scripts/resend.sh" <id>`.
 6. **Work entry** (with `--title`): added to `org-state.work` after the first message was sent.
 
 It prints `org-delegate: worker=w-<id> worktree=<path> branch=<branch>` on success. The details of each step (paths, JSON, sandbox behavior, measurements) are in [references/rationale.md](references/rationale.md).
@@ -74,8 +74,8 @@ A worker reads everything in its worktree unless the project turns the block on:
 Needs a running core, [org-start](../org-start/SKILL.md) already run, and a workers folder a person has trusted once. Not run by CI:
 
 ```sh
-bash skills/org-delegate/scripts/org-delegate.sh --project <repo> --task-id probe-1 \
+bash "$PADDOCK_HOME/skills/org-delegate/scripts/org-delegate.sh" --project <repo> --task-id probe-1 \
   --task "Reply ready, then report done with scripts/org."
 hc get w-probe-1          # status reaches working, then done
-bash scripts/org --as secretary check_messages
+bash "$PADDOCK_HOME/scripts/org" --as secretary check_messages
 ```

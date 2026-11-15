@@ -182,6 +182,6 @@ out=$(esc answer --from-conversation "test: the person typed it" --id "$id" --te
 reset; out=$(esc ask --task t3 --question "Allow it?" --answer-in worker); rc=$?
 [ $rc -eq 2 ]; check "ask --answer-in is refused (exit 2)" $?
 ! grep -q 'answer_in === "worker"' "$here/mods/org-cockpit/main.js"; check "the card has no answer_in worker branch" $?
-! grep -q 'answer-in worker' "$here/templates/secretary.md"; check "the secretary template no longer records --answer-in worker" $?
+! grep -q 'answer-in worker' "$here/templates/secretary.md" "$here/templates/secretary-rules.md"; check "the secretary template no longer records --answer-in worker" $?
 
 [ "$fail" -eq 0 ] && echo "all passed" || { echo "FAILED"; exit 1; }

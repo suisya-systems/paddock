@@ -9,7 +9,7 @@ when_to_use: Your context is getting full, or the person asks you to renew yours
 Renews the secretary's context from a handover document. Why it is built this way: [references/rationale.md](references/rationale.md). Run it from the person's login shell (or a service). Never from inside an agent, and never typed into the secretary.
 
 ```sh
-bash skills/secretary-handover/scripts/secretary-handover.sh
+bash <paddock folder>/skills/secretary-handover/scripts/secretary-handover.sh   # the folder: echo "$PADDOCK_HOME"
 ```
 
 Bash only, like [org-start](../org-start/SKILL.md).
@@ -23,21 +23,21 @@ Bash only, like [org-start](../org-start/SKILL.md).
 
 You renew yourself by handover, not by clearing your own context.
 
-- Write the core document with `bash scripts/org --as secretary doc set secretary-handover`, as for `org-state`. Replace the whole value each time. Keep it under 32 KiB.
+- Write the core document with `bash "$PADDOCK_HOME/scripts/org" --as secretary doc set secretary-handover`, as for `org-state`. Replace the whole value each time. Keep it under 32 KiB.
 - Write only what `org-state` and the mailbox do not already hold: `last_exchange` (the last thing the person asked and what you answered, and what they are waiting for), `unrecorded_decisions` (decisions made in this conversation that no record has yet), `open_threads` (per worker `task_id`: what you asked or promised it, what you expect back), and `written_at` (UTC, ISO 8601).
-- Then tell the person the handover is ready and that `bash skills/secretary-handover/scripts/secretary-handover.sh` renews you: they (or a service) run it from outside; it ends your terminal and starts a fresh secretary.
+- Then tell the person the handover is ready and that `bash <paddock folder>/skills/secretary-handover/scripts/secretary-handover.sh` renews you, with the folder written out (`echo "$PADDOCK_HOME"` gives it): they (or a service) run it from outside; it ends your terminal and starts a fresh secretary.
 
-The fresh secretary's task text carries the resume steps: read `secretary-handover` and `org-state`, find the running workers by their `task_id` label (`hc ls`), take up the open threads, check the mailbox, clear the handover (`echo null | bash scripts/org --as secretary doc set secretary-handover`), and tell the person it is back.
+The fresh secretary's task text carries the resume steps: read `secretary-handover` and `org-state`, find the running workers by their `task_id` label (`hc ls`), take up the open threads, check the mailbox, clear the handover (`echo null | bash "$PADDOCK_HOME/scripts/org" --as secretary doc set secretary-handover`), and tell the person it is back.
 
 ## What the script does
 
 1. Refuses (exit 4) when its own environment shows it runs inside an agent, as `org-start` does.
 2. Reads the core document `secretary-handover` with `doc.get` through `hc connect`. If it was never written or was cleared (a `null` value), exits 9 and ends nothing.
 3. Reads `hc get --json secretary` once. If the status is `working` or `blocked` (a turn is in progress), exits 8 and ends nothing. If the read fails, or the output has no `state`, exits 11 and ends nothing: an unreadable status is never taken as idle. Otherwise `hc kill`, then `hc rm`. Only a `not_found` answer means the terminal is gone, so a rerun after a partial failure continues.
-4. Runs `hc run --bg --keep --name secretary --cwd <paddock folder> secretary "<resume from the handover>"` (the repository root, so the new secretary finds its tools whatever folder you ran from). The task is in the launch ([decision 0002](../../docs/decisions/0002-org-mailbox-not-hc-send.md)). The task text tells the new secretary to read `secretary-handover` and `org-state`, find the running workers by their `task_id` label (`hc ls`), and then clear `secretary-handover`.
-5. Checks `first_message.sent` in the result; exits 10 if it is not true, and then you read the screen (`hc read`) before anything else.
+4. Refuses (exit 12, nothing ended) when the rules `org-start` places are missing from `<state>/secretary` (`AGENTS.md`, `CLAUDE.md`). Runs `hc run --bg --keep --name secretary --cwd <state>/secretary secretary "<resume from the handover>"` (the secretary's own folder, whatever folder you ran from; its tools are found through `PADDOCK_HOME`, which the template's command sets). The task is in the launch ([decision 0002](../../docs/decisions/0002-org-mailbox-not-hc-send.md)). The task text tells the new secretary to read `secretary-handover` and `org-state`, find the running workers by their `task_id` label (`hc ls`), and then clear `secretary-handover`.
+5. Checks `first_message.sent` in the result. If it is not true because the folder-trust dialog of `<state>/secretary` stopped the new secretary, it answers the dialog once (Yes, checked on the screen first, the same `trust-dialog.sh` as `org-start`), waits for a status (`PADDOCK_READY_TRIES`, default 15 s) and sends the template body and the task again. Otherwise it exits 10, and then you read the screen (`hc read`) before anything else.
 
-Workers are not touched: they were started with `--outlive-parent`. It never runs `hc server stop` or `hc server restart`, and never `hc send` or `hc keys`.
+Workers are not touched: they were started with `--outlive-parent`. It never runs `hc server stop` or `hc server restart`, and never `hc send` or `hc keys` except to answer that trust dialog and resend the first message.
 
 ## Name
 
@@ -49,7 +49,7 @@ The document is cleared by the new secretary once it has resumed, so a second ru
 
 ## Exit codes
 
-0 relaunched, 2 bad argument, 3 `hc` not found, 4 run inside an agent, 5 core unreachable or `hc kill`, `hc rm` or `hc run` failed, 8 a turn is in progress, 9 no handover document, 10 the first message was not sent, 11 the secretary's status could not be read.
+0 relaunched, 2 bad argument, 3 `hc` not found, 4 run inside an agent, 5 core unreachable or `hc kill`, `hc rm` or `hc run` failed, 8 a turn is in progress, 9 no handover document, 10 the first message was not sent, 11 the secretary's status could not be read, 12 the secretary's rules are not placed.
 
 ## Not measured
 

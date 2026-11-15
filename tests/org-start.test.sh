@@ -5,6 +5,7 @@ set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 script=$here/skills/org-start/scripts/org-start.sh
 tmp=$(mktemp -d)
+export PADDOCK_STATE_DIR=$tmp/state # org-start places the secretary's rules in <state>/secretary (decision 0014)
 trap 'rm -rf "$tmp"' EXIT
 fail=0
 check() { # check <name> <condition-exit-status>
@@ -73,9 +74,9 @@ out=$(run STUB_CORE_DOWN=1); rc=$?
 out=$(run); rc=$?
 [ "$rc" -eq 0 ]; check "first run exits 0 ($out)" $?
 [ "$(grep -c "^run .* secretary" "$tmp/stub/calls")" -eq 1 ] \
-  && grep -qx "run --bg --keep --name secretary --cwd $here secretary" "$tmp/stub/calls"; check "starts the secretary once with --keep" $?
+  && grep -qx "run --bg --keep --name secretary --cwd $PADDOCK_STATE_DIR/secretary secretary" "$tmp/stub/calls"; check "starts the secretary once with --keep" $?
 [ "$(grep -c '^run .*--name watcher' "$tmp/stub/calls")" -eq 1 ] \
-  && grep -qx "run --bg --keep --no-notify --name watcher --label paddock_role=watcher --cwd $here -- env PADDOCK_SECRETARY_NAME=secretary bash $here/skills/org-watch/scripts/org-watch.sh" "$tmp/stub/calls"; check "starts the watcher once, kept, with the role label" $?
+  && grep -qx "run --bg --keep --no-notify --name watcher --label paddock_role=watcher --cwd $here -- env PADDOCK_SECRETARY_NAME=secretary PADDOCK_STATE_DIR=$PADDOCK_STATE_DIR bash $here/skills/org-watch/scripts/org-watch.sh" "$tmp/stub/calls"; check "starts the watcher once, kept, with the role label" $?
 cmp -s "$here/templates/secretary.md" "$tmp/core/templates/secretary.md"; check "template placed in core templates folder" $?
 cmp -s "$here/mods/org-agents/main.js" "$tmp/app/mods/org-agents/main.js" \
   && cmp -s "$here/mods/org-agents/mod.json" "$tmp/app/mods/org-agents/mod.json"; check "mod files placed" $?
@@ -92,9 +93,9 @@ bad=; for f in "$tmp/core/templates"/*.md; do [ "$(head -n 1 "$f")" = "---" ] ||
 # Name override: the terminal gets the given name; the template stays "secretary".
 : > "$tmp/stub/calls"; rm -f "$tmp/stub/secretary" "$tmp/stub/watcher"
 out=$(run PADDOCK_SECRETARY_NAME=probe-sec); rc=$?
-[ "$rc" -eq 0 ] && grep -qx "run --bg --keep --name probe-sec --cwd $here secretary" "$tmp/stub/calls" \
+[ "$rc" -eq 0 ] && grep -qx "run --bg --keep --name probe-sec --cwd $PADDOCK_STATE_DIR/secretary secretary" "$tmp/stub/calls" \
   && grep -qx 'get probe-sec' "$tmp/stub/calls"; check "PADDOCK_SECRETARY_NAME names the terminal" $?
-[ "$rc" -eq 0 ] && grep -q -- '-- env PADDOCK_SECRETARY_NAME=probe-sec bash ' "$tmp/stub/calls"; check "the watcher is told the effective secretary name" $?
+[ "$rc" -eq 0 ] && grep -q -- '-- env PADDOCK_SECRETARY_NAME=probe-sec ' "$tmp/stub/calls"; check "the watcher is told the effective secretary name" $?
 rm -f "$tmp/stub/secretary"; run >/dev/null # back to the first-run state for the next checks
 
 # Second run: idempotent.

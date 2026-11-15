@@ -23,8 +23,8 @@ if command -v node >/dev/null 2>&1; then
 fi
 
 cmd=$(sed -n 's/^command: //p' "$here/templates/secretary.md")
-case $cmd in *'--plugin-dir "$PWD"'*) r=0 ;; *) r=1 ;; esac
-check "the secretary template command passes --plugin-dir (the checkout is its working folder)" $r
+case $cmd in *'--plugin-dir "$PADDOCK_HOME"'*) r=0 ;; *) r=1 ;; esac
+check "the secretary template command passes --plugin-dir \$PADDOCK_HOME (the checkout; its working folder is its own)" $r
 case $cmd in *'--settings "$bd/secretary-settings.json"'*) r=0 ;; *) r=1 ;; esac
 check "the template command keeps --settings" $r
 

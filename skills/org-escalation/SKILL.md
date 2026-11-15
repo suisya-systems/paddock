@@ -2,7 +2,7 @@
 name: org-escalation
 description: Record a worker's question or blocked status for the person, forward the person's answer to the worker, and answer a worker's prompt after a fresh read of its screen. Run from the secretary.
 when_to_use: A worker reports a question you cannot decide, a `blocked` report arrives, a worker's terminal is `blocked` or shows no status after launch, or a message `ANSWER <approval_id> <text>` arrives from `person`. Also on each wake, to sweep answered prompts.
-allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/scripts/org-escalation.sh *) Bash(bash skills/org-escalation/scripts/org-escalation.sh *)
+allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/scripts/org-escalation.sh *) Bash(bash "$PADDOCK_HOME/skills/org-escalation/scripts/org-escalation.sh" *)
 ---
 
 # org-escalation
@@ -10,14 +10,15 @@ allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/scripts/org-escalation.sh *) Bash(b
 Records a worker's question for the person (a card in the cockpit) and forwards the answer. Why it is built this way, how it writes `org-state`, and what is not measured: [references/rationale.md](references/rationale.md). Flags and exit codes: `--help`. On every non-zero exit the script's last line is `next: <action>`: do that, and if it says to ask the person, ask.
 
 ```sh
-bash skills/org-escalation/scripts/org-escalation.sh prompt --task <task_id>|--curator [--then-send "<text>"]
-bash skills/org-escalation/scripts/org-escalation.sh ask    --task <task_id> --question "<one sentence>" [--prompt "<PROMPT= text>"] \
+bash "$PADDOCK_HOME/skills/org-escalation/scripts/org-escalation.sh" prompt --task <task_id>|--curator [--then-send "<text>"]
+bash "$PADDOCK_HOME/skills/org-escalation/scripts/org-escalation.sh" ask    --task <task_id> --question "<one sentence>" [--prompt "<PROMPT= text>"] \
          --background "<why it is asked>" --if-yes "<what Yes does>" --if-no "<what No does>" \
          --recommend yes|no --why "<reason>" --lang <code>
-bash skills/org-escalation/scripts/org-escalation.sh answer --id <approval_id> --text "<answer>" [--note "<the person's note>"] [--from-conversation "<the person's typed line>"]
-bash skills/org-escalation/scripts/org-escalation.sh remove --id <approval_id> [--text yes|no [--note "<note>"] | --from-conversation "<the person's typed line>"]
-bash skills/org-escalation/scripts/org-escalation.sh list
-bash skills/org-escalation/scripts/org-escalation.sh sweep
+bash "$PADDOCK_HOME/skills/org-escalation/scripts/org-escalation.sh" answer --id <approval_id> --text "<answer>" [--note "<the person's note>"] [--from-conversation "<the person's typed line>"]
+bash "$PADDOCK_HOME/skills/org-escalation/scripts/org-escalation.sh" remove --id <approval_id> [--text yes|no [--note "<note>"] | --from-conversation "<the person's typed line>"]
+bash "$PADDOCK_HOME/skills/org-escalation/scripts/org-escalation.sh" list
+bash "$PADDOCK_HOME/skills/org-escalation/scripts/org-escalation.sh" sweep
+bash "$PADDOCK_HOME/skills/org-escalation/scripts/org-escalation.sh" lang   --lang <code>   # record the conversation language for the cockpit
 ```
 
 ## A worker's question or `blocked` report

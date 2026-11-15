@@ -5,6 +5,8 @@ set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 script=$here/skills/secretary-handover/scripts/secretary-handover.sh
 tmp=$(mktemp -d)
+export PADDOCK_BIN_DIR=$tmp/bin-org
+export PADDOCK_STATE_DIR=$tmp/state # org-start places the secretary's rules in <state>/secretary (decision 0014)
 trap 'rm -rf "$tmp"' EXIT
 fail=0
 check() { # check <name> <condition-exit-status>
@@ -44,6 +46,8 @@ chmod +x "$stubdir/hc"
 
 reset() { # reset [idle|working|blocked] [doc|nodoc] [oldterm|noterm]
   rm -rf "$tmp/stub"; mkdir -p "$tmp/stub"; : > "$tmp/stub/calls"
+  mkdir -p "$PADDOCK_STATE_DIR/secretary"; : > "$PADDOCK_STATE_DIR/secretary/AGENTS.md"; echo @AGENTS.md > "$PADDOCK_STATE_DIR/secretary/CLAUDE.md" # placed by org-start
+  mkdir -p "$PADDOCK_BIN_DIR"; echo "$here" > "$PADDOCK_BIN_DIR/paddock-home" # recorded by org-start
   echo "${1:-idle}" > "$tmp/stub/state"
   [ "${2:-doc}" = doc ] && echo '{"jsonrpc":"2.0","id":1,"result":{"value":{"written_at":"2026-11-10T01:00:00Z","last_exchange":"x"},"version":3}}' > "$tmp/stub/doc"
   [ "${3:-oldterm}" = oldterm ] && : > "$tmp/stub/term-${4:-secretary}"
@@ -93,7 +97,7 @@ reset; out=$(run); rc=$?
 k=$(line '^kill '); r=$(line '^rm '); n=$(line '^run '); d=$(line '^connect')
 [ -n "$d" ] && [ -n "$k" ] && [ -n "$r" ] && [ -n "$n" ] && [ "$d" -lt "$k" ] && [ "$k" -lt "$r" ] && [ "$r" -lt "$n" ]
 check "order: read document, kill, rm, run" $?
-grep -q "^run --bg --keep --name secretary --cwd $here secretary ..*" "$calls" \
+grep -q "^run --bg --keep --name secretary --cwd $PADDOCK_STATE_DIR/secretary secretary ..*" "$calls" \
   && grep -qi 'handover' <<<"$(grep '^run ' "$calls")"; check "run is 'hc run --bg --keep --name secretary secretary <task about the handover>'" $?
 [ "$(grep -c '^run ' "$calls")" -eq 1 ]; check "starts exactly one secretary" $?
 ! grep -Eq '^(send|keys|server) ' "$calls"; check "never types into an agent or touches the core" $?
@@ -105,7 +109,7 @@ reset; out=$(run STUB_FIRST_SENT=false); rc=$?
 # Name override.
 reset idle doc oldterm boss; out=$(run PADDOCK_SECRETARY_NAME=boss); rc=$?
 [ "$rc" -eq 0 ] && grep -q '^kill boss' "$calls" && grep -q '^rm boss' "$calls" \
-  && grep -q "^run --bg --keep --name boss --cwd $here secretary " "$calls"; check "PADDOCK_SECRETARY_NAME overrides the terminal name, not the template" $?
+  && grep -q "^run --bg --keep --name boss --cwd $PADDOCK_STATE_DIR/secretary secretary " "$calls"; check "PADDOCK_SECRETARY_NAME overrides the terminal name, not the template" $?
 
 # Idempotence: no old terminal (an earlier run died after rm) still relaunches, no kill/rm.
 reset idle doc noterm; out=$(run); rc=$?

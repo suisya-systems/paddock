@@ -69,6 +69,6 @@ grep -q 'next:' "$skill"; check "SKILL.md points at the next: line" $?
 # The template L95-L96 moved into the skill
 ! grep -q 'org-escalation.sh ask --task' "$tpl"; check "template no longer carries the ask command line" $?
 grep -q 'paddock:org-escalation' "$tpl"; check "template names the paddock:org-escalation skill" $?
-grep -q 'fresh read' "$tpl"; check "template keeps: a prompt is answered only after a fresh read of its screen" $?
+grep -q 'fresh read' "$here/templates/secretary-rules.md"; check "the rules file keeps: a prompt is answered only after a fresh read of its screen" $?
 grep -q -- '--from-conversation "<their line, as typed>"' "$skill" && grep -q 'remove --id <approval_id> --text yes|no' "$skill"; check "SKILL.md carries remove --text and --from-conversation" $?
 [ "$fail" -eq 0 ] && echo "all passed" || { echo "FAILED"; exit 1; }

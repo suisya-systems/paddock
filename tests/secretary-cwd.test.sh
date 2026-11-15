@@ -5,6 +5,7 @@
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
+export PADDOCK_STATE_DIR=$tmp/state # org-start places the secretary's rules in <state>/secretary (decision 0014)
 trap 'rm -rf "$tmp"' EXIT
 fail=0
 check() { if [ "$2" -eq 0 ]; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }
@@ -37,12 +38,12 @@ go() { # go <script> : run from another folder
 }
 
 go "$here/skills/org-start/scripts/org-start.sh"
-grep '^run ' "$calls" | grep -qF -- "--cwd $here "; check "org-start starts the secretary with --cwd <repository root>" $?
+grep '^run ' "$calls" | grep -qF -- "--cwd $PADDOCK_STATE_DIR/secretary "; check "org-start starts the secretary with --cwd <state>/secretary (decision 0014)" $?
 go "$here/skills/secretary-handover/scripts/secretary-handover.sh"
-grep '^run ' "$calls" | grep -qF -- "--cwd $here "; check "secretary-handover relaunches with --cwd <repository root>" $?
+grep '^run ' "$calls" | grep -qF -- "--cwd $PADDOCK_STATE_DIR/secretary "; check "secretary-handover relaunches with --cwd <state>/secretary" $?
 
-body=$(sed '1,/^---$/{/^---$/!d}' "$here/templates/secretary.md")
-grep -qi 'working folder' <<<"$body" && grep -qF -- '--cwd' <<<"$body"
-check "the template body says where the tools are (working folder set by --cwd)" $?
+rules=$here/templates/secretary-rules.md
+grep -qi 'working folder' "$rules" && grep -qF -- '--cwd' "$rules" && grep -qF '$PADDOCK_HOME' "$rules"
+check "the rules file says where the tools are (working folder set by --cwd, scripts under \$PADDOCK_HOME)" $?
 
 exit $fail

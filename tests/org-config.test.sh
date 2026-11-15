@@ -108,7 +108,7 @@ start() {
     bash "$here/skills/org-start/scripts/org-start.sh" >/dev/null 2>&1
 }
 sec config set conversation_language auto >/dev/null; start
-grep -qx "hc run --bg --keep --name secretary --cwd $here secretary" "$calls"; check "language auto: the launch has no task" $?
+grep -qx "hc run --bg --keep --name secretary --cwd $PADDOCK_STATE_DIR/secretary secretary" "$calls"; check "language auto: the launch has no task" $?
 sec config set conversation_language ja >/dev/null; start
 grep "^hc run " "$calls" | grep -q 'Conversation language: ja$'; check "after config set conversation_language ja, org-start's launch task ends with it" $?
 

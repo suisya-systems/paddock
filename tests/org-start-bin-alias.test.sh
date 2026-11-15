@@ -4,6 +4,7 @@
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+export PADDOCK_STATE_DIR=$tmp/state # org-start places the secretary's rules in <state>/secretary (decision 0014)
 mkdir -p "$tmp/bin"
 printf '#!/bin/sh\ncase "$1" in get) exit 1 ;; esac\nexit 0\n' > "$tmp/bin/hc"; chmod +x "$tmp/bin/hc"
 printf '#!/bin/sh\n' > "$tmp/bin/claude"; chmod +x "$tmp/bin/claude" # Issue #268: org-start needs claude on PATH

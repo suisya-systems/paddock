@@ -2,7 +2,7 @@
 name: org-pull-request
 description: Push a finished worker branch, open the PR and record ci_requested so the watcher watches its CI; rerun with --pr to act on the watcher's result for the current head (stop for the person, or merge on that exact head), and to place the changed files again after a landing in the paddock repository.
 when_to_use: A worker reports done and its branch must become a PR; the watcher's CI line (`CI success|failure on PR <n>`, or `CI watch failed`) arrives; the person says a PR is merged; a PR needs a CI rerun on the same commit (`--recheck`).
-allowed-tools: Bash(bash skills/org-pull-request/scripts/org-pull-request.sh:*) Bash(bash ${CLAUDE_SKILL_DIR}/scripts/org-pull-request.sh *)
+allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/scripts/org-pull-request.sh *) Bash(bash "$PADDOCK_HOME/skills/org-pull-request/scripts/org-pull-request.sh" *)
 ---
 
 # org-pull-request
@@ -10,9 +10,9 @@ allowed-tools: Bash(bash skills/org-pull-request/scripts/org-pull-request.sh:*) 
 Pushes a finished worker branch, opens its PR, and acts on the watcher's CI result. Why it is built this way: [references/rationale.md](references/rationale.md). The secretary runs it from its own shell (unlike [org-start](../org-start/SKILL.md), it is meant to run inside an agent).
 
 ```sh
-bash skills/org-pull-request/scripts/org-pull-request.sh \
+bash "$PADDOCK_HOME/skills/org-pull-request/scripts/org-pull-request.sh" \
   --worktree <worker worktree> --title "<English title>" --body-file <file> --task-id <id>   # first run
-bash skills/org-pull-request/scripts/org-pull-request.sh --pr <n> --worktree <worker worktree>  # every rerun
+bash "$PADDOCK_HOME/skills/org-pull-request/scripts/org-pull-request.sh" --pr <n> --worktree <worker worktree>  # every rerun
 ```
 
 Flags are in `--help`. **Every exit prints one line `next: ...`: do exactly that.** It names the rerun, the person to ask, or the worker to send back, so no exit-code table is kept here.

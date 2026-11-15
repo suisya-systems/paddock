@@ -32,11 +32,12 @@ grep -q 'answer --id' "$here/skills/org-clone/SKILL.md" && grep -q 'RESENT' "$he
 grep -q 'org-delegate --repo\|--repo OWNER/NAME' "$here/skills/org-clone/SKILL.md"; check "org-clone SKILL.md points to org-delegate --repo" $?
 
 # The template no longer holds that procedure.
-! grep -q 'skills/org-delegate/scripts/org-delegate.sh' "$tpl"; check "template: no org-delegate script path" $?
-! grep -q 'skills/org-clone/scripts/org-clone.sh' "$tpl"; check "template: no org-clone script path" $?
-! grep -qE 'Exit 10: the worker started|Exit 12: the start record|Exit 5 with a terminal' "$tpl"; check "template: no org-delegate exit-code lines" $?
-! grep -q 'hc run --bg --outlive-parent' "$tpl"; check "template: no hc run recipe for workers" $?
-! grep -qi 'base is stale' "$tpl"; check "template: the stale-base procedure left (it is in the skill)" $?
+! grep -q 'skills/org-delegate/scripts/org-delegate.sh' "$tpl" "$here/templates/secretary-rules.md"; check "template: no org-delegate script path" $?
+! grep -q 'skills/org-clone/scripts/org-clone.sh' "$tpl" "$here/templates/secretary-rules.md"; check "template: no org-clone script path" $?
+! grep -qE 'Exit 10: the worker started|Exit 12: the start record|Exit 5 with a terminal' "$tpl" "$here/templates/secretary-rules.md"; check "template: no org-delegate exit-code lines" $?
+! grep -q 'hc run --bg --outlive-parent' "$tpl" "$here/templates/secretary-rules.md"; check "template: no hc run recipe for workers" $?
+! grep -qi 'base is stale' "$tpl" "$here/templates/secretary-rules.md"; check "template: the stale-base procedure left (it is in the skill)" $?
 grep -q 'paddock:org-delegate' "$tpl"; check "template: still names the skill paddock:org-delegate" $?
-grep -q 'Give each task one worker' "$tpl" && grep -q 'task_id. is short' "$tpl"; check "template: the scoping line (L17) and the task_id line (L20) stay" $?
+rules=$here/templates/secretary-rules.md
+grep -q 'Give each task one worker' "$rules" && grep -q 'task_id. is short' "$rules"; check "rules file: the scoping line (L17) and the task_id line (L20) stay" $?
 exit $fail

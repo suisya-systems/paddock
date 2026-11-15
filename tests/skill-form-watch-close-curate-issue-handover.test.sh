@@ -48,17 +48,17 @@ done
 
 # The template: moved lines are gone, the situations point at the skills, the standing rules stay.
 for p in 'skills/org-close/scripts' 'skills/org-curate/scripts' 'skills/org-issue/scripts' 'skills/secretary-handover/scripts' 'wait --children' 'last_exchange'; do
-  ! grep -qF -- "$p" "$tpl"; check "template no longer carries: $p" $?
+  ! grep -qF -- "$p" "$tpl" "$here/templates/secretary-rules.md"; check "template and rules file do not carry: $p" $?
 done
 for s in $skills; do
   grep -qF "paddock:$s" "$tpl"; check "template names the skill paddock:$s" $?
 done
-grep -Eq 'Never `hc kill` a worker.s terminal before that worker.s report is in the mailbox' "$tpl"; check "template keeps: never kill before the report is in" $?
-grep -Eq 'end your turns idle' "$tpl"; check "template keeps: end your turns idle (the watcher wakes you)" $?
+grep -Eq 'Never `hc kill` a worker.s terminal before that worker.s report is in the mailbox' "$here/templates/secretary-rules.md"; check "rules file keeps: never kill before the report is in" $?
+grep -Eq 'end your turns idle' "$here/templates/secretary-rules.md"; check "rules file keeps: end your turns idle (the watcher wakes you)" $?
 
 # The skills hold what moved.
 has() { grep -qF -- "$2" "$here/skills/$1/SKILL.md"; check "$1 holds: $2" $?; }
-has org-watch 'You have mail: run bash scripts/org --as secretary check_messages and act on it.'
+has org-watch 'You have mail: run bash "$PADDOCK_HOME/scripts/org" --as secretary check_messages and act on it.'
 has org-watch 'wait --children'
 has org-watch '"reason":"message"'
 has org-watch 'CI success|failure on PR'

@@ -141,6 +141,6 @@ grep -F 'ci_completed' "$sk" | grep -qF 'local test run'; check "SKILL.md keeps:
 
 # The template's "Pull request" section is emptied into the skills.
 sec=$here/templates/secretary.md
-! grep -qE 'org-pull-request\.sh|org-update-branch\.sh|ci_requested|--match-head-commit' "$sec"; check "template: no script call or CI record detail for pull requests" $?
+! grep -qE 'org-pull-request\.sh|org-update-branch\.sh|ci_requested|--match-head-commit' "$sec" "$here/templates/secretary-rules.md"; check "template: no script call or CI record detail for pull requests" $?
 grep -q 'paddock:org-pull-request' "$sec"; check "template: names the skill paddock:org-pull-request" $?
 exit $fail

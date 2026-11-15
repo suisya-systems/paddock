@@ -105,7 +105,7 @@ case "$cmd" in
     n=$((n + 0)); m=$((m + 0))
     echo "org-curate: $n unreviewed raw notes, $m pending candidates"
     if [ "$n" -ge 5 ] || [ "$m" -ge 5 ]; then
-      echo "org-curate: start the curator: bash skills/org-curate/scripts/org-curate.sh start (it reads every kept note)"
+      echo "org-curate: start the curator: bash \"\$PADDOCK_HOME/skills/org-curate/scripts/org-curate.sh\" start (it reads every kept note)"
     fi
     ;;
 

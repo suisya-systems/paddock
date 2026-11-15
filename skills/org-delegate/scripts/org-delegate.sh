@@ -65,7 +65,7 @@ die() {
       6) nx="fix the cause the message names and run org-delegate again; if the project or base is wrong, ask the person" ;;
       7) nx="run hc get w-${id:-<task_id>}; if that worker is running, do not start another; otherwise pick another task id" ;;
       12) nx="fix the cause the message names and run org-delegate again (nothing was started)" ;;
-      13) nx="the worker runs; add its work entry by hand with bash scripts/org --as secretary doc update org-state, and do not delegate again" ;;
+      13) nx="the worker runs; add its work entry by hand with bash \"\$PADDOCK_HOME/scripts/org\" --as secretary doc update org-state, and do not delegate again" ;;
       *) nx="read the message above and tell the person" ;;
     esac
   fi
@@ -324,7 +324,7 @@ fi
 # record in list_runs and is not overwritten by this one. A failure that leaves no worker is recorded as blocked.
 bash "$org" --as secretary report start --task "$id" --to secretary \
   "Delegating to $name in $wt on branch $branch (base $base)." >/dev/null 2>&1 \
-  || fail_undone 12 "the start record could not be written (bash scripts/org --as secretary report start); nothing was started"
+  || fail_undone 12 "the start record could not be written (bash \"\$PADDOCK_HOME/scripts/org\" --as secretary report start); nothing was started"
 mark_blocked() { bash "$org" --as secretary report blocked --task "$id" --to secretary "$1" >/dev/null 2>&1; }
 
 # 5. Launch with the task in the launch (decision 0002), labelled so a renewed secretary finds it.
@@ -370,5 +370,5 @@ echo "org-delegate: worker=$name worktree=$wt branch=$branch"
 # launch leaves no entry; see work-entry.sh).
 if [ -n "${havetitle:-}" ]; then
   work_entry_add "$org" "$id" "$(work_entry_json "$id" "$title" "$since" "$wt" "$task")" \
-    || die 13 "$name runs, but the org-state entry could not be written (bash scripts/org --as secretary doc update org-state); add the work entry by hand"
+    || die 13 "$name runs, but the org-state entry could not be written (bash \"\$PADDOCK_HOME/scripts/org\" --as secretary doc update org-state); add the work entry by hand"
 fi

@@ -10,6 +10,7 @@ rules=$here/templates/worker-rules.md
 settings=$here/templates/worker-settings.json
 start=$here/skills/org-start/scripts/org-start.sh
 tmp=$(mktemp -d)
+export PADDOCK_STATE_DIR=$tmp/state # org-start places the secretary's rules in <state>/secretary (decision 0014)
 trap 'rm -rf "$tmp"' EXIT
 fail=0
 check() { # check <name> <condition-exit-status>

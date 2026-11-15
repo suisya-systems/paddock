@@ -55,10 +55,16 @@ command -v bash >/dev/null 2>&1 || { echo "RESULT precondition-failed: bash not 
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/probe116.XXXXXX") || exit 1 # private (0700)
 CWD="$WORK/cwd"; XDG="$WORK/xdg"; mkdir -p "$CWD" "$XDG" || exit 1
+# the handover relaunches in <state>/secretary and refuses unless org-start placed the rules there
+# (decision 0014 F): a private state folder holding the same two files.
+export PADDOCK_STATE_DIR="$WORK/state"; mkdir -p "$PADDOCK_STATE_DIR/secretary" || exit 1
+cp "$ROOT/templates/secretary-rules.md" "$PADDOCK_STATE_DIR/secretary/AGENTS.md" && printf '@AGENTS.md\n' > "$PADDOCK_STATE_DIR/secretary/CLAUDE.md" || exit 1
 
 if [ $DRY -eq 1 ]; then
   # A stand-in hc: files under $STUB say which terminals exist and what the document holds.
   STUB="$WORK/stub"; mkdir -p "$STUB/bin"; export STUB
+  # the handover checks the recorded checkout (org-start writes it on a real host)
+  export PADDOCK_BIN_DIR="$WORK/bin-org"; mkdir -p "$PADDOCK_BIN_DIR" && printf '%s\n' "$ROOT" > "$PADDOCK_BIN_DIR/paddock-home" || exit 1
   echo '{"jsonrpc":"2.0","id":1,"result":{"value":null,"version":0}}' > "$STUB/doc"
   echo 1000 > "$STUB/clock"
   cat > "$STUB/bin/hc" <<'EOF2'
