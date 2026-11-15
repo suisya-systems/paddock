@@ -113,28 +113,32 @@ has '^gh run watch|^gh run list .*--commit '"$head" ; check "the run id is resol
 ! merged && ! has '^gh pr (view|checks)'; check "human mode stops: no merge, no head or checks query" $?
 grep -qi 'human' <<<"$out"; check "the output says the person decides" $?
 
-# ci_completed line.
-[ -f "$evfile" ] && [ "$(wc -l < "$evfile")" -eq 1 ]; check "one line in events/<YYYY-MM>/secretary.jsonl" $?
-l=$(cat "$evfile" 2>/dev/null)
-grep -q '"kind":"ci_completed"' <<<"$l" && grep -q '"seq":1[,}]' <<<"$l"; check "ci_completed line carries kind and seq 1" $?
+# ci_requested (decision 0013, stage 1) then ci_completed: two lines.
+[ -f "$evfile" ] && [ "$(wc -l < "$evfile")" -eq 2 ]; check "two lines in events/<YYYY-MM>/secretary.jsonl (ci_requested, ci_completed)" $?
+r=$(head -1 "$evfile" 2>/dev/null)
+grep -q '"seq":1,' <<<"$r" && grep -q '"kind":"ci_requested","from":"secretary"' <<<"$r" && grep -q '"pr":42,' <<<"$r" \
+  && grep -q "\"sha\":\"$head\"" <<<"$r" && grep -q '"repo":"o/r"' <<<"$r"; check "ci_requested first: from secretary, pr, sha and repo ($r)" $?
+l=$(tail -1 "$evfile" 2>/dev/null)
+grep -q '"kind":"ci_completed"' <<<"$l" && grep -q '"seq":2[,}]' <<<"$l"; check "ci_completed line carries kind and seq 2" $?
 grep -Eq '"ts":"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z"' <<<"$l"; check "ci_completed line carries a UTC ts" $?
 grep -q '"pr":42[,}]' <<<"$l" && grep -q "\"sha\":\"$head\"" <<<"$l" && grep -q '"run_id":777[,}]' <<<"$l" && grep -q '"exit_code":0[,}]' <<<"$l"; check "ci_completed line carries pr, sha, run_id and exit_code" $?
 grep -q '"conclusion":"success"' <<<"$l"; check "ci_completed line carries conclusion success for exit 0" $?
 run_script "${args[@]}" >/dev/null
-[ "$(wc -l < "$evfile")" -eq 2 ] && tail -1 "$evfile" | grep -q '"seq":2[,}]'; check "a second run appends with seq 2 (own file, own sequence)" $?
+[ "$(wc -l < "$evfile")" -eq 4 ] && tail -1 "$evfile" | grep -q '"seq":4[,}]'; check "a second run appends ci_requested and ci_completed, seq 4 (own file, own sequence)" $?
 
 # Run id: retry while no run exists yet.
 reset; ENVX=STUB_RUN_AFTER=2 run_script "${args[@]}" >/dev/null; rc=$?
 [ "$rc" -eq 0 ] && [ "$(grep -c '^gh run list' "$calls")" -eq 3 ]; check "run id found on the third try after two empty answers" $?
 reset; ENVX=STUB_RUN_AFTER=99 run_script "${args[@]}" >/dev/null; rc=$?
-[ "$rc" -eq 7 ] && [ "$(grep -c '^gh run list' "$calls")" -eq 3 ] && ! has '^hc run' && [ ! -e "$evfile" ]; check "no run after PADDOCK_RUN_TRIES exits 7, starts no watcher, records nothing" $?
+[ "$rc" -eq 7 ] && [ "$(grep -c '^gh run list' "$calls")" -eq 3 ] && ! has '^hc run' && ! grep -q ci_completed "$evfile"; check "no run after PADDOCK_RUN_TRIES exits 7, starts no watcher, records no ci_completed" $?
 
 # hc wait JSON parse.
 reset; ENVX=STUB_WATCH_CODE=1 run_script "${args[@]}" >/dev/null; rc=$?
 [ "$rc" -eq 9 ]; check "CI failure (exit_code 1) exits 9" $?
 grep -q '"exit_code":1[,}]' "$evfile" && grep -q '"conclusion":"failure"' "$evfile"; check "a failed run is recorded too (exit_code 1, failure)" $?
 reset; ENVX='STUB_WAIT_RAW={"ended":true,"exit_code":null,"reason":"signal","signal":9}' run_script "${args[@]}" >/dev/null; rc=$?
-[ "$rc" -eq 8 ] && [ ! -e "$evfile" ]; check "a wait without an integer exit_code exits 8 and records nothing" $?
+[ "$rc" -eq 8 ] && ! grep -q ci_completed "$evfile"; check "a wait without an integer exit_code exits 8 and records no ci_completed" $?
+grep -q '"kind":"ci_requested"' "$evfile"; check "the watcher's ci_requested is written before the skill's own watch" $?
 reset; ENVX=STUB_WAIT_RAW=garbage run_script "${args[@]}" >/dev/null; rc=$?
 [ "$rc" -eq 8 ]; check "unparseable wait output exits 8" $?
 reset; ENVX='STUB_WAIT_RAW={"children":[],"ended":true,"exit_code":0,"reason":"exit","signal":null,"status":null,"terminal":"t2d","turn":0}' run_script "${args[@]}" >/dev/null; rc=$?

@@ -275,7 +275,7 @@ fi
 # window. It carries paddock_role=watcher, so org-down ends it and no other terminal of that name.
 # A terminal gets the core's environment, not this shell's, so what the watcher reads is passed in the command.
 wenv=("PADDOCK_SECRETARY_NAME=$name")
-for v in PADDOCK_STATE_DIR XDG_STATE_HOME PADDOCK_WATCH_N PADDOCK_WATCH_INTERVAL PADDOCK_POWERSHELL; do
+for v in PADDOCK_STATE_DIR XDG_STATE_HOME PADDOCK_WATCH_N PADDOCK_WATCH_INTERVAL PADDOCK_WATCH_WAKE PADDOCK_POWERSHELL; do
   [ -z "${!v:-}" ] || wenv+=("$v=${!v}")
 done
 wname=${PADDOCK_WATCHER_NAME:-watcher}
