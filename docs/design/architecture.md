@@ -84,7 +84,7 @@ paddock adds the components below. Each must be written in an environment herdr 
 2. The secretary's delegation skill creates a worktree and launches a worker from the `worker` template with `hc run --bg`, putting the task in the launch and `task_id` in a label.
 3. herdr-core waits for the worker's first status report before sending the opening message, and reports whether it was sent. Outside a trusted folder the report does not come until Claude Code's folder-trust dialog is answered, so the message is not sent; worktrees under the trusted workers folder do not stop there ([Q13](open-questions.md#q13-how-does-a-new-worktree-get-past-claude-codes-folder-trust-dialog)).
 4. The worker works. Its status flows through OSC 7501 into herdr-core, and from there to the window and to the secretary's `hc get` / `hc ls`.
-5. The worker reports with the `org` command `report` (or `send_message`). The secretary reads it with `check_messages` each time its `org wait` returns (at once on new mail) and at the end of its turn ([Q18](open-questions.md#q18-how-does-anything-reach-an-idle-agent)).
+5. The worker reports with the `org` command `report` (or `send_message`). The write nudges an idle secretary (`hc send --if idle`, Issue #385), which reads it with `check_messages`; mail that came while it was working is caught by its `Stop` hook before the turn ends ([Q18](open-questions.md#q18-how-does-anything-reach-an-idle-agent)).
 
 ### 6.2 A worker is stuck
 

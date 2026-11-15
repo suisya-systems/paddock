@@ -23,6 +23,8 @@ Messages between agents go through the organization's mailbox: an `org` mailbox 
 
 One more use (Issue #282): after `org-escalation answer`, an `idle` worker gets one `hc send --if idle` that only tells it to run `check_messages`. The answer itself still travels in the mailbox. A worker that has ended its turn starts no next turn without outside input, so a mailbox message alone never wakes it. A working worker is not touched, and a refused nudge does not fail the answer.
 
+Widened by Issue #385 (owner, 2026-11-15): every write to the secretary's mailbox (`scripts/org`, any writer: the card's `ANSWER`, a worker's report or message) is followed by one `hc send --if idle` (then `--if done`) to the secretary's terminal, telling it only to run `check_messages`. A worker's own write cannot reach the core from its sandbox, so its `PostToolUse` hook runs `org nudge` outside it. The secretary no longer waits in `org wait --children` between turns; its `Stop` hook catches mail that came while it was working.
+
 ## Consequences
 
 - Status, messages and signals stay on three separate channels (OSC 7501 status in herdr-core, the mailbox, and window notifications), as the [architecture](../design/architecture.md#2-design-principles) requires.
