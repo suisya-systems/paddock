@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Acceptance test for Issue #282: an answer forwarded to an idle worker must start its next turn.
-# `org-escalation answer` puts the answer in the worker's mailbox; a worker that ended its turn
-# (status idle) never reads it, so the script must also nudge it with `hc send --if idle`.
-# A working worker is not interrupted. hc is a stub on PATH; scripts/org is the real one.
+# Issue #282, rewritten for decision 0013 stage 3: an answer forwarded to an idle worker must start its
+# next turn. `org-escalation answer` only puts the answer in the worker's mailbox and types nothing;
+# org-watch wakes an idle or done worker with unread mail (tests/org-watch-wake.test.sh, "idle worker
+# with unread mail"), and what it reads is the worker's check_messages --peek, checked here.
+# hc is a stub on PATH; scripts/org is the real one.
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 script=$here/skills/org-escalation/scripts/org-escalation.sh
@@ -48,15 +49,9 @@ run() { # run <state> <send rc>: ask, then answer, as the secretary
 
 run idle; rc=$?
 [ $rc -eq 0 ]; check "answer to an idle worker exits 0" $?
-grep -q '^send --if idle w-t1 ' "$STUB/calls"; check "an idle worker is nudged with hc send --if idle" $?
-grep '^send ' "$STUB/calls" | grep -q 'check_messages'; check "the nudge tells it to run check_messages" $?
-env -u PADDOCK_ORG_ID PADDOCK_STATE_DIR="$state" PADDOCK_NOW=$now bash "$org" --as w-t1 check_messages 2>&1 | grep -q 'Answer to your question'
-check "the answer is still in the mailbox" $?
-
-run working
-grep -q '^send ' "$STUB/calls"; [ $? -ne 0 ]; check "a working worker is not nudged" $?
-
-run idle 10; rc=$?
-[ $rc -eq 0 ]; check "a refused nudge (exit 10) does not fail the answer" $?
+! grep -q '^send' "$STUB/calls"; check "answer types nothing into the worker (no #282 nudge; the watcher wakes it)" $?
+env -u PADDOCK_ORG_ID PADDOCK_STATE_DIR="$state" PADDOCK_NOW=$now bash "$org" --as w-t1 check_messages --peek 2>&1 | grep -q 'Answer to your question'
+check "the answer is unread in the worker's mailbox, which is what the watcher's wake reads" $?
+! grep -q 'hc send --if idle' "$script"; check "org-escalation.sh has no idle-worker send left" $?
 
 exit $fail

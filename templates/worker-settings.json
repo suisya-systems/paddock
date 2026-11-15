@@ -41,17 +41,6 @@
           }
         ]
       }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "^Bash$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "[ -z \"${PADDOCK_ORG:-}\" ] || ! grep -Eq 'report|send_message' || bash \"$PADDOCK_ORG\" --as nudge nudge >/dev/null 2>&1; exit 0"
-          }
-        ]
-      }
     ]
   },
   "sandbox": {

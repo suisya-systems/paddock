@@ -58,7 +58,6 @@ cat > "$stubdir/hc" <<'EOF2'
 #!/bin/sh
 echo "hc $*" >> "$STUB/calls"
 case $1 in
-  wait) echo '{"children":[],"ended":true,"exit_code":0,"reason":"exit","signal":null,"status":null,"terminal":"t","turn":0}'; exit 0 ;;
   connect) cat >/dev/null; echo '{"jsonrpc":"2.0","id":1,"result":{"value":null,"version":0}}'; exit 0 ;;
   get) [ -f "$STUB/secretary" ] || { echo '{"error":{"kind":"not_found"}}'; exit 1; }
        echo '{"name":"secretary","state":"live","status":{"app":"claude-code","state":"idle"}}'; exit 0 ;;
@@ -71,7 +70,6 @@ cat > "$stubdir/gh" <<'EOF2'
 echo "gh $*" >> "$STUB/calls"
 case "$1 $2" in
   "pr create") echo "https://github.com/o/r/pull/42" ;;
-  "run list") echo 777 ;;
   "pr view") cat "$STUB/head" ;;
 esac
 exit 0
@@ -87,11 +85,13 @@ git -C "$wt" checkout -q -b feat/x
 git -C "$wt" -c user.name=t -c user.email=t@t commit -q --allow-empty -m one
 git -C "$wt" rev-parse HEAD > "$tmp/stub/head"
 body=$tmp/body.md; echo body > "$body"
-pr() { # a fresh empty origin for each run, then the script
+pr() { # a fresh empty origin for each run; the watcher's CI success for the head (decision 0013), then the --pr rerun
   n=$((n + 1)); git init -q --bare "$tmp/o$n.git"; git -C "$wt" remote set-url origin "$tmp/o$n.git"
+  env -u PADDOCK_NOW bash "$org" --as secretary ci_requested --pr 42 --sha "$(cat "$tmp/stub/head")" --repo o/r >/dev/null
+  env -u PADDOCK_NOW bash "$org" --as watcher ci_completed --pr 42 --sha "$(cat "$tmp/stub/head")" --repo o/r --run-id 777 --exit-code 0 >/dev/null
   : > "$calls"
-  env -u PADDOCK_NOW STUB="$tmp/stub" PADDOCK_RUN_SLEEP=0 PADDOCK_RUN_TRIES=3 PATH="$stubdir:$PATH" \
-    bash "$here/skills/org-pull-request/scripts/org-pull-request.sh" --worktree "$wt" --repo o/r --title t --body-file "$body" >/dev/null 2>&1
+  env -u PADDOCK_NOW STUB="$tmp/stub" PATH="$stubdir:$PATH" \
+    bash "$here/skills/org-pull-request/scripts/org-pull-request.sh" --worktree "$wt" --repo o/r --pr 42 >/dev/null 2>&1
 }
 pr; ! grep -q '^gh pr merge' "$calls"; check "no setting: org-pull-request does not merge (human)" $?
 sec config set merge_approval_mode acceptance >/dev/null

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Acceptance test for Issue #168: the ci_completed record goes through scripts/org (one writer
 # path, one sequence, the per-id lock, the same events folder). hc and gh are stubbed as in
-# tests/org-pull-request-review.test.sh; nothing reaches GitHub and no core runs.
+# tests/org-pull-request-review.test.sh; nothing reaches GitHub and no core runs. Since decision 0013
+# stage 3 the skill's own record is ci_requested (the watcher writes ci_completed), so the writer-path
+# checks below are made on that line.
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
@@ -41,18 +43,18 @@ seqs() { # seqs <events dir>: secretary's seq numbers in write order (last month
 }
 increasing() { awk '{ for (i = 2; i <= NF; i++) if ($i + 0 <= $(i - 1) + 0) exit 1 }' <<<"$1"; }
 
-# 1. A ci_completed record written between two secretary messages, across a month boundary.
+# 1. A ci_requested record written between two secretary messages, across a month boundary.
 x=$tmp/xdg1; ev=$x/paddock/events
 for t in m1 m2 m3; do o "$x" "$now_prev" --as secretary send_message w-t1 "$t" >/dev/null; done
 o "$x" "$now_cur" --as secretary send_message w-t1 first >/dev/null
 o "$x" "$now_cur" --as w-t1 check_messages >/dev/null # reads and acks "first"
 out=$(pr "$x"); rc=$?
-[ "$rc" -eq 0 ]; check "org-pull-request exits 0 with stubbed CI ($out)" $?
-grep -q '"kind":"ci_completed"' "$ev/$cur/secretary.jsonl" 2>/dev/null; check "the ci_completed line is in the secretary's file under scripts/org's events folder" $?
+[ "$rc" -eq 0 ]; check "org-pull-request exits 0 (PR opened, CI requested) ($out)" $?
+grep -q '"kind":"ci_requested"' "$ev/$cur/secretary.jsonl" 2>/dev/null; check "the ci_requested line is in the secretary's file under scripts/org's events folder" $?
 o "$x" "$now_cur" --as secretary send_message w-t1 later >/dev/null
 s=$(seqs "$ev")
-increasing "$s" && [ "$(wc -w <<<"$s")" -eq 7 ]; check "secretary's seq is strictly increasing across messages, ci_requested and ci_completed (got: $s)" $?
-o "$x" "$now_cur" --as w-t1 check_messages --peek | grep -q '^later$'; check "the reader sees the message after ci_completed as unread" $?
+increasing "$s" && [ "$(wc -w <<<"$s")" -eq 6 ]; check "secretary's seq is strictly increasing across messages and ci_requested (got: $s)" $?
+o "$x" "$now_cur" --as w-t1 check_messages --peek | grep -q '^later$'; check "the reader sees the message after ci_requested as unread" $?
 
 # 2. History already damaged by the old writer (a ci_completed line with a lower seq at the
 #    end of this month's file): the next message must still be new to the reader.
@@ -68,13 +70,13 @@ o "$x" "$now_cur" --as w-t1 check_messages --peek | grep -q '^later$'; check "af
 # 3. Both scripts resolve the events folder the same way: PADDOCK_STATE_DIR wins for both.
 x=$tmp/xdg3; st=$tmp/st3
 pr "$x" PADDOCK_STATE_DIR="$st" >/dev/null
-grep -q '"kind":"ci_completed"' "$st/events/$cur/secretary.jsonl" 2>/dev/null && [ ! -e "$x/paddock/events" ]; check "with PADDOCK_STATE_DIR set, ci_completed is written under \$PADDOCK_STATE_DIR/events only" $?
+grep -q '"kind":"ci_requested"' "$st/events/$cur/secretary.jsonl" 2>/dev/null && [ ! -e "$x/paddock/events" ]; check "with PADDOCK_STATE_DIR set, ci_requested is written under \$PADDOCK_STATE_DIR/events only" $?
 
-# 4. The lock: while a live holder has the secretary's lock, ci_completed is not written.
+# 4. The lock: while a live holder has the secretary's lock, ci_requested is not written.
 x=$tmp/xdg4; ev=$x/paddock/events
 mkdir -p "$x/paddock/locks/secretary/lock"; echo $$ > "$x/paddock/locks/secretary/lock/pid"
 pr "$x" PADDOCK_LOCK_WAIT=1 >/dev/null; rc=$?
-[ "$rc" -eq 12 ] && ! grep -qs ci_completed "$ev/$cur/secretary.jsonl"; check "a held lock stops the write: exit 12, no line (rc $rc)" $?
+[ "$rc" -eq 12 ] && ! grep -qs ci_requested "$ev/$cur/secretary.jsonl"; check "a held lock stops the write: exit 12, no line (rc $rc)" $?
 
 # 5. The subcommand itself: same fields as before, canonical numbers only.
 x=$tmp/xdg5; ev=$x/paddock/events

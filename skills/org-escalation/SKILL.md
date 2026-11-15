@@ -57,7 +57,7 @@ ANSWER <approval_id> <text>
 
 `answer` sends first and removes second. A failed send keeps the entry (exit 8); a failed removal after the send exits 9 and says to run `remove`, so the worker is never left without its answer.
 
-After the send, a worker whose status is `idle` (it ended its turn and will not read its mailbox) gets one `hc send --if idle` telling it to run `check_messages`. A working worker is not interrupted; a refused nudge does not change the exit code.
+`answer` types nothing into the worker. A worker that ended its turn idle or done with this unread mail is woken by [org-watch](../org-watch/SKILL.md) (decision 0013), with the same guards as for the secretary.
 
 ## Exit codes
 

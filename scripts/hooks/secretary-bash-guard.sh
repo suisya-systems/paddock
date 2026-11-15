@@ -42,7 +42,7 @@ b='(^|[^[:alnum:]_.-])'   # a command word starts here
 # ponytail: everything after `hc run ... --bg` on the joined text is cut, a blocking call chained after it passes
 fg=$(printf '%s\n' "$text" | sed -E "s/${b}hc[[:space:]]+run[[:space:]]+([^;&|]*[[:space:]])?--bg([[:space:]].*)?\$/\\1/")
 refuse() { echo "org: refused: $1" >&2; exit 2; }
-wait_hint='while a shell call runs you take no input. Run it in a background terminal (hc run --bg), or let the skill watch it (org-pull-request: hc wait ci-<pr>), then end the turn in org wait --children, which also returns when the person types (Issue #378)'
+wait_hint='while a shell call runs you take no input. Run it in a background terminal (hc run --bg), or let the watcher watch CI (org-pull-request writes ci_requested), then end the turn: the watcher wakes you on mail (decision 0013)'
 
 printf '%s\n' "$text" | grep -Eq "${b}hc[[:space:]]+(keys([[:space:]]|;|$)|send([[:space:]][^;&|]*)?[[:space:]](--force|-f)([[:space:]]|;|$))" &&
   refuse 'keys reach a worker only through org-escalation.sh prompt or answer, after a fresh screen read (L-N3, Issue #260)'

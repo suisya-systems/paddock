@@ -139,8 +139,8 @@ ORGENV=PADDOCK_NOW=2026-02-01T00:00:05Z org --as w7 send_message secretary 'feb'
 
 # Nothing above touched hc, and everything survives a fresh process with no hc at all
 # (the window, or the whole core, may be gone).
-# Issue #385: the one hc call they make is the nudge to the secretary after a write to it.
-! grep -Ev '^(send (--if idle )?secretary |get --json secretary$)' "$STUB/calls" | grep -q .; check "the mailbox commands call hc only to nudge the secretary" $?
+# Decision 0013 stage 3: no per-write nudge any more, so no hc call at all.
+! grep -q . "$STUB/calls"; check "the mailbox commands never call hc" $?
 out=$(env -u PADDOCK_ORG_ID PADDOCK_STATE_DIR="$state" PATH="/usr/bin:/bin" bash "$script" --as secretary list_runs 2>&1); r=$?
 [ "$r" -eq 0 ] && grep -q 't5' <<<"$out"; check "with no hc on PATH the records are still readable" $?
 

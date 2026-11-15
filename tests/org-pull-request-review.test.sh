@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Review fixes for org-pull-request (stubbed hc and gh). Separate file: the acceptance test stays as declared.
+# Review fixes for org-pull-request (stubbed gh). Separate file: the acceptance test stays as declared.
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
@@ -28,7 +28,10 @@ done
 : > "$calls"; run --task-id t1.a_b-2 >/dev/null; rc=$?
 [ "$rc" -eq 0 ] && grep -q '"task_id":"t1.a_b-2"' "$tmp"/st/events/*/secretary.jsonl; check "a plain task id is recorded as given" $?
 
-# Acceptance mode waits for the other required checks of the head instead of refusing while they run.
-: > "$calls"; run --mode acceptance >/dev/null; rc=$?
+# Acceptance mode waits for the other required checks of the head instead of refusing while they run
+# (on the --pr rerun, once the watcher recorded CI green for the head: decision 0013).
+env -u PADDOCK_NOW -u PADDOCK_ORG_ID PADDOCK_STATE_DIR="$tmp/st" PATH=/usr/bin:/bin bash "$here/scripts/org" --as watcher ci_completed \
+  --pr 42 --sha "$(cat "$tmp/stub/head")" --repo o/r --run-id 777 --exit-code 0 >/dev/null
+: > "$calls"; run --pr 42 --mode acceptance >/dev/null; rc=$?
 [ "$rc" -eq 0 ] && grep -Eq '^gh pr checks 42 .*--required .*--watch' "$calls"; check "acceptance waits on the required checks (--watch)" $?
 exit $fail

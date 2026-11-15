@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# org-pull-request: push a worker's branch, open the PR, record ci_requested for the watcher
-# (decision 0013), watch CI as a child terminal, record ci_completed, then stop (human) or merge
-# (acceptance). Needs bash, git, gh and hc.
+# org-pull-request: push a worker's branch, open the PR and record ci_requested; org-watch watches
+# CI and records ci_completed (decision 0013). With --pr, act on that record for the current head:
+# stop (human) or merge (acceptance). Needs bash, git and gh.
 # See ../SKILL.md. Run it from the secretary.
 set -u
 
@@ -10,10 +10,10 @@ usage() {
 Usage: org-pull-request.sh --title TITLE (--body-file FILE | --body TEXT) [options]
        org-pull-request.sh --pr N [options]
 
-Pushes the worktree's branch to origin, opens a PR, appends ci_requested (org-watch watches
-the head too and mails its own result, decision 0013), watches its CI run as a background
-child (hc run --bg ... gh run watch --exit-status, then hc wait), appends a ci_completed
-line to the secretary's history with scripts/org, then acts by approval mode.
+Pushes the worktree's branch to origin, opens a PR and appends ci_requested for its head:
+org-watch watches CI, records ci_completed (or ci_watch_failed) and mails the secretary
+(decision 0013). With --pr N it reads the watcher's record for the current head and acts by
+approval mode; a head with no request yet, or whose watch failed, is requested (once).
 
 Options:
   --worktree DIR     the worker's worktree (default: current directory)
@@ -21,21 +21,22 @@ Options:
                      never guessed from anything else)
   --project NAME     a project name in projects.md; its base is the default base
   --base BRANCH      base branch (default: the project row's base, else main)
-  --task-id ID       recorded in the ci_requested and ci_completed lines
+  --task-id ID       recorded in the ci_requested line
   --mode MODE        human | acceptance (default: merge_approval_mode in org-config.md, else human)
-  --pr N             use an open PR instead of creating one (still pushes)
+  --pr N             use an open PR instead of creating one (still pushes), and act on
+                     the watcher's CI record for its head
   -h, --help         this text
 
 Environment overrides:
-  PADDOCK_STATE_DIR   scripts/org's state folder; the line goes to its events/ (default
+  PADDOCK_STATE_DIR   scripts/org's state folder, whose events/ holds the records (default
                       ${XDG_STATE_HOME:-~/.local/state}/paddock)
-  PADDOCK_RUN_TRIES   tries to find the CI run (default 10)
-  PADDOCK_RUN_SLEEP   seconds between tries (default 6)
+  PADDOCK_NOW         fixes the clock (UTC ISO 8601), for the months read
 
-Exit codes: 0 done (human: CI green, the person decides; acceptance: merged), 2 bad argument,
-3 hc, gh or git not found, 5 push failed, 6 PR could not be created, 7 no CI run found,
-8 watch result unreadable, 9 CI failed, 10 merge refused (head moved or required checks
-not green), 11 merge failed, 12 events line could not be written.
+Exit codes: 0 done (no --pr: PR opened, CI requested; --pr, human: CI green, the person
+decides; --pr, acceptance: merged), 2 bad argument, 3 gh or git not found, 4 no CI result
+recorded for the head yet (requested now or still watched; the watcher mails it), 5 push
+failed, 6 PR could not be created, 9 CI failed, 10 merge refused (head moved or required
+checks not green), 11 merge failed, 12 the ci_requested line could not be written.
 USAGE
 }
 
@@ -77,7 +78,7 @@ if [ -z "$repo" ]; then # owner/name from a GitHub origin URL only
   [ -n "$repo" ] || die 2 "cannot read OWNER/NAME from the origin URL; pass --repo"
 fi
 
-for c in git gh hc; do command -v "$c" >/dev/null 2>&1 || die 3 "$c not found on PATH"; done
+for c in git gh; do command -v "$c" >/dev/null 2>&1 || die 3 "$c not found on PATH"; done
 branch=$(git -C "$wt" symbolic-ref --short HEAD 2>/dev/null) || die 2 "no branch checked out in $wt"
 sha=$(git -C "$wt" rev-parse HEAD) || die 2 "$wt is not a git worktree"
 
@@ -102,6 +103,7 @@ if [ -z "$pr" ] && [ -n "$task" ]; then
 fi
 
 # 2. PR
+prgiven=$pr
 if [ -z "$pr" ]; then
   args=(--repo "$repo" --head "$branch" --base "$base" --title "$title")
   if [ -n "$bodyfile" ]; then args+=(--body-file "$bodyfile"); else args+=(--body "$body"); fi
@@ -117,36 +119,41 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 org=$root/scripts/org
 targs=(); [ -z "$task" ] || targs=(--task "$task")
 
-# 2b. decision 0013, stage 1: ask the watcher to watch CI of this head too. Its own result comes
-# later as a mailbox line (from watcher); this script still watches and records as below. A failed
-# write only warns, so today's watch is unchanged.
-bash "$org" --as secretary ci_requested --pr "$pr" --sha "$sha" --repo "$repo" "${targs[@]}" \
-  || echo "org-pull-request: warning: the ci_requested line could not be written; the watcher will not watch PR $pr" >&2
+# 3. the head's CI state from the records (this calendar month and the last, as org-watch reads them):
+# the secretary's latest ci_requested for repo, pr and sha, and the watcher's latest ci_completed or
+# ci_watch_failed at or after it. The skill's own old ci_completed lines (from secretary) do not count.
+ev=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/events
+cur=$(printf '%s' "${PADDOCK_NOW:-}" | cut -c1-7); [ -n "$cur" ] || cur=$(date -u +%Y-%m)
+y=${cur%-*}; m=$((10#${cur#*-} - 1)); [ "$m" -gt 0 ] || { m=12; y=$((10#$y - 1)); }
+ci=$(for d in "$ev/$(printf '%04d-%02d' "$((10#$y))" "$m")" "$ev/$cur"; do
+    [ ! -f "$d/secretary.jsonl" ] || grep -h '"kind":"ci_requested"' "$d/secretary.jsonl" | sed 's/^/R /'
+    [ ! -f "$d/watcher.jsonl" ] || grep -hE '"kind":"(ci_completed|ci_watch_failed)"' "$d/watcher.jsonl" | sed 's/^/D /'
+  done | K="$repo $pr $sha" awk '
+    function v(k) { if (match($0, "\"" k "\":\"[^\"]*\"")) return substr($0, RSTART + length(k) + 4, RLENGTH - length(k) - 5)
+                    if (match($0, "\"" k "\":[0-9]+")) return substr($0, RSTART + length(k) + 3, RLENGTH - length(k) - 3); return "" }
+    v("repo") " " v("pr") " " v("sha") != ENVIRON["K"] { next }
+    $1 == "R" { if (v("ts") >= rt) rt = v("ts"); next }
+    { if (v("ts") >= dt) { dt = v("ts"); dk = v("kind"); dc = v("conclusion"); dr = v("run_id"); dw = v("reason") } }
+    END { if (rt == "") print "none"; else if (dt == "" || dt < rt) print "open"
+          else if (dk == "ci_completed") print dc, dr; else print "failed", dw, dt }')
+case $ci in
+  none|failed*)
+    # no request for this head, or its watch failed: ask the watcher (once: an open request is not repeated)
+    # A request is open only when it is later than the watcher's last line (ts has whole seconds), so a
+    # new one in the same second as that ci_watch_failed would read as closed: wait for the next second.
+    # ponytail: one sleep of up to 1 s, only on that rerun.
+    case $ci in failed*) [ "${ci##* }" != "$(date -u +%Y-%m-%dT%H:%M:%SZ)" ] || sleep 1 ;; esac
+    bash "$org" --as secretary ci_requested --pr "$pr" --sha "$sha" --repo "$repo" "${targs[@]}" \
+      || die 12 "the ci_requested line could not be written (scripts/org --as secretary ci_requested); nothing watches PR $pr"
+    w=; [ "$ci" = none ] || { w=${ci#failed }; w=" again (the last watch failed: ${w% *})"; }
+    echo "CI requested for $sha$w; the watcher mails the result. PR: $url" ;;
+  open) echo "CI of $sha is still watched (requested before); the watcher mails the result. PR: $url" ;;
+esac
+case $ci in none|failed*|open) [ -z "$prgiven" ] || exit 4; exit 0 ;; esac
+run=${ci#* }; concl=${ci%% *}
+[ "$concl" = success ] || die 9 "CI failed on $sha (conclusion $concl, run $run, recorded by the watcher); PR $url"
 
-# 3. CI run id from the head sha, retrying while no run exists yet
-tries=${PADDOCK_RUN_TRIES:-10}; run=
-while [ "$tries" -gt 0 ]; do
-  run=$(gh run list --repo "$repo" --commit "$sha" --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null)
-  case $run in ""|*[!0-9]*) run= ;; *) break ;; esac
-  tries=$((tries - 1)); [ "$tries" -le 0 ] || sleep "${PADDOCK_RUN_SLEEP:-6}"
-done
-[ -n "$run" ] || die 7 "no CI run for $sha after ${PADDOCK_RUN_TRIES:-10} tries"
-
-# 3b. watch it as a child, then wait: measured in MON-12.
-name=ci-$pr
-hc run --bg --rm --no-notify --name "$name" -- gh run watch "$run" --repo "$repo" --exit-status >/dev/null \
-  || die 8 "hc run could not start the watcher $name"
-res=$(hc wait "$name" 2>&1 | tr -d '\n')
-code=$(printf '%s' "$res" | sed -n 's/.*"exit_code": *\([0-9][0-9]*\).*/\1/p')
-[ -n "$code" ] || die 8 "no integer exit_code in the hc wait answer: $res"
-
-# 4. ci_completed through scripts/org: the secretary's folder, seq and lock.
-bash "$org" --as secretary ci_completed --pr "$pr" --sha "$sha" --run-id "$run" --exit-code "$code" "${targs[@]}" \
-  || die 12 "the ci_completed line could not be written (scripts/org --as secretary ci_completed)"
-
-[ "$code" -eq 0 ] || die 9 "CI failed on $sha (exit_code $code, run $run); PR $url"
-
-# 5. approval mode: argument, else merge_approval_mode in org-config.md (Q14; org config set), else human
+# 4. approval mode: argument, else merge_approval_mode in org-config.md (Q14; org config set), else human
 if [ -z "$mode" ]; then
   m=$(bash "$org" --as secretary config get merge_approval_mode 2>/dev/null)
   case $m in acceptance) mode=acceptance ;; *) mode=human ;; esac
