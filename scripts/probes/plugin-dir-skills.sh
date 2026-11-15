@@ -23,9 +23,10 @@
 #               RESULT H4-invoke PASS = the reply carries SKILL-TEXT-V1 (text only the skill
 #               has).
 #               H5: the skill has allowed-tools: Bash(bash <plugin>/skills/h4-marker/scripts/marker.sh:*).
-#               The probe watches `hc get` for state "blocked" during S2 (a permission prompt).
-#               RESULT H5-allowed-tools PASS = marker.sh ran (file marker-ran exists) and the
-#               terminal was never blocked. FAIL = it ran after a prompt (not pre-approved).
+#               The probe watches `hc get` for state "blocked" during S2 and files each prompt:
+#               "Use skill ...?" (the Skill tool itself; seen in the first host runs) apart from a
+#               Bash prompt. RESULT H5-allowed-tools PASS = marker.sh ran (file marker-ran exists)
+#               and no Bash prompt appeared. FAIL = a Bash prompt appeared for the script.
 #   S3 edit     rewrites SKILL-TEXT-V1 to SKILL-TEXT-V2 in the plugin's SKILL.md while the
 #               terminal runs, then asks for ZEBRA-PLUM again and to invoke the skill again.
 #               RESULT H4-edit-live PASS = SKILL-TEXT-V2 appears in the reply.
@@ -43,7 +44,7 @@
 #               blocked; RESULT H5-control PASS = it was. If it was not, the terminal is not
 #               asking at all and H5-allowed-tools is void.
 # Not measured: allowed-tools with a relative path (the decision's example) when the cwd is not
-# the checkout, and ${CLAUDE_SKILL_DIR} in allowed-tools. This probe uses an absolute path.
+# the checkout. The forms tried use an absolute path or ${CLAUDE_SKILL_DIR}.
 # Paste the whole output back, plus `hc --version` and `claude --version` (printed at the top).
 set -u
 
@@ -126,11 +127,15 @@ BLOCKED=no
 # Waits for the terminal to be idle; sets BLOCKED=yes if it was ever blocked (a permission
 # prompt) and answers it with Enter (yes) so the run goes on.
 wait_idle() { # $1 = max seconds
-  BLOCKED=no; sleep 10; i=10
+  BLOCKED=no; SKILLP=no; BASHP=no; sleep 10; i=10
   while [ $i -lt "$1" ]; do
     is_idle && return 0
     if state_is blocked; then
-      [ $BLOCKED = no ] && { echo "-- BLOCKED, the prompt on screen (then answered with Enter):"; screen | tail -22; }
+      # Two different prompts: "Use skill ...?" (the Skill tool itself) and a Bash command prompt.
+      # Only the Bash one says anything about allowed-tools (BASHP).
+      snap=$(screen | tail -22)
+      echo "-- BLOCKED, the prompt on screen (then answered with Enter):"; printf '%s\n' "$snap"
+      case "$snap" in *"Use skill"*) SKILLP=yes ;; *) BASHP=yes ;; esac
       BLOCKED=yes; hc keys $NAME enter >/dev/null 2>&1
     fi
     i=$((i + 3)); sleep 3
@@ -217,8 +222,8 @@ must_idle 240
 show S2 30
 v1=$(count 'SKILL-TEXT-V1')
 [ "$v1" -ge 1 ]; verdict "RESULT H4-invoke" $?
-if [ -f "$ROOT/marker-ran" ] && [ "$BLOCKED" = no ]; then echo "RESULT H5-allowed-tools: PASS (script ran, never blocked)"
-elif [ -f "$ROOT/marker-ran" ]; then echo "RESULT H5-allowed-tools: FAIL (script ran only after a permission prompt)"
+if [ -f "$ROOT/marker-ran" ] && [ "$BASHP" = no ]; then echo "RESULT H5-allowed-tools: PASS (script ran, no Bash prompt; skill prompt: $SKILLP)"
+elif [ -f "$ROOT/marker-ran" ]; then echo "RESULT H5-allowed-tools: FAIL (a Bash prompt appeared for the script; skill prompt: $SKILLP)"
 else echo "RESULT H5-allowed-tools: NO DATA (the script did not run; was the skill invoked?)"; fi
 
 echo "== S2b allowed-tools forms (H5 variants)"
@@ -228,8 +233,8 @@ for v in b c; do
   hc send $NAME "$W"
   must_idle 240
   show S2$v 20
-  if [ -f "$ROOT/marker-ran-$v" ] && [ "$BLOCKED" = no ]; then echo "RESULT H5-allowed-tools-$v: PASS (script ran, never blocked)"
-  elif [ -f "$ROOT/marker-ran-$v" ]; then echo "RESULT H5-allowed-tools-$v: FAIL (script ran only after a permission prompt)"
+  if [ -f "$ROOT/marker-ran-$v" ] && [ "$BASHP" = no ]; then echo "RESULT H5-allowed-tools-$v: PASS (script ran, no Bash prompt; skill prompt: $SKILLP)"
+  elif [ -f "$ROOT/marker-ran-$v" ]; then echo "RESULT H5-allowed-tools-$v: FAIL (a Bash prompt appeared for the script; skill prompt: $SKILLP)"
   else echo "RESULT H5-allowed-tools-$v: NO DATA (the script did not run)"; fi
 done
 
