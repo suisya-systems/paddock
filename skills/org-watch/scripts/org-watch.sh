@@ -165,7 +165,9 @@ wake() {
   if [ -n "$last" ] && [ $((now - last)) -lt "$WAKE" ]; then wlog skip "$t" "$batch" - - rate; return 0; fi
   st=$(term_status "$t") || st=not_found
   case "$st" in idle|done) ;; *) wlog skip "$t" "$batch" "$st" - -; return 0 ;; esac
-  line=$(hc read --lines 1 "$t" 2>/dev/null | tail -1)
+  # a screen that cannot be read is not a screen without input: no wake this pass
+  line=$(hc read --lines 1 "$t" 2>/dev/null) || { wlog skip "$t" "$batch" "$st" unreadable -; return 0; }
+  line=$(printf '%s\n' "$line" | tail -1)
   if typed "$line"; then wlog skip "$t" "$batch" "$st" yes -; return 0; fi
   if [ "$oid" = secretary ]; then msg="You have mail: run bash scripts/org --as secretary check_messages and act on it."
   else msg="You have mail: run bash \"\$PADDOCK_ORG\" --as $oid check_messages and act on it."; fi
@@ -198,6 +200,8 @@ ci_lines() {
             if (k in seen) continue; seen[k] = 1
             printf "%s\t%s\t%s\t%s\t%s\n", (ns[p] == sh[i] ? "open" : "super"), pr[i], sh[i], rp[i], tk[i] } }'
 }
+# ci_alive <pid>: that pid runs ci-watch.sh (after a restart a recorded pid may be another process)
+ci_alive() { kill -0 "$1" 2>/dev/null && tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null | grep -q 'ci-watch\.sh'; }
 # ckey <repo> <pr>: the file key of one PR's watch, <owner>_<name>-<pr>
 ckey() { printf '%s-%s' "${1//\//_}" "$2"; }
 ci_run() { # ci_run <bg|fg> <reason|-> <pr> <sha> <repo> <task>: ci-watch.sh, its output in its log
@@ -214,7 +218,7 @@ ci_pass() {
   for pf in "$cidir"/*.pid; do
     [ -f "$pf" ] || continue
     read -r pid psha prepo ppr < "$pf"
-    kill -0 "$pid" 2>/dev/null || dead="$dead$pf $psha $prepo $ppr
+    ci_alive "$pid" || dead="$dead$pf $psha $prepo $ppr
 "
   done
   lines=$(ci_lines)
@@ -232,7 +236,7 @@ ci_pass() {
     pf=$cidir/$(ckey "$repo" "$pr").pid; psha=; pid=; [ ! -f "$pf" ] || read -r pid psha _ < "$pf"
     if [ "$kind" = super ]; then
       # a newer head of the same PR: its live watch is ended (USR1, it writes superseded), else the line is written here
-      if [ "$psha" = "$sha" ]; then kill -USR1 "$pid" 2>/dev/null
+      if [ "$psha" = "$sha" ] && ci_alive "$pid"; then kill -USR1 "$pid" 2>/dev/null
       else ci_run fg superseded "$pr" "$sha" "$repo" "$tk"; fi
       continue
     fi

@@ -34,7 +34,7 @@ case "$cmd" in
   get) n=; for a in "$@"; do case "$a" in --*) ;; *) n=$a ;; esac; done
        [ -f "$STUB/t-$n" ] || { echo '{"error":{"kind":"not_found"}}'; exit 1; }
        cat "$STUB/t-$n" ;;
-  read) n=; for a in "$@"; do n=$a; done; cat "$STUB/screen-$n" 2>/dev/null ;;
+  read) [ -z "${STUB_READ_FAIL:-}" ] || exit 1; n=; for a in "$@"; do n=$a; done; cat "$STUB/screen-$n" 2>/dev/null ;;
   send) cond=; [ "$1" != --if ] || { cond=$2; shift 2; }
         [ -f "$STUB/t-$1" ] || exit 1
         if [ -n "$cond" ] && ! grep -q "\"state\":\"$cond\"" "$STUB/t-$1"; then exit 10; fi
@@ -137,7 +137,9 @@ reset; term secretary - idle; screen secretary '❯ half a sentence'; o person s
 grep -q '^read --lines 1 secretary' "$tmp/stub/calls"; check "the input check reads one screen line" $?
 screen secretary '│ > also typed  │'; pass $((T0 + 30))
 [ "$(sent secretary)" -eq 0 ]; check "typed input inside a box with > is held off too" $?
-screen secretary '❯ '; pass $((T0 + 60))
+screen secretary '❯ '; pass $((T0 + 45)) STUB_READ_FAIL=1
+[ "$(sent secretary)" -eq 0 ] && woke | grep -q '	skip	secretary	person#1	idle	unreadable	-$'; check "a screen that cannot be read: no wake (fail closed), skip logged" $?
+pass $((T0 + 60))
 [ "$(sent secretary)" -eq 1 ]; check "once the line is cleared, the next pass wakes" $?
 
 reset; term secretary - working; term w-t1 t1 idle; o secretary send_message w-t1 "your answer" >/dev/null; pass $T0
@@ -180,7 +182,7 @@ r=$(env -i PATH="$tools" HOME="$tmp" STUB="$tmp/stub" PADDOCK_STATE_DIR="$tmp/st
 [ "$r" = '{}' ]; check "a worker's work_check reads nothing (Issue #281)" $?
 
 # --- CI ---
-SHA=0123456789abcdef0123456789abcdef01234567; SHA7=0123456
+SHA=0123456789abcdef0123456789abcdef01234567; SHA7=0123456; SHB=fedcba9876543210fedcba9876543210fedcba98
 req() { o secretary ci_requested --pr "${1:-42}" --sha "${2:-$SHA}" --repo o/r --task t1 >/dev/null; }
 reset; term secretary - working; req
 grep -q '"kind":"ci_requested","from":"secretary","task_id":"t1","pr":42,"sha":"'$SHA'","repo":"o/r"' "$tmp/state/events/$MON/secretary.jsonl"; check "org ci_requested writes the record of 0013" $?
@@ -226,7 +228,13 @@ l=$(wev | grep ci_watch_failed); grep -q '"reason":"vanished","exit_code":null' 
 unread secretary | grep -q "CI watch failed on PR 42, head $SHA7: vanished"; check "vanished: the mailbox line" $?
 pass $((T0 + 60)); settle
 [ "$(wev | grep -c '"kind":"ci_')" -eq 1 ]; check "a vanished request is closed: not watched again" $?
-SHB=fedcba9876543210fedcba9876543210fedcba98
+# a recorded pid that is now another process (a restart) is not taken for the watch, nor signalled
+reset; term secretary - working; req; sleep 30 >/dev/null 2>&1 & other=$!
+mkdir -p "$tmp/state/watcher/ci"; printf '%s %s o/r 42\n' "$other" "$SHA" > "$tmp/state/watcher/ci/o_r-42.pid"
+req 42 "$SHB"; pass $T0; settle
+kill -0 "$other" 2>/dev/null && wev | grep -q "\"sha\":\"$SHA\".*\"reason\":\"vanished\""; check "a pid of another process: the old watch is vanished, that process is not signalled" $?
+kill "$other" 2>/dev/null
+
 reset; term secretary - working; req; touch "$tmp/stub/hold"; pass $T0; sleep 0.5
 req 42 "$SHB"; pass $((T0 + 30)); sleep 1
 wev | grep -q "\"sha\":\"$SHA\".*\"reason\":\"superseded\""; check "a newer head of the PR ends the older watch: superseded" $?
