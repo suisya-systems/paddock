@@ -9,7 +9,7 @@ export LC_ALL=C
 
 usage() {
   cat <<'USAGE'
-Usage: org-escalation.sh prompt --task TASK_ID [--then-send TEXT]
+Usage: org-escalation.sh prompt --task TASK_ID|--curator [--then-send TEXT]
        org-escalation.sh ask --task TASK_ID --question TEXT [--prompt TEXT]
                            [--background TEXT] [--if-yes TEXT] [--if-no TEXT]
                            [--recommend yes|no --why TEXT] [--lang CODE]
@@ -29,6 +29,9 @@ Usage: org-escalation.sh prompt --task TASK_ID [--then-send TEXT]
           --then-send, once the terminal reports a status, TEXT is sent with hc send (the first
           message the dialog stopped). Any other screen: prints PROMPT=<the dialog> and
           exits 3, nothing pressed; record it with ask --prompt
+          --curator: the same for the terminal curator instead of w-<task_id> (org-curate start
+          runs it when the curator's first run stops at the dialog for knowledge/, paddock's own
+          state folder)
   ask     add an entry to org-state.approvals; prints APPROVAL_ID=<task_id>-<UTC time>
           --prompt: the PROMPT= text; the entry is a worker's prompt, answered by answer
           The card shows the context the person decides with; write all of it:
@@ -191,7 +194,7 @@ ctx() {
 
 cmd=${1:-}; [ $# -eq 0 ] || shift
 case $cmd in -h|--help|help) usage; exit 0 ;; esac
-task=; question=; text=; id=; note=
+task=; question=; text=; id=; note=; curator=
 unset background if_yes if_no recommend why lang prompt then_send
 while [ $# -gt 0 ]; do
   case $1 in
@@ -200,6 +203,7 @@ while [ $# -gt 0 ]; do
       case $1 in --task) task=$2 ;; --question) question=$2 ;; --text) text=$2 ;; --note) note=$2 ;; --id) id=$2 ;; --prompt) prompt=$2 ;; --then-send) then_send=$2 ;;
         --background) background=$2 ;; --if-yes) if_yes=$2 ;; --if-no) if_no=$2 ;; --recommend) recommend=$2 ;; --why) why=$2 ;; --lang) lang=$2 ;; esac
       shift 2 ;;
+    --curator) curator=1; shift ;;
     *) echo "org-escalation: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
@@ -393,13 +397,13 @@ case $cmd in
     echo "ANSWERED $id -> w-$wtask" ;;
 
   prompt)
-    valid_id "$task" || die 2 "prompt needs --task <task_id>"
-    w=w-$task
+    if [ -n "$curator" ]; then [ -z "$task" ] || die 2 "prompt takes --task or --curator, not both"; w=curator
+    else valid_id "$task" || die 2 "prompt needs --task <task_id> or --curator"; w=w-$task; fi
     scr=$(hc read "$w" 2>/dev/null) || die 11 "cannot read the screen of $w; nothing pressed"
     policy=$(policy_of "$scr")
     # A fresh clone made by org-clone for a repository a request named: its folder-trust dialog is the
     # person's to answer (card, then answer), never the policy's (decision 0011).
-    if [ "$policy" = folder-trust ] && trust_marker "$task" >/dev/null; then
+    if [ "$policy" = folder-trust ] && [ -n "$task" ] && trust_marker "$task" >/dev/null; then
       echo "org-escalation: $w is in a fresh clone made for a named repository: its folder-trust dialog is not answered automatically. Ask the person (ask --task $task --prompt <the PROMPT= text>); answer --text yes presses it" >&2
       policy=
     fi
@@ -411,7 +415,7 @@ case $cmd in
     esac
     if [ -n "$policy" ]; then
       echo "POLICY $policy $w"
-      if [ -d "$(rdir "$task")" ]; then finish_resend "$task"; exit 0; fi
+      if [ -n "$task" ] && [ -d "$(rdir "$task")" ]; then finish_resend "$task"; exit 0; fi
       [ -n "${then_send+set}" ] || exit 0
       send_first; exit 0
     fi

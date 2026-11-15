@@ -200,8 +200,19 @@ case "$cmd" in
       || die 2 "cannot write $cs"
     if [ "$cmd" = settings ]; then echo "$cs"; exit 0; fi
     self=$root/skills/org-curate/scripts/org-curate.sh
-    hc run --bg --name curator curator "Your org-curate script is $self: run it as bash $self candidates and bash $self finish." \
-      || die 2 "hc run of the curator failed"
+    brief="Your org-curate script is $self: run it as bash $self candidates and bash $self finish."
+    out=$(hc run --bg --name curator curator "$brief" 2>&1) || die 2 "hc run of the curator failed: ${out:0:300}"
+    # The first run in knowledge/ may stop at Claude Code's folder-trust dialog, so the first message
+    # is not sent. knowledge/ is paddock's own state folder: org-escalation answers the dialog after a
+    # screen read and sends the first message as hc would have (the template body, a blank line, the brief).
+    if ! printf '%s' "$out" | tr -d '\n' | grep -Eq '"sent": *true'; then
+      first="$(awk 'n >= 2 { print; next } /^---$/ { n++ }' "$root/templates/curator.md")
+
+$brief"
+      po=$(bash "$root/skills/org-escalation/scripts/org-escalation.sh" prompt --curator --then-send "$first" 2>&1) \
+        || die 10 "the curator started but its first message was not sent: ${po:0:300}. Read it with 'hc read curator'."
+      echo "org-curate: the curator was at the folder-trust dialog; answered it and sent the first message (${po//$'\n'/ })"
+    fi
     ;;
 
   *) usage >&2; exit 2 ;;
