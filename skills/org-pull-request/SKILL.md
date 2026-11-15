@@ -38,7 +38,7 @@ The mode is `--mode`, else `merge_approval_mode` in `org-config.md` (read with `
 | 5 | Push failed. | Report; nothing was opened. |
 | 6 | PR could not be created. | Report; the branch is pushed. |
 | 7 | No CI run for the head. | Check the repository has a workflow; rerun with `--pr`. |
-| 8 | Watch result unreadable (no `exit_code`): the watcher did not start, was killed, or (message shows reason `timeout`) CI still ran at the check-in. | Timeout: read the mailbox, then rerun with `--pr <n>` (it watches again). Otherwise rerun with `--pr <n>` now. Never watch CI by hand. |
+| 8 | Watch result unreadable (no `exit_code`): the watcher did not start, was killed, or (message shows reason `timeout`) CI still ran at the check-in. | Timeout: go back to `org wait --children`; when the `ci-<pr>` child has ended, rerun with `--pr <n>` (it watches again). Otherwise rerun with `--pr <n>` now. Never watch CI by hand. |
 | 9 | CI failed on the head (recorded). | Send the worker back with the failure; never merge. |
 | 10 | Merge refused: head moved after the watched run, or required checks not green. | Rerun with `--pr` so the new head is watched. |
 | 11 | `gh pr merge` failed. | Report. |
@@ -46,7 +46,7 @@ The mode is `--mode`, else `merge_approval_mode` in `org-config.md` (read with `
 
 ## Watching CI without holding the secretary
 
-While a shell call runs, the secretary takes no input: a card answer or a worker report waits behind it. So CI is watched only through this script's child (`hc wait ci-<pr>`), never with `gh pr checks --watch` or a sleep loop by hand. When the secretary tells the person about the PR, it quotes the CI result this script printed (the `ci_completed` conclusion), never a worker's local test run.
+While a shell call runs, the secretary takes no input: a card answer or a worker report waits behind it. So CI is watched only through this script's child (`hc wait ci-<pr>`) and `org wait --children`, never with `gh pr checks --watch` or a sleep loop by hand. When the secretary tells the person about the PR, it quotes the CI result this script printed (the `ci_completed` conclusion), never a worker's local test run.
 
 ## Assumptions (open points left open)
 

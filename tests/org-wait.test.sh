@@ -135,13 +135,17 @@ o w-t1 check_messages | grep -q 'Answer to your question (t1-20261110T010203Z): 
 check "chain: the worker's mailbox holds the answer" $?
 ! grep -q t1-20261110T010203Z "$STUB/docval-org-state"; check "chain: the approval is gone from org-state" $?
 
-# The secretary template (Issue #385): no wait between turns; the mail's nudge wakes it, the Stop hook
-# catches mail that came while it worked, and a one-second check names the workers that need it.
+# The secretary template (Issue #385): the mail's nudge wakes it, and the Stop hook catches mail that came
+# while it worked.
 tpl=$here/templates/secretary.md
-! grep -q 'wait --children' "$tpl"; check "template no longer holds the secretary in org wait --children" $?
-grep -q 'scripts/org --as secretary wait --timeout 1' "$tpl"; check "template names the one-second check" $?
+# TEMPORARY (Issue #388): the #380 hold is back until the nudge is confirmed on the host.
+grep -q 'scripts/org --as secretary wait --children' "$tpl"; check "template names org wait --children" $?
+grep -Eq '`work` or `approvals`' "$tpl"; check "template ties the wait to work or approvals in org-state" $?
+grep -qi 'handover' "$tpl" && grep -Eiq 'except.*handover|handover.*(end the turn|ends? your turn)' "$tpl"
+check "template makes the handover an exception to the wait" $?
+grep -q 'Esc' "$tpl"; check "template says how a person interrupts the wait (Esc)" $?
+grep -q '#388' "$tpl"; check "template marks the hold as temporary (#388)" $?
 grep -q 'You have mail: run bash scripts/org --as secretary check_messages' "$tpl"; check "template quotes the nudge line" $?
 grep -qF "$(sed -n 's/.*m="\(You have mail:[^"]*\)".*/\1/p' "$here/scripts/org")" "$tpl"; check "the template's nudge line is the one scripts/org sends" $?
-grep -Eiq 'exception is the handover' "$tpl"; check "template keeps the handover exception" $?
 
 exit $fail

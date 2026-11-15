@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Issue #380, #385: the secretary's Stop hook refuses to end a turn while it has unread mail
-# (unless secretary-handover is written), and fails open when the mailbox cannot be read.
+# Issue #380, #385, #388: the secretary's Stop hook refuses to end a turn while it has unread mail, and
+# (temporarily, #388) while org-state has a work or approvals entry (unless secretary-handover is written);
+# it fails open when what it reads cannot be read.
 # The hook runs the installed org copy beside it; hc is a stub that answers doc.get per document.
 # Needs bash and node (to read the settings).
 set -u
@@ -34,25 +35,45 @@ fire() { # fire <org-state> <handover> [stop_hook_active]
 }
 st=$tmp/state
 mail() { PADDOCK_STATE_DIR=$st bash "$here/scripts/org" --as "$1" "${@:2}" >/dev/null 2>&1; }
+w='{"approvals":[],"work":[{"task_id":"t1","title":"x ] y","since":"2026-11-15T00:00:00Z"}]}'
+a='{"approvals":[{"id":"a1","task_id":"t1","question":"Merge?"}],"work":[]}'
+e='{"approvals":[],"work":[]}'
 fire null null; rc=$?
-[ $rc -eq 0 ] && [ -z "$err" ]; check "allowed with no mail ($rc)" $?
-w='{"approvals":[],"work":[{"task_id":"t1","title":"x","since":"2026-11-15T00:00:00Z"}]}'
+[ $rc -eq 0 ] && [ -z "$err" ]; check "allowed with no mail and org-state never written ($rc)" $?
+fire "$e" null; rc=$?
+[ $rc -eq 0 ] && [ -z "$err" ]; check "allowed with no mail and both lists empty ($rc)" $?
+fire '{ "approvals" : [ ], "work" : [ ] }' null; rc=$?
+[ $rc -eq 0 ]; check "allowed when both are empty, spaced ($rc)" $?
+# the #380 hold, back until the nudge is confirmed on the host (#388)
 fire "$w" null; rc=$?
-[ $rc -eq 0 ]; check "allowed with open work and no unread mail: no wait is held (#385) ($rc)" $?
+[ $rc -eq 2 ] && grep -q 'wait --children' <<<"$err"; check "refused with work non-empty, told to wait ($rc)" $?
+fire "$a" null; rc=$?
+[ $rc -eq 2 ] && grep -q 'wait --children' <<<"$err"; check "refused with approvals non-empty ($rc)" $?
+fire "$a" null true; rc=$?
+[ $rc -eq 2 ] && grep -q 'wait --children' <<<"$err"; check "refused again when stop_hook_active is true ($rc)" $?
+fire '{"approvals":[],"work":[{"task_id":"t2","title":"the \"work\":[x] text"}]}' null; rc=$?
+[ $rc -eq 2 ]; check "refused: a title quoting the key does not confuse it ($rc)" $?
+fire '{"approvals":[],"work":[],"note":"\"work\":[x]"}' null; rc=$?
+[ $rc -eq 0 ]; check "allowed: an escaped \"work\":[ in a string is not an entry ($rc)" $?
+STUB_FAIL=1 fire "$w" null; rc=$?
+[ $rc -eq 0 ] && grep -q 'cannot read org-state, stop allowed' <<<"$err"; check "fails open when org-state is unreadable ($rc)" $?
+fire "$w" '{"written_at":"2026-11-15T00:00:00Z","open_threads":{}}'; rc=$?
+[ $rc -eq 0 ] && [ -z "$err" ]; check "allowed with open work when secretary-handover is written ($rc)" $?
+# unread mail (#385)
 mail w-t1 report done --task t1 "finished"
-fire "$w" null; rc=$?
-[ $rc -eq 2 ] && grep -q 'check_messages' <<<"$err" && ! grep -q 'wait' <<<"$err"; check "refused with unread mail, told to read it, not to wait ($rc)" $?
-fire "$w" null true; rc=$?
+fire "$e" null; rc=$?
+[ $rc -eq 2 ] && grep -q 'check_messages' <<<"$err" && ! grep -q 'wait' <<<"$err"; check "refused with unread mail, told to read it ($rc)" $?
+fire "$e" null true; rc=$?
 [ $rc -eq 2 ]; check "refused again when stop_hook_active is true ($rc)" $?
 fire "$w" '{"written_at":"2026-11-15T00:00:00Z","open_threads":{}}'; rc=$?
 [ $rc -eq 0 ] && [ -z "$err" ]; check "allowed with unread mail when secretary-handover is written ($rc)" $?
-STUB_FAIL=1 fire "$w" null; rc=$?
+STUB_FAIL=1 fire "$e" null; rc=$?
 [ $rc -eq 0 ] && grep -q 'cannot read secretary-handover, stop allowed' <<<"$err"; check "fails open when the handover cannot be read ($rc)" $?
 mail secretary check_messages
-fire "$w" null; rc=$?
+fire "$e" null; rc=$?
 [ $rc -eq 0 ]; check "allowed once the mail is read ($rc)" $?
 chmod 000 "$st/events"
-fire "$w" null; rc=$?
+fire "$e" null; rc=$?
 chmod 755 "$st/events"
 [ $rc -eq 0 ]; check "fails open (or finds nothing) when the mailbox cannot be read ($rc)" $?
 exit $fail

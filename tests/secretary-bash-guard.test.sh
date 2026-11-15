@@ -21,7 +21,7 @@ allowed() { fire "$1"; local rc=$?; [ $rc -eq 0 ]; check "allowed ($rc): $1" $?;
 
 for c in 'gh pr checks 377 --watch' 'gh pr checks --watch --interval 10 377' 'gh run watch 123' \
          'cd /x && gh run watch' 'gh pr checks 5 --required --watch'; do
-  refused "$c" 'wakes you'
+  refused "$c" 'org wait --children'
 done
 for c in 'sleep 60' 'sleep 6' 'sleep 2m' 'sleep infinity' 'echo a; sleep 30 && echo b' 'sleep 1 30'; do
   refused "$c" 'hc run --bg'
@@ -50,7 +50,7 @@ for c in 'bash scripts/org --as secretary wait --children' \
          'bash skills/org-pull-request/scripts/org-pull-request.sh --task t1 --title "x" --body-file b.md' \
          'sleep 1' 'sleep 0.5' 'sleep 5' 'sleep 2 3' 'gh run watcher' 'gh pr checks 377' 'gh pr checks 377 --required' 'gh pr view 377' 'gh run view 5' \
          'git status' 'ls -la' 'hc send w-t1 hello' 'hc read w-t1' 'grep -n watch file' 'echo sleeping' \
-         'hc run --bg --name ci-5 sh -c "gh pr checks 5 --watch"'; do
+         'hc run --bg --name ci-5 sh -c "gh pr checks 5 --watch"' 'bash scripts/org --as secretary wait --children'; do
   allowed "$c"
 done
 # heredoc bodies and quoted text that mention the commands
