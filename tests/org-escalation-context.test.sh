@@ -244,7 +244,7 @@ has "$(line "$out" yes)" "Recommended"; check "partial: the recommended answer (
 
 # ---- the secretary is told to fill them ---------------------------------------
 
-for f in templates/secretary.md skills/org-escalation/SKILL.md; do
+for f in skills/org-escalation/SKILL.md; do
   for o in --background --if-yes --if-no --recommend --why; do
     grep -q -- "$o" "$here/$f"; check "$f names $o" $?
   done

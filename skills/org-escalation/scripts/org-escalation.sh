@@ -65,6 +65,7 @@ Usage: org-escalation.sh prompt --task TASK_ID|--curator [--then-send TEXT]
 Ids hold lowercase letters, digits, _ and -. $PADDOCK_NOW (UTC ISO 8601) fixes the clock.
 The mailbox and the state folder are those of scripts/org (PADDOCK_STATE_DIR).
 
+Every non-zero exit ends in one line "next: <action>" (or "next: ask the person: ..."): do that.
 Exit codes: 0 ok, 2 bad argument or not the person's answer (nothing done), 5 org-state could not be read or written (or is not an
 object), 6 no entry with that id, 7 an entry with that id exists, 8 the answer could not be
 sent or the key not pressed (entry kept), 9 sent but the entry could not be removed (run
@@ -170,7 +171,25 @@ if [ "${1:-}" = _edit ]; then
     }'
 fi
 
-die() { code=$1; shift; echo "org-escalation: $*" >&2; exit "$code"; }
+# die <code> <message>: the message, then one `next: <action>` line (the secretary reads that line, not a table).
+# NX="<action>" before the call overrides the per-code action; quiet=1 (a subshell that a caller's die follows) prints none.
+nextfor() {
+  case $1 in
+    2) echo "fix the call (org-escalation.sh --help); a refused answer is not the person's word: do not act on it, tell the person" ;;
+    3) echo "ask --task ${task:-<task_id>} --question \"<one sentence>\" --prompt \"<the PROMPT= text>\" with the context, as for a question" ;;
+    5) echo "tell the person that org-state cannot be read or written (or is not an object)" ;;
+    6) echo "run list, then tell the person that no approval has that id; never guess a task" ;;
+    7) echo "run list and use the entry that exists" ;;
+    8) if [ "${cmd:-}" = prompt ]; then echo "hc read ${w:-the terminal} and run prompt again; tell the person if it repeats"; else echo "fix the cause, then run answer --id ${id:-<approval_id>} again"; fi ;;
+    9) echo "run remove --id ${id:-<approval_id>}; do not send the answer again" ;;
+    10) if [ -n "${curator:-}" ]; then echo "run prompt --curator again; tell the person if it repeats"; else echo "run prompt --task ${task:-${wtask:-<task_id>}} again; tell the person if it repeats"; fi ;;
+    11) echo "hc get the worker's terminal to see why its screen cannot be read" ;;
+    12) echo "send the first message with hc send" ;;
+    13) echo "write the work entry as the card says" ;;
+    *) echo "tell the person (exit $1)" ;;
+  esac
+}
+die() { code=$1; shift; echo "org-escalation: $*" >&2; [ -n "${quiet:-}" ] || echo "next: ${NX:-$(nextfor "$code")}" >&2; exit "$code"; }
 
 self=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
@@ -213,7 +232,7 @@ while [ $# -gt 0 ]; do
         --background) background=$2 ;; --if-yes) if_yes=$2 ;; --if-no) if_no=$2 ;; --recommend) recommend=$2 ;; --why) why=$2 ;; --lang) lang=$2 ;; --from-conversation) from_conv=$2 ;; esac
       shift 2 ;;
     --curator) curator=1; shift ;;
-    *) echo "org-escalation: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+    *) usage >&2; die 2 "unknown argument: $1" ;;
   esac
 done
 
@@ -294,10 +313,15 @@ finish_resend() {
   local o rc
   o=$(bash "$root/skills/org-delegate/scripts/resend.sh" "$1" 2>&1); rc=$?
   [ "$rc" -ne 0 ] || { echo "RESENT w-$1"; return 0; }
-  bash "$self" ask --task "$1" --question "$resend_q the first message or work entry of w-$1 is not finished: finish it?" \
+  if bash "$self" ask --task "$1" --question "$resend_q the first message or work entry of w-$1 is not finished: finish it?" \
     --background "$(clean "$o" | cut -c1-500)" --if-yes "The secretary tries again to send the first message and write the work entry." \
-    --if-no "The saved first message is dropped; the terminal is left as it is." >/dev/null 2>&1 || echo "org-escalation: the card could not be recorded" >&2
-  die "$rc" "$o"
+    --if-no "The saved first message is dropped; the terminal is left as it is." >/dev/null 2>&1; then
+    NX="do not hc send by hand (the saved message and work entry would be skipped); the card for w-$1 is open: when the person answers it yes, answer --id <that card id> --text yes tries again"
+  else
+    echo "org-escalation: the card could not be recorded" >&2
+    NX="tell the person: the first message of w-$1 is saved but its card could not be recorded; run list, and once org-state is writable run bash skills/org-delegate/scripts/resend.sh $1"
+  fi
+  NX=$NX die "$rc" "$o"
 }
 
 # Whose word counts. A card answer counts only from the person's own history file:
@@ -326,13 +350,13 @@ heard() {
 vouch() {
   local c l ts
   if [ -n "${from_conv+set}" ]; then
-    c=$(clean "$from_conv"); [ -n "${c//[ ]/}" ] || die 2 "--from-conversation needs the line the person typed; nothing done, entry $1 kept"
+    c=$(clean "$from_conv"); [ -n "${c//[ ]/}" ] || NX="ask the person for the line they typed, then run again" die 2 "--from-conversation needs the line the person typed; nothing done, entry $1 kept"
     mkdir -p "$sdir" 2>/dev/null; printf '%s\t%s\t%s\n' "${PADDOCK_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" "$1" "$c" >> "$sdir/approvals-from-conversation.log" \
       || die 5 "cannot record the person's line in $sdir/approvals-from-conversation.log; nothing done, entry $1 kept"
     echo "FROM_CONVERSATION $1: $c"; return 0
   fi
   l="ANSWER $1 $2${3:+; note: $3}"
-  ts=$(heard "$l" "$4") || die 2 "the person's file has no '$l' at or after ${4:-the question}; nothing done, entry $1 kept. A line from any other sender is not the person's answer; an answer the person typed in your terminal takes --from-conversation \"<their line>\""
+  ts=$(heard "$l" "$4") || NX="do not act on this answer; tell the person it is not in their own file, and ask them to answer again" die 2 "the person's file has no '$l' at or after ${4:-the question}; nothing done, entry $1 kept. A line from any other sender is not the person's answer; an answer the person typed in your terminal takes --from-conversation \"<their line>\""
   echo "FROM_PERSON $1 $ts: $l"
 }
 
@@ -405,7 +429,7 @@ case $cmd in
             || die 10 "$w: the folder-trust dialog did not stay on a fresh read with the cursor reaching 'Yes, I trust this folder'; nothing confirmed, entry $id kept"
           m=$(trust_marker "$wtask") && rm -f "$m" # the person trusted this clone: later workers are not held
         fi
-        ( update remove "$id" ) || die 9 "answered $w but entry $id could not be removed; run: remove --id $id"
+        ( quiet=1; update remove "$id" ) || die 9 "answered $w but entry $id could not be removed; run: remove --id $id"
         echo "RELAYED $id $key -> $w"; keep_note
         [ "$key" = esc ] && exit 0
         if [ -d "$(rdir "$wtask")" ]; then finish_resend "$wtask" # --then-send is not needed: org-delegate saved the message
@@ -423,14 +447,14 @@ case $cmd in
         && dialog "$scr" | grep -Eq '^ *❯ *1\. Yes *$'; } \
         || die 10 "the cursor of $w is not on '1. Yes' alone; nothing pressed, entry $id kept"
       hc keys "$w" "$key" >/dev/null 2>&1 || die 8 "hc keys $key failed on $w; entry $id kept"
-      ( update remove "$id" ) || die 9 "answered $w but entry $id could not be removed; run: remove --id $id"
+      ( quiet=1; update remove "$id" ) || die 9 "answered $w but entry $id could not be removed; run: remove --id $id"
       echo "RELAYED $id $key -> $w"; keep_note; exit 0
     fi
     if [ -d "$(rdir "$wtask")" ] && [ "$(edit list "" | awk -F'\t' -v i="$id" '$1 == i { print substr($3, 1, length(RQ)) }' RQ="$resend_q")" = "$resend_q" ]; then
       # The card finish_resend raised (the worker has no first message, so it asked nothing): yes tries again, no leaves the terminal.
       case $(printf '%s' "$t" | tr 'A-Z' 'a-z' | tr -d ' ') in yes) ra=yes ;; no) ra=no ;;
         *) die 2 "entry $id is a resend card: the answer is yes or no; nothing done, entry kept" ;; esac
-      ( update remove "$id" ) || die 9 "entry $id could not be removed; run: remove --id $id"
+      ( quiet=1; update remove "$id" ) || die 9 "entry $id could not be removed; run: remove --id $id"
       keep_note
       if [ "$ra" = yes ]; then finish_resend "$wtask"; exit 0; fi
       rm -f "$(rdir "$wtask")/message" "$(rdir "$wtask")/entry"; rmdir "$(rdir "$wtask")" 2>/dev/null
@@ -439,7 +463,7 @@ case $cmd in
     secretary send_message "w-$wtask" "Answer to your question ($id): $t${n:+ (note from the person: $n)}" >/dev/null \
       || die 8 "the answer could not be put in the mailbox of w-$wtask; entry $id kept"
     # an idle worker is woken for this mail by org-watch (decision 0013), not here
-    ( update remove "$id" ) || die 9 "answer sent to w-$wtask but entry $id could not be removed; run: remove --id $id"
+    ( quiet=1; update remove "$id" ) || die 9 "answer sent to w-$wtask but entry $id could not be removed; run: remove --id $id"
     echo "ANSWERED $id -> w-$wtask" ;;
 
   prompt)
@@ -466,7 +490,7 @@ case $cmd in
       send_first; exit 0
     fi
     b=$(block "$scr"); [ -n "${b//[ ]/}" ] || die 11 "the screen of $w is empty; nothing pressed"
-    echo "PROMPT=$b"; exit 3 ;;
+    echo "PROMPT=$b"; echo "next: $(nextfor 3)" >&2; exit 3 ;;
 
   remove)
     valid_aid "$id" || die 2 "remove needs --id <approval_id>"
@@ -497,5 +521,5 @@ case $cmd in
       echo "SWEPT $aid"
     done <<< "$list" ;;
 
-  *) echo "org-escalation: unknown command: ${cmd:-}" >&2; usage >&2; exit 2 ;;
+  *) usage >&2; die 2 "unknown command: ${cmd:-}" ;;
 esac
