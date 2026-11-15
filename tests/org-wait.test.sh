@@ -21,7 +21,7 @@ check() { # check <name> <condition-exit-status>
 }
 
 # Stub hc. `hc wait` behaves per $STUB_WAIT: "children" prints a children line after 1 s,
-# "fail" exits 7 at once (needs_target), anything else sleeps past every test bound.
+# "self" prints at once the caller-as-ended line seen after a handover, "fail" exits 7 at once (needs_target), anything else sleeps past every test bound.
 # `hc connect` serves the org-state document from $STUB (as in org-escalation.test.sh).
 stubdir=$tmp/bin; mkdir -p "$stubdir"
 cat > "$stubdir/hc" <<'EOF2'
@@ -31,6 +31,7 @@ case "$1" in
   wait)
     case "${STUB_WAIT:-}" in
       children) sleep 1; echo '{"reason":"children","children":[{"address":"t2","ended":true,"exit_code":0}]}' ;;
+      self) echo '{"children":[],"ended":true,"exit_code":null,"reason":"children","signal":null,"status":null,"terminal":"t7r","turn":0}' ;;
       fail) echo 'hc: needs_target: run it inside a terminal, or name the parent' >&2; exit 7 ;;
       *) sleep 60; echo '{"reason":"timeout"}' ;;
     esac
@@ -106,6 +107,12 @@ printf '%s' "$out" | grep -q '"reason":"timeout"'; check "mail for someone else 
 out=$(STUB_WAIT=children o secretary wait --children --timeout 20 2>&1)
 printf '%s' "$out" | grep -q '"reason":"children"'; check "--children passes through hc wait's children line" $?
 grep -q '^wait --children any' "$STUB/calls"; check "--children runs hc wait --children any" $?
+
+# --children after a handover (Issue #398): hc wait returns at once a children line naming no child,
+# only the caller as ended. It is dropped and the wait holds to its timeout.
+t0=$(date +%s); out=$(STUB_WAIT=self o secretary wait --children --timeout 3 2>&1); el=$(elapsed_since "$t0")
+printf '%s' "$out" | grep -q '"reason":"timeout"' && [ "$el" -ge 3 ]
+check "--children: a children line with no child does not end the wait (held ${el}s)" $?
 
 # --children with an hc wait that fails at once: ignored, mail still ends the wait.
 STUB_WAIT=fail o secretary wait --children --timeout 30 > "$tmp/w2.out" 2>&1 & wpid=$!

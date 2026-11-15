@@ -37,7 +37,7 @@ Usage: org [--as <id>] <command> [args]
                                                 {"reason":"mail","unread":N}; marks nothing read)
                                                 or S seconds pass ({"reason":"timeout"}; default
                                                 $PADDOCK_WAIT_TIMEOUT, else 60); --children also
-                                                ends on hc wait --children any's children line or the person's typed line ("message")
+                                                ends on hc wait --children any's children line naming a child, or the person's typed line ("message")
                                                 Every return also checks each org-state.work task
                                                 against the core and adds "gone" (no terminal or it
                                                 ended, no done record), "waiting" (blocked),
@@ -492,9 +492,11 @@ case "$cmd" in
       n=$(unread_lines | wc -l | tr -d ' ')
       if [ "$n" -gt 0 ]; then printf '{"reason":"mail","unread":%s%s}\n' "$n" "$(watch)"; exit 0; fi
       # hc wait's own line counts when a child ended or the person typed a line (reason "message", Issue #285); any other ending (no children,
-      # needs_target, its own check-in) is dropped and the mail wait goes on.
+      # needs_target, its own check-in) is dropped and the mail wait goes on. So is a "children" line that names no child: after a
+      # handover hc wait --children any returns it at once, naming the caller itself as ended (Issue #398).
       if [ -n "$hpid" ] && ! kill -0 "$hpid" 2>/dev/null; then
-        if grep -Eq '"reason": *"(children|exit|message)"' "$hout"; then
+        if grep -Eq '"reason": *"(children|exit|message)"' "$hout" \
+          && ! { grep -Eq '"reason": *"children"' "$hout" && grep -Eq '"children": *\[\]' "$hout"; }; then
           line=$(tr -d '\n' < "$hout"); printf '%s%s}\n' "${line%\}}" "$(watch)"; exit 0
         fi
         hpid=
