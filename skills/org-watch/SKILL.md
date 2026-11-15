@@ -43,10 +43,10 @@ Each item is one line, written with `scripts/org --as watcher send_message secre
 
 The secretary and every `w-<task>` worker with a live terminal and unread mail (`check_messages --peek` as that id) are sent one constant line: `You have mail: run bash scripts/org --as secretary check_messages and act on it.` for the secretary, `You have mail: run bash "$PADDOCK_ORG" --as w-<task> check_messages and act on it.` for a worker. No text from a worker or a person is ever typed.
 
-- Only on an exact status: `idle` with `hc send --if idle`; `done` (read with `hc get`, since hc has no `--if done`) with a plain `hc send`. `working`, `blocked`, no status or not found: nothing this pass.
+- Only on an exact status: `idle` with `hc send --if idle`; `done` (read with `hc get`, since hc has no `--if done`) with a plain `hc send`, only if one more `hc get` just before it still reads `done` with the same `turn` and `status_ms` (else `moved` in `watcher/woke`, tried again next pass; a turn that starts between that get and the send is still typed into). `working`, `blocked`, no status or not found: nothing this pass.
 - Never over typed input: just before a send it reads the screen once (`hc read`) and checks the prompt line, the last line that starts (after spaces and an optional box) with the marker `❯` or `>`; text after the marker and a space or NBSP holds the wake off for that pass, and so does a screen that cannot be read or shows no prompt line (`noprompt` in `watcher/woke`).
 - One wake per unread batch (the highest unread `seq` per sender) per `PADDOCK_WATCH_WAKE` seconds (default 60); new mail is a new batch. A failed send is tried again on the next pass.
-- Every wake, every skip (status, typed input, rate limit) and every mailbox line is printed and appended to `watcher/woke` in the state folder, one tab-separated line: time (epoch), `wake`/`skip`/`mail`, target, batch or ledger key, status read, typed input (`yes`/`no`/`unreadable`/`-`), send exit code (`rate` for a rate-limit skip, `-` when nothing was sent).
+- Every wake, every skip (status, typed input, rate limit) and every mailbox line is printed and appended to `watcher/woke` in the state folder, one tab-separated line: time (epoch), `wake`/`skip`/`mail`, target, batch or ledger key, status read, typed input (`yes`/`no`/`unreadable`/`noprompt`/`moved`/`-`), send exit code (`rate` for a rate-limit skip, `-` when nothing was sent).
 
 ## CI watching
 
