@@ -57,7 +57,7 @@ git -C "$wt" rev-parse -q --verify "refs/remotes/origin/$base^{commit}" >/dev/nu
   || die 5 "no origin/$base; a worker cannot fetch, ask the secretary to run git fetch origin in the project clone" "run git fetch origin in the project clone, then rerun: bash $qself --worktree $qwt --base $base"
 [ -z "$(git -C "$wt" status --porcelain --untracked-files=no)" ] || die 7 "tracked files have uncommitted changes; commit them first" "have the worker commit its changes, then rerun: bash $qself --worktree $qwt --base $base"
 
-next_ok="next: run the org-pull-request skill: bash skills/org-pull-request/scripts/org-pull-request.sh --pr <n> --worktree $qwt (it sends the branch, no force, and requests CI for the new head)"
+next_ok="next: run the org-pull-request skill (its org-pull-request.sh) with --pr <n> --worktree $qwt (it sends the branch, no force, and requests CI for the new head)"
 if git -C "$wt" merge-base --is-ancestor "origin/$base" HEAD; then echo "already up to date with origin/$base"; echo "$next_ok"; exit 0; fi
 
 # The paths Claude Code's sandbox makes read-only in a worktree (measured in GT-3); a

@@ -10,22 +10,23 @@ A shell loop that tells the person what the window cannot, because the window is
 
 ## For the secretary
 
-- End your turns idle at your prompt. The watcher wakes you: while you are idle or done with unread mail, it types one line into your prompt, `You have mail: run bash scripts/org --as secretary check_messages and act on it.` Run `check_messages` and act (an `ANSWER` goes through `org-escalation answer`). It does not type while you work (a `done` status is read again just before the send; a short window remains, decision 0013), nor over a line the person has half typed; mail that came while you worked is announced on its first pass after your turn ends. If the watcher terminal is gone, nothing wakes you: tell the person to rerun `org-start`.
+- End your turns idle at your prompt. The watcher wakes you: while you are idle or done with unread mail, it types one line into your prompt, `You have mail: run bash "$PADDOCK_HOME/scripts/org" --as secretary check_messages and act on it.` Run `check_messages` and act (an `ANSWER` goes through `org-escalation answer`). It does not type while you work (a `done` status is read again just before the send; a short window remains, decision 0013), nor over a line the person has half typed; mail that came while you worked is announced on its first pass after your turn ends. If the watcher terminal is gone, nothing wakes you: tell the person to rerun `org-start`.
+- A job that may take more than a few seconds runs in its own terminal and ends with a line to your mailbox; then end your turn: `hc run --bg -- env PADDOCK_HOME="$PADDOCK_HOME" sh -c '<command>; bash "$PADDOCK_HOME/scripts/org" --as secretary send_message secretary "<job> ended: exit $?"'`. The `env` is needed: a terminal `hc` starts gets the core's environment, not yours.
 - Mail from `watcher` is its own: one recorded fact per line (tables below). Read it like a report and decide as usual:
   - `w-<task> is blocked`: run `org-escalation prompt` for it.
   - `w-<task> is done and sent no report`: `hc read` it, then close it or ask it.
   - `w-<task> has no terminal and sent no done report`: look at `hc read w-<task_id>` if it is still there; tell the person.
   - `w-<task> has reported no status for N minutes`: as for gone.
   - `CI success|failure on PR <n> ...` or `CI watch failed on PR <n> ...`: see `org-pull-request`.
-- `bash scripts/org --as secretary wait --children` is a manual tool, not a rule: it holds until mail, a child terminal's end, the person's typed line or a timeout, and prints one JSON line: `"reason":"mail"`, `"children"`, `"exit"`, `"timeout"`, or `"reason":"message"` when the person typed a line during it (read and answer that line on your next turn). With `"gone"`, `"waiting"`, `"unreported"`, `"unreadable"` or `"watch_error"` read as for the watcher's lines. You need it for nothing; the watcher already does that check.
+- `bash "$PADDOCK_HOME/scripts/org" --as secretary wait --children` is a manual tool, not a rule: it holds until mail, a child terminal's end, the person's typed line or a timeout, and prints one JSON line: `"reason":"mail"`, `"children"`, `"exit"`, `"timeout"`, or `"reason":"message"` when the person typed a line during it (read and answer that line on your next turn). With `"gone"`, `"waiting"`, `"unreported"`, `"unreadable"` or `"watch_error"` read as for the watcher's lines. You need it for nothing; the watcher already does that check.
 
 ## Run it
 
 ```sh
-bash skills/org-watch/scripts/org-watch.sh [--once]
+bash <paddock folder>/skills/org-watch/scripts/org-watch.sh [--once]   # the folder: echo "$PADDOCK_HOME"
 ```
 
-org-start runs it as `hc run --bg --keep --name watcher`; run by hand with `--once` to see one pass.
+org-start runs it as `hc run --bg --keep --name watcher`; the person runs it by hand with `--once` to see one pass (give them the path written out).
 
 ## What it tells
 
@@ -55,7 +56,7 @@ Each item is one line, written with `scripts/org --as watcher send_message secre
 
 ## The wake
 
-The secretary and every `w-<task>` worker with a live terminal and unread mail (`check_messages --peek` as that id) are sent one constant line: `You have mail: run bash scripts/org --as secretary check_messages and act on it.` for the secretary, `You have mail: run bash "$PADDOCK_ORG" --as w-<task> check_messages and act on it.` for a worker. No text from a worker or a person is ever typed.
+The secretary and every `w-<task>` worker with a live terminal and unread mail (`check_messages --peek` as that id) are sent one constant line: `You have mail: run bash "$PADDOCK_HOME/scripts/org" --as secretary check_messages and act on it.` for the secretary, `You have mail: run bash "$PADDOCK_ORG" --as w-<task> check_messages and act on it.` for a worker. No text from a worker or a person is ever typed.
 
 - Only on an exact status: `idle` with `hc send --if idle`; `done` (read with `hc get`, since hc has no `--if done`) with a plain `hc send`, only if one more `hc get` just before it still reads `done` with the same `turn` and `status_ms` (else `moved` in `watcher/woke`, tried again next pass; a turn that starts between that get and the send is still typed into). `working`, `blocked`, no status or not found: nothing this pass.
 - Never over typed input: just before a send it reads the screen once (`hc read`) and checks the prompt line, the last line that starts (after spaces and an optional box) with the marker `❯` or `>`; text after the marker and a space or NBSP holds the wake off for that pass, and so does a screen that cannot be read or shows no prompt line (`noprompt` in `watcher/woke`).

@@ -3,7 +3,7 @@
 # The line that names org-down tells the person to run it from the login shell and names no kill command.
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-tpl=$here/templates/secretary.md
+tpl=$here/templates/secretary-rules.md # standing lines (decision 0014)
 fail=0
 check() { if [ "$2" -eq 0 ]; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }
 

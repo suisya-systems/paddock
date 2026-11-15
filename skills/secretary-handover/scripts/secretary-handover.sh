@@ -10,15 +10,21 @@ Usage: secretary-handover.sh [-h|--help]
 
 Reads the core document secretary-handover (written by the secretary), then ends the
 secretary terminal (hc kill, hc rm) and runs a fresh one from the secretary template
-with "resume from the handover" as the task. Types nothing into any agent.
+with "resume from the handover" as the task, in the secretary's own folder <state>/secretary
+(the rules org-start placed there are its AGENTS.md). Types nothing into any agent, except when
+that folder's trust dialog stops the new secretary: then it answers the dialog once (Yes, checked
+on the screen first) and sends the first message again.
 
 Environment overrides:
   PADDOCK_SECRETARY_NAME  terminal name (default secretary; same as org-start)
+  PADDOCK_STATE_DIR       state folder; the secretary runs in its secretary/ (default
+                          ${XDG_STATE_HOME:-~/.local/state}/paddock; same as org-start)
+  PADDOCK_READY_TRIES     seconds to wait for a status after the trust dialog (default 15)
 
 Exit codes: 0 relaunched, 2 bad argument, 3 hc not found, 4 run inside an agent,
 5 core unreachable or hc run/kill/rm failed, 8 a turn is in progress, 9 no handover
 document, 10 the new secretary did not get its first message, 11 its status could
-not be read (nothing was ended).
+not be read (nothing was ended), 12 the secretary's rules are not placed (nothing was ended).
 USAGE
 }
 
@@ -41,7 +47,15 @@ for v in CLAUDECODE CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_SESSION_ID \
 done
 
 name=${PADDOCK_SECRETARY_NAME:-secretary}
-root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd) # the new secretary starts here, whatever folder this runs from
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd) # the checkout: its scripts and template body
+sdir=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/secretary # where the new secretary starts (decision 0014 F)
+[ -f "$sdir/AGENTS.md" ] && [ -f "$sdir/CLAUDE.md" ] \
+  || die 12 "the secretary's rules are not placed in $sdir (AGENTS.md, CLAUDE.md). Run bash $root/skills/org-start/scripts/org-start.sh --place-only first, then this again; nothing was ended."
+# the template's PADDOCK_HOME comes from this file; a missing or stale one would start a secretary without its tools.
+bd=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}
+ph=$(cat "$bd/paddock-home" 2>/dev/null)
+[ -n "$ph" ] && [ -f "$ph/scripts/org" ] \
+  || die 12 "$bd/paddock-home does not name a paddock checkout ('$ph'). Run bash $root/skills/org-start/scripts/org-start.sh --place-only first, then this again; nothing was ended."
 
 # 1. The handover document must exist before anything is ended. hc has no document verb,
 # so one doc.get line goes into hc connect, input held open 1 s (prototype 1).
@@ -70,7 +84,25 @@ fi
 task="Resume as the secretary from the handover. Read the core document secretary-handover (doc.get through hc connect), the org-state document, and hc ls for the running workers (task_id labels). Take up what they say, then clear secretary-handover (doc.set with a null value) and tell the person you are back."
 lang=$(bash "$root/scripts/org" --as secretary config get conversation_language 2>/dev/null) # Q9
 [ -z "$lang" ] || [ "$lang" = auto ] || task="$task Conversation language: $lang"
-out=$(hc run --bg --keep --name "$name" --cwd "$root" secretary "$task") || die 5 "hc run failed for $name; rerun this script (the handover document is untouched)"
-printf '%s' "$out" | grep -Eq '"sent": *true' \
-  || die 10 "$name started but first_message.sent is not true. Read it with 'hc read $name' before doing anything else."
+out=$(hc run --bg --keep --name "$name" --cwd "$sdir" secretary "$task") || die 5 "hc run failed for $name; rerun this script (the handover document is untouched)"
+if ! printf '%s' "$out" | grep -Eq '"sent": *true'; then
+  # The first launch in a new folder stops at Claude Code's folder-trust dialog (decision 0014 F moved the
+  # secretary to <state>/secretary): answer it as org-start does, wait for a status, send the first message again.
+  . "$root/skills/org-start/scripts/trust-dialog.sh"
+  td_answer "$name"; case $? in
+    1) die 10 "$name started but first_message.sent is not true. Read it with 'hc read $name' before doing anything else." ;;
+    2) die 10 "$name shows the folder-trust dialog and the cursor did not reach 'Yes, I trust this folder'; nothing confirmed. Look at 'hc read $name'" ;;
+  esac
+  echo "secretary-handover: accepted the folder-trust dialog for $sdir on $name"
+  i=0; tries=${PADDOCK_READY_TRIES:-15}
+  until hc get --json "$name" 2>/dev/null | grep -Eq '"status": *\{'; do
+    i=$((i + 1)); [ "$i" -lt "$tries" ] || die 10 "$name has no status ${tries}s after the folder-trust dialog. Read it with 'hc read $name'"
+    sleep 1
+  done
+  body=$(awk 'n >= 2 { print; next } /^---$/ { n++ }' "$root/templates/secretary.md")
+  hc send "$name" "$body
+
+$task" >/dev/null 2>&1 \
+    || die 10 "answered the folder-trust dialog but could not send the first message to $name; send the template body and the task by hand with hc send $name"
+fi
 echo "secretary-handover: relaunched $name from the handover; it clears the document once it has resumed"

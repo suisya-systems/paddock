@@ -34,7 +34,7 @@ run() { # run <args...>; env knobs from $cfgdir, $ccdir, $procdir
       CLAUDE_CONFIG_DIR="${ccdir:-$tmp/cc}" PADDOCK_CORE_CONFIG_DIR="${cfgdir:-$tmp/cfg}" \
       PADDOCK_PROC_DIR="${procdir:-/proc}" PADDOCK_CORE_TEMPLATES_DIR="$tmp/core/templates" \
       PADDOCK_APP_MODS_DIR="$tmp/app/mods" PADDOCK_APP_LAYOUTS_DIR="$tmp/app/layouts" \
-      PADDOCK_BIN_DIR="$tmp/bin-org" PADDOCK_READY_TRIES=2 bash "$script" "$@" 2>&1
+      PADDOCK_BIN_DIR="$tmp/bin-org" PADDOCK_STATE_DIR="$tmp/state" PADDOCK_READY_TRIES=2 bash "$script" "$@" 2>&1
 }
 untouched() { [ ! -e "$tmp/core/templates" ] && [ ! -e "$tmp/bin-org" ] && [ ! -e "$tmp/stub/calls" ]; }
 

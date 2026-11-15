@@ -203,7 +203,7 @@ printf '%s' "$t" | grep -Eq "$EN|No question was written|Approval "; [ $? -ne 0 
 
 # ---- the secretary's rules -----------------------------------------------------
 
-tpl=$here/templates/secretary.md
+tpl=$here/templates/secretary-rules.md # the standing language rule (decision 0014)
 grep -q -- "--lang" "$tpl"; check "the secretary template names --lang" $?
 grep -q -- "--lang" "$here/skills/org-escalation/SKILL.md"; check "the org-escalation skill names --lang" $?
 grep -i "auto" "$tpl" | grep -q "locale the session runs in, or"; [ $? -ne 0 ]; check "auto no longer starts from the locale" $?

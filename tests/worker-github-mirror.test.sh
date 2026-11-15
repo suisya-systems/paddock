@@ -7,6 +7,7 @@ set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tpl=$here/templates/worker.md
 tmp=$(mktemp -d)
+export PADDOCK_STATE_DIR=$tmp/state # org-start places the secretary's rules in <state>/secretary (decision 0014)
 trap 'rm -rf "$tmp"' EXIT
 fail=0
 check() { if [ "$2" -eq 0 ]; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }
@@ -46,7 +47,7 @@ sh "$here/scripts/probes/prototype-3-setup.sh" --repo o/n --project "$tmp/p" --t
 rules=$here/templates/worker-rules.md; sec=$here/templates/secretary.md; dg=$here/skills/org-delegate/SKILL.md
 grep -qi 'stale' "$rules" && grep -qi 'send_message secretary' "$rules" && grep -qi 'do not fetch\|never fetch\|no credential' "$rules"; check "worker rules: ask the secretary for a newer base, do not fetch" $?
 ! grep -qi 'your token is read-only' "$rules"; check "worker rules no longer claim a read-only token" $?
-! grep -qi 'base is stale' "$sec"; check "secretary template: the stale-base procedure is in the org-delegate skill, not here" $?
+! grep -qi 'base is stale' "$sec" "$here/templates/secretary-rules.md"; check "secretary template: the stale-base procedure is in the org-delegate skill, not here" $?
 grep -qi 'stale' "$dg" && grep -q 'git fetch origin' "$dg"; check "org-delegate SKILL: delegate-time fetch and the stale-base request" $?
 ! grep -q 'read-only `GH_TOKEN`' "$sec" "$dg"; check "no text says the worker carries a read-only GH_TOKEN" $?
 

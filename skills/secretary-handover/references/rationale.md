@@ -5,4 +5,4 @@
 - **An unreadable status is never taken as idle.** Only `idle` or a missing terminal allows the kill; `working`, `blocked`, a failed read or an output without `state` end nothing.
 - **Workers are untouched.** They were started to outlive their parent, so the new secretary finds them again by their `task_id` label.
 - **Repeatable.** The document is cleared by the new secretary once it has resumed, so a rerun after that ends nothing and a rerun before it relaunches from the same document. The task travels in the launch, not typed afterwards.
-- **`--cwd` is the paddock folder** so the new secretary finds its tools whatever folder the script ran from.
+- **`--cwd` is `<state>/secretary`,** the secretary's own folder where org-start placed its rules (`AGENTS.md`, `CLAUDE.md`), as org-start does; the script refuses (exit 12) when they are missing. The new secretary finds its tools through `PADDOCK_HOME`, whatever folder the script ran from. That folder's trust dialog is answered once with org-start's `trust-dialog.sh` (a screen read, a cursor check, no blind Enter), then the first message is sent again.

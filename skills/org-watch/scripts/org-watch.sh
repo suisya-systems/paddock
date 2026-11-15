@@ -179,7 +179,7 @@ wake() {
   # no prompt line found is not a prompt without input either
   line=$(prompt_line "$line"); [ -n "$line" ] || { wlog skip "$t" "$batch" "$st" noprompt -; return 0; }
   if typed "$line"; then wlog skip "$t" "$batch" "$st" yes -; return 0; fi
-  if [ "$oid" = secretary ]; then msg="You have mail: run bash scripts/org --as secretary check_messages and act on it."
+  if [ "$oid" = secretary ]; then msg="You have mail: run bash \"\$PADDOCK_HOME/scripts/org\" --as secretary check_messages and act on it."
   else msg="You have mail: run bash \"\$PADDOCK_ORG\" --as $oid check_messages and act on it."; fi
   # hc has no --if done, so done is a plain send, after a last get: still done, same turn and
   # status_ms as the first read, else skip (moved) and retry next pass.

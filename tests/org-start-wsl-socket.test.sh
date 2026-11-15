@@ -8,6 +8,7 @@ set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 script=$here/skills/org-start/scripts/org-start.sh
 tmp=$(mktemp -d)
+export PADDOCK_STATE_DIR=$tmp/state # org-start places the secretary's rules in <state>/secretary (decision 0014)
 trap 'rm -rf "$tmp"' EXIT
 fail=0
 check() { if [ "$2" -eq 0 ]; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }

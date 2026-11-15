@@ -2,7 +2,7 @@
 name: org-update-branch
 description: Take origin/main into a pushed worker branch with a merge (so the push needs no force), and in a worker stop before the merge when the incoming range touches a path the sandbox protects.
 when_to_use: Main moved under a branch that is already pushed (a PR is open or CI is waiting) and the branch must take main in; org-pull-request refuses a merge because the head moved or main changed under it.
-allowed-tools: Bash(bash skills/org-update-branch/scripts/org-update-branch.sh:*) Bash(bash ${CLAUDE_SKILL_DIR}/scripts/org-update-branch.sh *)
+allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/scripts/org-update-branch.sh *) Bash(bash "$PADDOCK_HOME/skills/org-update-branch/scripts/org-update-branch.sh" *)
 ---
 
 # org-update-branch
@@ -10,7 +10,7 @@ allowed-tools: Bash(bash skills/org-update-branch/scripts/org-update-branch.sh:*
 Brings main into a pushed worker branch. Why it is built this way: [references/rationale.md](references/rationale.md). Once a branch is pushed and main has moved, the secretary cannot force-push a rebase, so the branch takes main in as a merge commit and the next push is a fast-forward.
 
 ```sh
-bash skills/org-update-branch/scripts/org-update-branch.sh --worktree <worker worktree> [--base main]
+bash "$PADDOCK_HOME/skills/org-update-branch/scripts/org-update-branch.sh" --worktree <worker worktree> [--base main]
 ```
 
 Bash and `git` only. **Every exit prints one line `next: ...`: do exactly that.** On success it is the [org-pull-request](../org-pull-request/SKILL.md) rerun that sends the branch (no force) and watches CI again for the new head. No exit-code table is kept here; `--help` lists the codes.

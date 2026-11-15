@@ -116,7 +116,7 @@ wait_for() {
   local i=0; until "$@"; do [ $i -lt 600 ] || { check "wait_for $*: true within 60 s" 1; return 1; }; sleep 0.1; i=$((i + 1)); done
 }
 watching() { grep -q "^gh run watch $1 --repo ${2:-o/r} " "$tmp/stub/calls"; }   # ci-watch has its traps and is in gh run watch
-SECLINE='You have mail: run bash scripts/org --as secretary check_messages and act on it.'
+SECLINE='You have mail: run bash "$PADDOCK_HOME/scripts/org" --as secretary check_messages and act on it.'
 
 bash -n "$ciw"; check "ci-watch.sh parses" $?
 bash "$ciw" --help 2>&1 | grep -q -- '--fail'; check "ci-watch.sh --help names --fail" $?

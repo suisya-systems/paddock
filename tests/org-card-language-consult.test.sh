@@ -195,6 +195,6 @@ has "$t" "THE SECRETARY IS ASKING YOU"; check "an unknown language: the consult 
 
 ! grep -q "秘書" "$here/mods/org-cockpit/main.js"; check "the Japanese words never say 秘書" $?
 grep -q "窓口" "$here/mods/org-cockpit/main.js"; check "the Japanese words say 窓口" $?
-grep -q -- "lang --lang" "$here/templates/secretary.md"; check "the secretary template tells the secretary to record the language" $?
+grep -q -- "lang --lang" "$here/templates/secretary-rules.md"; check "the secretary rules tell the secretary to record the language" $?
 
 [ "$fail" -eq 0 ] && echo "all passed" || { echo "FAILED"; exit 1; }

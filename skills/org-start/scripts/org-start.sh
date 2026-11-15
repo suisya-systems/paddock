@@ -13,6 +13,10 @@ Starts the paddock secretary on the running herdr core (the first hc command
 starts a core if none runs; run this from a login shell, never from an agent).
 Idempotent: a second run starts no second secretary and copies the same files.
 A secretary terminal that has finished is removed (hc rm) before a new one starts.
+The secretary runs in its own folder, <state>/secretary (state: PADDOCK_STATE_DIR, else
+${XDG_STATE_HOME:-~/.local/state}/paddock), where its rules are placed as AGENTS.md (from
+templates/secretary-rules.md) beside a CLAUDE.md whose only line is @AGENTS.md; the checkout's path is
+recorded in the bin folder (paddock-home) for the template's PADDOCK_HOME.
 A folder-trust dialog on the secretary is answered once (Yes, checked on the screen first).
 
 --place-only places the files again (templates, the bin folder, mods, layout) and starts nothing:
@@ -21,7 +25,8 @@ no hc call, no core, no secretary, no watcher, no herdr-app command. It may run 
 BRANCH first runs git fetch origin BRANCH in the paddock folder and places origin/BRANCH, not the
 checkout; then it fast-forwards the paddock checkout to origin/BRANCH when it is clean, on BRANCH and
 behind (otherwise it leaves it alone and prints one line with why and what to run; still exit 0).
-It prints the placed files that changed, a renewal line when secretary.md changed, and (when the
+It prints the placed files that changed, a renewal line when secretary.md changed, a line when the
+secretary's rules (AGENTS.md) changed (they reach it at its next compaction), and (when the
 fast-forward changed a SKILL.md) a 'skill changed' line per skill and one /reload-plugins line.
 
 --check only checks the first-run steps (hc, agent shell, claude, notes = false, hc on the running core's PATH,
@@ -187,6 +192,8 @@ fi
 orgbin=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}
 case "$orgbin" in /*) ;; *) die 2 "PADDOCK_BIN_DIR must be an absolute path: $orgbin" ;; esac
 tries=${PADDOCK_READY_TRIES:-15}
+# decision 0014 (F): the secretary's own working folder, outside every git checkout, holding its rules.
+sdir=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/secretary
 name=${PADDOCK_SECRETARY_NAME:-secretary} # terminal name only; the template stays "secretary"
 
 # the files placed come from src: the checkout, or with --from-origin the fetched origin branch.
@@ -206,6 +213,8 @@ put() { # put <from> <to>: copy, and note the target when it changes
   # said at once, so a later failed copy (and a retry that finds it equal) cannot lose it
   [ -z "$placeonly" ] || [ "${2##*/}" != secretary.md ] \
     || echo "org-start: RENEWAL NEEDED: secretary.md changed, and a template body reaches only a new secretary. Ask the person to renew the secretary (secretary-handover)."
+  [ -z "$placeonly" ] || [ "${2##*/}" != AGENTS.md ] \
+    || echo "org-start: the secretary's rules changed ($2): they reach the running secretary at its next compaction, or at a renewal"
 }
 
 if [ -z "$placeonly" ]; then
@@ -235,6 +244,11 @@ put "$src/templates/curator.md" "$templates/curator.md" || die 6 "cannot copy th
 for f in scripts/org scripts/second-model-review.sh scripts/hooks/premise-reminder.sh scripts/hooks/secretary-bash-guard.sh templates/secretary-settings.json templates/worker-rules.md templates/worker-settings.json; do
   put "$src/$f" "$orgbin/${f##*/}" || die 6 "cannot copy $f to $orgbin"
 done
+# the secretary's rules (decision 0014 F) and the checkout its template reaches as PADDOCK_HOME.
+mkdir -p "$sdir" || die 6 "cannot create $sdir"
+put "$src/templates/secretary-rules.md" "$sdir/AGENTS.md" || die 6 "cannot copy the secretary's rules to $sdir/AGENTS.md"
+[ "$(cat "$sdir/CLAUDE.md" 2>/dev/null)" = @AGENTS.md ] || printf '@AGENTS.md\n' > "$sdir/CLAUDE.md" || die 6 "cannot write $sdir/CLAUDE.md"
+[ "$(cat "$orgbin/paddock-home" 2>/dev/null)" = "$root" ] || printf '%s\n' "$root" > "$orgbin/paddock-home" || die 6 "cannot write $orgbin/paddock-home"
 if [ -z "$placeonly" ]; then # place-only keeps the paths an earlier org-start recorded from a login shell
 printf '%s\n' "$claudebin" > "$orgbin/claude-path" || die 6 "cannot write $orgbin/claude-path"
 # same for the review gate's CLI, which often lives in a Node version manager's folder. Optional:
@@ -360,8 +374,8 @@ started=
 if hc get "$name" >/dev/null 2>&1; then
   echo "org-start: $name already exists; not starting another"
 else
-  # --cwd, so the secretary finds scripts/org and skills/*/scripts from any starting folder.
-  hc run --bg --keep --name "$name" --cwd "$root" secretary ${task:+"$task"} || die 5 "hc run failed for the secretary"
+  # its own folder (decision 0014 F): the rules there are its AGENTS.md; the template sets PADDOCK_HOME.
+  hc run --bg --keep --name "$name" --cwd "$sdir" secretary ${task:+"$task"} || die 5 "hc run failed for the secretary"
   started=1
 fi
 
@@ -386,11 +400,11 @@ else
 fi
 
 # 4. Readiness: hc get shows a status object.
-# a new root shows Claude Code's folder-trust dialog and no status. Q13 (a) allows
-# answering it once for the secretary's own root (never for a worktree): read, down, read again,
-# enter only with the cursor on "Yes" (the default is "No, exit"). The first message did not arrive:
-# hc sends the template body plus a blank line and the task, so both are sent again. Only for a
-# secretary this run started in $root: an existing one may sit in another folder.
+# a new folder shows Claude Code's folder-trust dialog and no status. Q13 (a) allows
+# answering it once for the secretary's own folder (never for a worktree; trust-dialog.sh). The first
+# message did not arrive: hc sends the template body plus a blank line and the task, so both are sent
+# again. Only for a secretary this run started in $sdir: an existing one may sit in another folder.
+. "$(dirname "${BASH_SOURCE[0]}")/trust-dialog.sh"
 trusted=; i=0
 while [ "$i" -lt "$tries" ]; do
   if hc get --json "$name" 2>/dev/null | grep -Eq '"status": *\{'; then
@@ -404,13 +418,11 @@ $task}" >/dev/null 2>&1 \
     echo "org-start: ready. $name reports a status; the mod is in $mods/org-agents"
     exit 0
   fi
-  if [ -n "$started" ] && [ -z "$trusted" ] && hc read "$name" 2>/dev/null | grep -Eq 'Quick safety check|Yes, I trust this folder'; then
-    hc keys "$name" down >/dev/null 2>&1; sleep 1
-    hc read "$name" 2>/dev/null | grep -q '❯.*Yes, I trust this folder' \
-      || die 7 "$name shows the folder-trust dialog and the cursor did not reach 'Yes, I trust this folder'; nothing confirmed. Look at 'hc read $name'"
-    hc keys "$name" enter >/dev/null 2>&1
-    trusted=1; i=0; echo "org-start: accepted the folder-trust dialog for $root on $name"
-    continue
+  if [ -n "$started" ] && [ -z "$trusted" ]; then
+    td_answer "$name"; case $? in
+      0) trusted=1; i=0; echo "org-start: accepted the folder-trust dialog for $sdir on $name"; continue ;;
+      2) die 7 "$name shows the folder-trust dialog and the cursor did not reach 'Yes, I trust this folder'; nothing confirmed. Look at 'hc read $name'" ;;
+    esac
   fi
   i=$((i + 1)); sleep 1
 done

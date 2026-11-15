@@ -145,12 +145,13 @@ check "chain: the worker's mailbox holds the answer" $?
 # The secretary template and the org-watch skill (decision 0013, stage 3; the watcher lines moved to the skill by decision 0014): the watcher wakes it; no wait rule, no Stop hook,
 # no per-write nudge, no TEMPORARY hold. org wait stays as a manual tool.
 tpl=$here/templates/secretary.md
-! grep -Eq 'never end a turn idle|end every such turn' "$tpl"; check "template has no wait rule any more" $?
+! grep -Eq 'never end a turn idle|end every such turn' "$tpl" "$here/templates/secretary-rules.md"; check "template has no wait rule any more" $?
 wsk=$here/skills/org-watch/SKILL.md
-grep -q 'scripts/org --as secretary wait --children' "$wsk" && grep -q 'manual tool' "$wsk"; check "org-watch skill keeps org wait --children as a manual tool" $?
-! grep -Eq 'Stop. hook|secretary-stop-guard|#388|#385' "$tpl"; check "template names no Stop hook, nudge issue or TEMPORARY hold" $?
-grep -q 'You have mail: run bash scripts/org --as secretary check_messages' "$wsk"; check "org-watch skill quotes the watcher's wake line" $?
-grep -qF "$(sed -n 's/.*msg="\(You have mail: run bash scripts\/org[^"]*\)".*/\1/p' "$here/skills/org-watch/scripts/org-watch.sh")" "$wsk"; check "the skill's wake line is the one org-watch sends" $?
+grep -qF 'scripts/org" --as secretary wait --children' "$wsk" && grep -q 'manual tool' "$wsk"; check "org-watch skill keeps org wait --children as a manual tool" $?
+! grep -Eq 'Stop. hook|secretary-stop-guard|#388|#385' "$tpl" "$here/templates/secretary-rules.md"; check "template names no Stop hook, nudge issue or TEMPORARY hold" $?
+grep -qF 'You have mail: run bash "$PADDOCK_HOME/scripts/org" --as secretary check_messages' "$wsk"; check "org-watch skill quotes the watcher's wake line" $?
+wl=$(sed -n 's/.*then msg="\(You have mail: run bash .*\)"$/\1/p' "$here/skills/org-watch/scripts/org-watch.sh" | sed 's/\\//g')
+[ -n "$wl" ] && grep -qF "$wl" "$wsk"; check "the skill's wake line is the one org-watch sends" $?
 ! grep -q 'nudge' "$here/scripts/org"; check "scripts/org has no nudge left" $?
 ! grep -q '"Stop"' "$here/templates/secretary-settings.json" && grep -q 'secretary-bash-guard' "$here/templates/secretary-settings.json"; check "secretary settings: no Stop hook, the Bash guard stays" $?
 ! grep -Eq '"PostToolUse"|nudge' "$here/templates/worker-settings.json"; check "worker settings: no PostToolUse nudge hook" $?

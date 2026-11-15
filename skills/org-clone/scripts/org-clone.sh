@@ -102,7 +102,7 @@ fi
 
 # 2. NAME is taken by another row: never overwrite; the secretary asks the person for a name.
 project_lookup "$name"; rc=$?
-[ $rc -eq 1 ] || [ $rc -eq 2 ] || die 7 "the name '$name' is already another project in $projf; never overwritten" "ask the person: the name $name is already another project; what name should $want be registered under? (Nothing was cloned: clone it into a folder, run bash scripts/org --as secretary config project add <name> <path>, then delegate with --project <name>)"
+[ $rc -eq 1 ] || [ $rc -eq 2 ] || die 7 "the name '$name' is already another project in $projf; never overwritten" "ask the person: the name $name is already another project; what name should $want be registered under? (Nothing was cloned: clone it into a folder, run bash \"\$PADDOCK_HOME/scripts/org\" --as secretary config project add <name> <path>, then delegate with --project <name>)"
 
 tgt=$dir/$owner/$name
 part=$dir/$owner/.$name.partial

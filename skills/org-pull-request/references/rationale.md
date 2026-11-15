@@ -10,7 +10,7 @@
 ## What it reads and writes
 
 - The CI state of a head, from this calendar month and the last (decision 0004): the secretary's latest `ci_requested` for the same `repo`, `pr` and `sha`, and the watcher's latest `ci_completed` or `ci_watch_failed` at or after it. A `ci_completed` the skill wrote itself (`from: secretary`) does not count. Request and result are matched by `ts`, which has whole seconds: a request is open only when it is later than the watcher's last line for that head, so a re-request in the same second as a `ci_watch_failed` waits for the next second.
-- A `ci_requested` line: `{"seq":1,"ts":"2026-11-10T01:02:03Z","kind":"ci_requested","from":"secretary","task_id":"t1","pr":42,"sha":"<head>","repo":"o/r"}`, written with `bash scripts/org --as secretary ci_requested --pr <n> --sha <head> --repo <r> [--task <id>]`. The events folder is `scripts/org`'s: `$PADDOCK_STATE_DIR/events`, default `${XDG_STATE_HOME:-~/.local/state}/paddock/events`.
+- A `ci_requested` line: `{"seq":1,"ts":"2026-11-10T01:02:03Z","kind":"ci_requested","from":"secretary","task_id":"t1","pr":42,"sha":"<head>","repo":"o/r"}`, written with `bash "$root/scripts/org" --as secretary ci_requested --pr <n> --sha <head> --repo <r> [--task <id>]`. The events folder is `scripts/org`'s: `$PADDOCK_STATE_DIR/events`, default `${XDG_STATE_HOME:-~/.local/state}/paddock/events`.
 - The approval mode is `--mode`, else `merge_approval_mode` in `org-config.md`, else `human`; any other value means `human`. It lives in `org-config.md`, not in `org-state`.
 
 ## Assumptions (open points left open)

@@ -319,7 +319,7 @@ finish_resend() {
     NX="do not hc send by hand (the saved message and work entry would be skipped); the card for w-$1 is open: when the person answers it yes, answer --id <that card id> --text yes tries again"
   else
     echo "org-escalation: the card could not be recorded" >&2
-    NX="tell the person: the first message of w-$1 is saved but its card could not be recorded; run list, and once org-state is writable run bash skills/org-delegate/scripts/resend.sh $1"
+    NX="tell the person: the first message of w-$1 is saved but its card could not be recorded; run list, and once org-state is writable, you (not the person) run bash \"\$PADDOCK_HOME/skills/org-delegate/scripts/resend.sh\" $1"
   fi
   NX=$NX die "$rc" "$o"
 }
