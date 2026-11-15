@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # After a landing that changes a placed file, the bin copy equals main with nobody typing:
 # org-pull-request (acceptance) merges and runs org-start --place-only --from-origin main, which
-# fetches and places origin/main and starts nothing (the stub hc records no call at all).
+# fetches and places origin/main, fast-forwards the clean checkout, and starts nothing (the stub hc records no call).
 # A copy of this checkout is the paddock folder; a local bare repository stands in for origin.
 # Needs only bash, coreutils, git and tar.
 set -u
@@ -58,7 +58,11 @@ env -u PADDOCK_NOW PADDOCK_STATE_DIR="$st" bash "$root/scripts/org" --as watcher
 out=$(env "${benv[@]}" bash "$root/skills/org-pull-request/scripts/org-pull-request.sh" --worktree "$wt" --repo o/r --pr 42 --mode acceptance 2>&1); rc=$?
 [ "$rc" -eq 0 ]; check "acceptance merge exits 0 (rc $rc)" $?
 git -C "$root" show refs/remotes/origin/main:templates/secretary-settings.json > "$tmp/main.json"
-! cmp -s "$root/templates/secretary-settings.json" "$tmp/main.json" && cmp -s "$tmp/main.json" "$binorg/secretary-settings.json"; check "after the landing the bin copy equals main" $?
+cmp -s "$tmp/main.json" "$binorg/secretary-settings.json"; check "after the landing the bin copy equals main" $?
+# issue #402: the paddock checkout itself is fast-forwarded to main (org-delegate and the secretary's scripts read it).
+[ "$(git -C "$root" rev-parse HEAD)" = "$(git -C "$root" rev-parse origin/main)" ] && cmp -s "$tmp/main.json" "$root/templates/secretary-settings.json"
+check "after the landing the clean checkout on main is fast-forwarded to main" $?
+grep -q 'fast-forwarded the checkout' <<<"$out"; check "the output says the checkout was fast-forwarded" $?
 grep -q 'changed:.*secretary-settings.json' <<<"$out"; check "the output names the changed file" $?
 ! grep -q 'RENEWAL NEEDED' <<<"$out"; check "no renewal asked for a settings change" $?
 ! grep -Eq '^(hc|herdr-app) ' "$tmp/stub/calls"; check "place-only made no hc or herdr-app call (no run, no server)" $?
@@ -73,6 +77,32 @@ grep -q 'RENEWAL NEEDED' <<<"$out"; check "a secretary.md change asks for a rene
 out=$(env "${benv[@]}" bash "$root/skills/org-start/scripts/org-start.sh" --place-only --from-origin main 2>&1)
 grep -q 'nothing changed' <<<"$out"; check "a second run changes nothing" $?
 ! grep -Eq '^(hc|herdr-app) ' "$tmp/stub/calls"; check "still no hc or herdr-app call" $?
+# a landed worker-settings.json change is in the checkout org-delegate builds the next worker's settings from.
+land() { printf '%s\n' "$1" >> "$tmp/stub/land/templates/worker-settings.json"; gitc "$tmp/stub/land" commit -qam "land worker-settings"; git -C "$tmp/stub/land" push -q origin HEAD:main; }
+land " "
+out=$(env "${benv[@]}" bash "$root/skills/org-start/scripts/org-start.sh" --place-only --from-origin main 2>&1); rc=$?
+[ "$rc" -eq 0 ] && cmp -s "$tmp/stub/land/templates/worker-settings.json" "$root/templates/worker-settings.json"
+check "a landed worker-settings.json is in the checkout org-delegate reads" $?
+# a dirty checkout is left alone with one line; the placing still succeeds.
+echo dirty >> "$root/templates/worker.md"; before=$(git -C "$root" rev-parse HEAD); land "  "
+out=$(env "${benv[@]}" bash "$root/skills/org-start/scripts/org-start.sh" --place-only --from-origin main 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ "$(git -C "$root" rev-parse HEAD)" = "$before" ] && grep -q dirty "$root/templates/worker.md" \
+  && cmp -s "$tmp/stub/land/templates/worker-settings.json" "$binorg/worker-settings.json"
+check "a dirty checkout is left alone, the files are still placed (rc $rc)" $?
+[ "$(grep -c 'left alone' <<<"$out")" -eq 1 ] && grep -q 'uncommitted changes.*merge --ff-only origin/main' <<<"$out"
+check "the dirty case prints one line with why and what to run" $?
+git -C "$root" checkout -q -- templates/worker.md
+# a checkout on another branch is left alone.
+git -C "$root" switch -q -c other; land "   "
+out=$(env "${benv[@]}" bash "$root/skills/org-start/scripts/org-start.sh" --place-only --from-origin main 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ "$(git -C "$root" rev-parse HEAD)" = "$before" ] && [ "$(git -C "$root" branch --show-current)" = other ] \
+  && grep -q 'left alone: it is on other, not main; to update it: git -C .* switch main' <<<"$out"
+check "an off-branch checkout is left alone with the message" $?
+# back on main, clean: the next run catches up.
+git -C "$root" switch -q main
+out=$(env "${benv[@]}" bash "$root/skills/org-start/scripts/org-start.sh" --place-only --from-origin main 2>&1)
+[ "$(git -C "$root" rev-parse HEAD)" = "$(git -C "$root" rev-parse origin/main)" ] && ! grep -q 'left alone' <<<"$out"
+check "back on main and clean, the next run fast-forwards it" $?
 env "${benv[@]}" bash "$root/skills/org-start/scripts/org-start.sh" --from-origin main >/dev/null 2>&1
 [ $? -eq 2 ]; check "--from-origin without --place-only exits 2" $?
 exit $fail
