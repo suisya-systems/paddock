@@ -38,7 +38,10 @@ Exit codes: 0 done (no --pr: PR opened, CI requested; --pr, human: CI green, the
 decides; --pr, acceptance: merged), 2 bad argument, 3 gh or git not found, 4 no CI result
 recorded for the head yet (requested now or still watched; the watcher mails it), 5 push
 failed, 6 PR could not be created, 9 CI failed, 10 merge refused (head moved or required
-checks not green), 11 merge failed, 12 the ci_requested line could not be written.
+checks not green), 11 merge failed, 12 the ci_requested line could not be written, 13 merged,
+but the files org-start placed were not placed again (a landing in the paddock repository).
+
+After a merge in the paddock repository itself, it runs org-start.sh --place-only --from-origin BASE.
 USAGE
 }
 
@@ -180,3 +183,11 @@ gh pr checks "$pr" --repo "$repo" --required --watch >/dev/null 2>&1 \
   || die 10 "required checks are not all green on $sha; not merged"
 gh pr merge "$pr" --repo "$repo" --squash --match-head-commit "$sha" >&2 || die 11 "gh pr merge failed"
 echo "Merged PR $url at $sha (squash, approval mode acceptance)."
+
+# a landing in the paddock repository itself (the worktree shares this folder's git store) may change
+# the files org-start placed: place them again from the fetched base, starting nothing.
+gitdir() { (cd "$1" && cd "$(git rev-parse --git-common-dir)" && pwd -P) 2>/dev/null; }
+if [ "$(gitdir "$wt")" = "$(gitdir "$root")" ]; then
+  bash "$root/skills/org-start/scripts/org-start.sh" --place-only --from-origin "$base" \
+    || die 13 "merged, but the placed files were not renewed; run: bash skills/org-start/scripts/org-start.sh --place-only --from-origin $base"
+fi

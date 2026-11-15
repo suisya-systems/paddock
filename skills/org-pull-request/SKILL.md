@@ -27,6 +27,7 @@ Bash only, plus `git` and `gh`. `--repo OWNER/NAME` is taken from a GitHub `orig
 4. Acts by the approval mode, then prints the outcome.
    - `human`: prints `PR_URL=...` and that the person decides; merges nothing. Exit 0.
    - `acceptance`: there is no local gate. The check is the repository's CI as a required status check: the `acceptance` job. The script only checks that the PR head (`gh pr view --json headRefOid`) still equals the watched sha and that `gh pr checks --required --watch` (it waits for other workflows of the head still running) is green, then runs `gh pr merge <n> --squash --match-head-commit <sha>`. No `--admin`, no `--auto`.
+5. After that merge, when the worktree shares the paddock folder's git store (a landing in paddock itself), it runs `bash skills/org-start/scripts/org-start.sh --place-only --from-origin <base>`: the changed templates, `secretary-settings.json` and bin scripts are placed again from the fetched base, and nothing is started (see [org-start](../org-start/SKILL.md)). Its output says what changed; a `RENEWAL NEEDED` line means `secretary.md` changed, which reaches only a new secretary: ask the person to renew it. If placing fails, exit 13 (the PR is merged).
 
 The mode is `--mode`, else `merge_approval_mode` in `org-config.md` (read with `org config get merge_approval_mode`; change it with `org config set`), else `human`. Any other value means `human`.
 
@@ -44,6 +45,7 @@ The mode is `--mode`, else `merge_approval_mode` in `org-config.md` (read with `
 | 10 | Merge refused: head moved after the watched run, or required checks not green. | Rerun with `--pr` so the new head is requested. |
 | 11 | `gh pr merge` failed. | Report. |
 | 12 | The `ci_requested` line could not be written; nothing watches the PR. | Report. |
+| 13 | Merged, but placing the files again failed. | Run the printed `org-start.sh --place-only --from-origin <base>`; if it fails again, report. |
 
 ## CI is watched by the watcher
 
