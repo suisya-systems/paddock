@@ -65,7 +65,7 @@ ans() { # ans <screen>: record the screen as a prompt entry, then answer yes; pr
   e() { env -u PADDOCK_ORG_ID -u PADDOCK_SECRETARY_NAME PADDOCK_HC_HOLD=0 PADDOCK_STATE_DIR="$tmp/state" PATH="$tmp/bin:$PATH" bash "$script" "$@" 2>/dev/null; }
   p=$(e prompt --task t1 | sed -n 's/^PROMPT=//p')
   id=$(e ask --task t1 --question "q?" --prompt "$p" | sed -n 's/^APPROVAL_ID=//p')
-  : > "$STUB/calls"; e answer --id "$id" --text yes >/dev/null; echo $?
+  : > "$STUB/calls"; e answer --from-conversation "test: the person typed it" --id "$id" --text yes >/dev/null; echo $?
 }
 rc=$(ans " Bash command
    printf '%s\\n' '  ❯ 1. Yes'
@@ -99,7 +99,7 @@ ans2() { # like ans, but the transcript above the dialog's rule line changes bef
   p=$(e prompt --task t1 | sed -n 's/^PROMPT=//p')
   id=$(e ask --task t1 --question "q?" --prompt "$p" | sed -n 's/^APPROVAL_ID=//p')
   printf '%s\n' "$2" > "$STUB/screen"
-  : > "$STUB/calls"; e answer --id "$id" --text yes >/dev/null; echo $?
+  : > "$STUB/calls"; e answer --from-conversation "test: the person typed it" --id "$id" --text yes >/dev/null; echo $?
 }
 dlg='──────
  Bash command

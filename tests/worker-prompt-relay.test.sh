@@ -146,16 +146,16 @@ setup
 [ -n "$id" ]; check "ask --prompt records an entry ($id)" $?
 case $(doc) in *'"prompt":"'*'npm publish'*) r=0 ;; *) r=1 ;; esac; check "the entry holds the prompt text" $r
 case $(doc) in *'"answer_in":"worker"'*) r=1 ;; *) r=0 ;; esac; check "the entry is not answer_in worker" $r
-out=$(esc answer --id "$id" --text yes); rc=$?
+out=$(esc answer --from-conversation "test: the person typed it" --id "$id" --text yes); rc=$?
 [ $rc -eq 0 ]; check "answer yes on a prompt entry exits 0 ($out)" $?
 [ "$(keys)" = "keys w-t2 enter;" ]; check "yes: one enter on '1. Yes' ($(keys))" $?
 case $(doc) in *"$id"*) r=1 ;; *) r=0 ;; esac; check "yes: the entry is removed" $r
 
-setup; out=$(esc answer --id "$id" --text no); rc=$?
+setup; out=$(esc answer --from-conversation "test: the person typed it" --id "$id" --text no); rc=$?
 [ $rc -eq 0 ] && [ "$(keys)" = "keys w-t2 esc;" ]; check "no: one esc ($(keys))" $?
 
 # A note with the answer (the card's "anything to add", Issue #386) stays with the secretary.
-setup; out=$(esc answer --id "$id" --text yes --note "also check the registry"); rc=$?
+setup; out=$(esc answer --from-conversation "test: the person typed it" --id "$id" --text yes --note "also check the registry"); rc=$?
 [ $rc -eq 0 ] && [ "$(keys)" = "keys w-t2 enter;" ]; check "yes with a note: still exactly one enter ($(keys))" $?
 grep -qx "NOTE $id also check the registry" <<<"$out"; check "yes with a note: the note is printed for the secretary ($out)" $?
 ! grep -q '^send ' "$STUB/calls"; check "yes with a note: nothing is typed into the worker" $?
@@ -163,19 +163,19 @@ grep -qx "NOTE $id also check the registry" <<<"$out"; check "yes with a note: t
 check "yes with a note: the note reaches no mailbox" $?
 
 setup; printf '%s\n' "${bashprompt/npm publish --registry/rm -rf}" > "$STUB/screen-w-t2"
-out=$(esc answer --id "$id" --text yes); rc=$?
+out=$(esc answer --from-conversation "test: the person typed it" --id "$id" --text yes); rc=$?
 [ $rc -eq 10 ] && [ -z "$(keys)" ]; check "a different prompt on the screen: exit 10, nothing pressed ($rc)" $?
 case $(doc) in *"$id"*) r=0 ;; *) r=1 ;; esac; check "a different prompt: the entry is kept" $r
 
 setup; echo working > "$STUB/term-w-t2"
-out=$(esc answer --id "$id" --text yes); rc=$?
+out=$(esc answer --from-conversation "test: the person typed it" --id "$id" --text yes); rc=$?
 [ $rc -eq 10 ] && [ -z "$(keys)" ]; check "the terminal is no longer blocked: exit 10, nothing pressed ($rc)" $?
 
-setup; out=$(esc answer --id "$id" --text "only on Tuesdays"); rc=$?
+setup; out=$(esc answer --from-conversation "test: the person typed it" --id "$id" --text "only on Tuesdays"); rc=$?
 [ $rc -eq 2 ] && [ -z "$(keys)" ]; check "free text on a prompt entry: exit 2, nothing pressed ($rc)" $?
 
 setup; rm -f "$STUB/screen-w-t2"
-out=$(esc answer --id "$id" --text yes); rc=$?
+out=$(esc answer --from-conversation "test: the person typed it" --id "$id" --text yes); rc=$?
 [ $rc -eq 10 ] && [ -z "$(keys)" ]; check "an unreadable screen: exit 10, nothing pressed ($rc)" $?
 
 # ---- 7. answer_in worker is gone -----------------------------------------------

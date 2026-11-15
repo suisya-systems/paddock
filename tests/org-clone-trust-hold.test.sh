@@ -70,7 +70,7 @@ p=${out#PROMPT=}
 id=$(e ask --task t1 --question "Trust the folder of o/r?" --prompt "$p" | sed -n 's/^APPROVAL_ID=//p')
 [ -n "$id" ]; check "ask records the prompt entry" $?
 : > "$STUB/calls"
-e answer --id "$id" --text yes --then-send "first message" >/dev/null; rc=$?
+e answer --from-conversation "test: the person typed it" --id "$id" --text yes --then-send "first message" >/dev/null; rc=$?
 [ $rc -eq 0 ]; check "answer yes exits 0 ($rc)" $?
 grep -q '^keys w-t1 down' "$STUB/calls" && [ "$(grep -c '^keys w-t1 enter' "$STUB/calls")" = 1 ]; check "answer: down to Yes, enter once" $?
 grep -q '^send w-t1 first message' "$STUB/calls"; check "answer --then-send sends the first message after the dialog" $?
@@ -80,13 +80,13 @@ grep -q '^send w-t1 first message' "$STUB/calls"; check "answer --then-send send
 # A no presses esc and keeps the marker.
 fresh; : > "$(marker)"; out=$(e prompt --task t1)
 id=$(e ask --task t1 --question "Trust?" --prompt "${out#PROMPT=}" | sed -n 's/^APPROVAL_ID=//p'); : > "$STUB/calls"
-e answer --id "$id" --text no >/dev/null; rc=$?
+e answer --from-conversation "test: the person typed it" --id "$id" --text no >/dev/null; rc=$?
 [ $rc -eq 0 ] && grep -q '^keys w-t1 esc' "$STUB/calls" && ! grep -q '^keys w-t1 enter' "$STUB/calls" && [ -e "$(marker)" ]; check "no: esc, no enter, marker kept ($rc)" $?
 
 # A screen that changed since the card: nothing pressed.
 fresh; : > "$(marker)"; out=$(e prompt --task t1)
 id=$(e ask --task t1 --question "Trust?" --prompt "${out#PROMPT=}" | sed -n 's/^APPROVAL_ID=//p')
 printf '%s\n' '────────' ' Something else entirely' > "$STUB/screen"; : > "$STUB/calls"
-e answer --id "$id" --text yes >/dev/null; rc=$?
+e answer --from-conversation "test: the person typed it" --id "$id" --text yes >/dev/null; rc=$?
 [ $rc -eq 10 ] && ! grep -q '^keys' "$STUB/calls" && [ -e "$(marker)" ]; check "changed screen: exit 10, no key, marker kept ($rc)" $?
 exit $fail
