@@ -119,7 +119,7 @@ out=$(esc answer --id t5-20261110T010205Z --text yes --note "but also update the
 [ $r -eq 0 ]; check "answer with a note exits 0 ($out)" $?
 case $(mail w-t5) in *"Answer to your question (t5-20261110T010205Z): yes (note from the person: but also update the docs)"*) r=0 ;; *) r=1 ;; esac
 check "the worker gets the answer and the note in one message" $r
-[ "$(rc esc answer --id "$id2" --text yes --note "$(head -c 1001 /dev/zero | tr '\0' x)")" -eq 2 ]; check "a note over 1000 bytes exits 2" $?
+[ "$(rc esc answer --id "$id2" --text yes --note "$(head -c 4001 /dev/zero | tr '\0' x)")" -eq 2 ]; check "a note over 4000 bytes exits 2" $?
 case $(doc) in *"$id2"*) r=0 ;; *) r=1 ;; esac; check "a refused note keeps the entry" $r
 
 # answer: unknown id exits 6 and sends nothing

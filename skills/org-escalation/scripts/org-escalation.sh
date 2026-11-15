@@ -43,7 +43,7 @@ Usage: org-escalation.sh prompt --task TASK_ID [--then-send TEXT]
           then remove the entry. A prompt entry takes yes or no: only while w-<task_id> is
           blocked and its screen still shows the recorded prompt, yes presses enter on
           "1. Yes" (once, never "don't ask again") and no presses esc
-          --note: the person's note with the answer (at most 1000 bytes). An ordinary
+          --note: the person's note with the answer (at most 4000 bytes). An ordinary
           question sends it to the worker after the answer; a prompt or resend entry never
           passes it on (prints NOTE <id> <note>: it is the secretary's to act on)
   remove  remove the entry only (answered in the worker's terminal, withdrawn, task dropped)
@@ -329,7 +329,7 @@ case $cmd in
     t=$(clean "$text")
     [ -n "${t//[ ]/}" ] || die 2 "answer needs --text <answer>"
     n=$(clean "$note"); [ -n "${n//[ ]/}" ] || n=
-    [ "${#n}" -le 1000 ] || die 2 "--note is over 1000 bytes"
+    [ "${#n}" -le 4000 ] || die 2 "--note is over 4000 bytes"
     # A note never goes into a worker's prompt: the secretary, who has it from the card, acts on it.
     keep_note() { [ -z "$n" ] || echo "NOTE $id $n"; }
     f=$(edit find "$id"); st=$?

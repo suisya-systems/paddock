@@ -9,6 +9,7 @@
 # more; the mod never writes org-state; the card is gone once the secretary removes the entry.
 # With a note typed in the card's note field (Issue #386) the line is
 # `ANSWER <id> yes|no; note: <note>`, line breaks folded into spaces, and the field is emptied.
+# A note over org-escalation's 4000-byte cap is not sent: the card says so and keeps the note.
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
@@ -117,7 +118,8 @@ if (b) {
   b._click({}, {}, cx); b._click({}, {}, cx); await settle();
   b._click({}, {}, cx); await settle();
 }
-console.log(`note-after [${globalThis.__note.value()}]`);
+console.log(`too-long ${/too long/i.test(text(v.render(cx))) ? "shown" : "none"}`);
+console.log(`note-after [${globalThis.__note.value().slice(0, 20)}]`);
 console.log(`writes ${globalThis.__h.calls.filter((c) => /doc\.set|\bdoc (set|update)\b/.test(c)).length}`);
 globalThis.__h.doc = { version: 4, value: { work: [], approvals: [] } };
 v.refresh(cx); await settle();
@@ -148,5 +150,14 @@ run_case No no
 run_case Yes "yes; note: also bump the lock file" "  also bump
 the lock file "
 run_case No "no; note: use pnpm instead" "use pnpm instead"
+
+# 1334 three-byte characters: 4002 bytes, over the cap.
+export PADDOCK_STATE_DIR=$tmp/state-toolong
+long=$(printf '補%.0s' $(seq 1334))
+out=$(cd "$tmp/m" && node drive.mjs Yes "$long" 2>&1)
+n=$(bash "$here/scripts/org" --as secretary check_messages --peek 2>&1 | grep -c '^\[person#')
+[ "$n" -eq 0 ]; check "a note over 4000 bytes: nothing is sent (got $n)" $?
+echo "$out" | grep -q '^too-long shown$'; check "a note over 4000 bytes: the card says it is too long" $?
+echo "$out" | grep -q '^note-after \[補'; check "a note over 4000 bytes: the note stays in the field" $?
 
 exit $fail

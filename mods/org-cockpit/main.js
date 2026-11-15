@@ -64,9 +64,17 @@ const ORG = 'o=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/b
 // The line the card sends: `ANSWER <id> yes|no`, or with the person's note
 // `ANSWER <id> yes|no; note: <note>` (skills/org-escalation, "The answer message"). The note is one
 // line: whitespace runs, line breaks included, become one space.
+const oneLine = (note) => String(note ?? "").replace(/\s+/g, " ").trim();
 function answerLine(id, word, note) {
-  const n = String(note ?? "").replace(/\s+/g, " ").trim();
+  const n = oneLine(note);
   return `ANSWER ${id} ${word}${n ? `; note: ${n}` : ""}`;
+}
+// org-escalation answer --note takes at most this many bytes (UTF-8); a longer note is not sent.
+const NOTE_MAX = 4000;
+function utf8Bytes(s) {
+  let b = 0;
+  for (const ch of s) { const c = ch.codePointAt(0); b += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4; }
+  return b;
 }
 
 // ponytail: needs sh on that machine; a native Windows one without it shows "Not sent".
@@ -85,6 +93,7 @@ const STR = {
     recommends: "SECRETARY RECOMMENDS", fromSecretary: "FROM THE SECRETARY",
     yes: "Yes", no: "No", wordCol: 28, recommended: "Recommended",
     noteLabel: "ANYTHING TO ADD? (optional, sent with Yes or No)",
+    noteTooLong: (max) => `The note is too long (over ${max} bytes). Shorten it, then answer.`,
     waiting: (d) => `waiting ${d}`, more: (n) => `and ${n} more waiting`,
     under1m: "<1m", min: (n) => `${n}m`, hour: (n) => `${n}h`, day: (n) => `${n}d`,
     fields: { background: "background", if_yes: "what Yes does", if_no: "what No does", recommend: "recommendation" },
@@ -104,6 +113,7 @@ const STR = {
     recommends: "窓口のおすすめ", fromSecretary: "窓口から",
     yes: "はい", no: "いいえ", wordCol: 40, recommended: "おすすめ",
     noteLabel: "補足（任意。「はい」「いいえ」と一緒に送られます）",
+    noteTooLong: (max) => `補足が長すぎます（${max}バイト超）。短くしてから回答してください。`,
     waiting: (d) => `${d}待ち`, more: (n) => `ほかに${n}件あります`,
     under1m: "1分未満", min: (n) => `${n}分`, hour: (n) => `${n}時間`, day: (n) => `${n}日`,
     fields: { background: "背景", if_yes: "「はい」の結果", if_no: "「いいえ」の結果", recommend: "おすすめ" },
@@ -373,8 +383,11 @@ export default class Cockpit extends View {
   answer(a, word) {
     const s = this.sent.get(a.id);
     if (s && s.state !== "failed") return;
-    this.sent.set(a.id, { word, state: "sending" });
     const note = this.note?.value() ?? "";
+    // Too long for the secretary's answer: nothing is sent, the card stays as it is and says so.
+    this.noteTooLong = utf8Bytes(oneLine(note)) > NOTE_MAX ? a.id : null;
+    if (this.noteTooLong) { this.cx.spawn(async (cx) => cx.notify()); return; }
+    this.sent.set(a.id, { word, state: "sending" });
     this.cx.spawn(async (cx) => {
       cx.notify();
       try {
@@ -493,6 +506,7 @@ export default class Cockpit extends View {
         .child(div().mx(16).h(1).bg(t.foreground + "14"))
         .child(v_flex().px(16).py(12).gap(10)
           .when(failed, (el) => el.child(div().text_size(12).text_color(c).child(L.notSent)))
+          .when(this.noteTooLong === a.id, (el) => el.child(div().text_size(12).text_color(c).whitespace_normal().child(L.noteTooLong(NOTE_MAX))))
           .when(answerable && Boolean(this.note), (el) => el.child(v_flex().gap(4)
             .child(this.label(t, L.noteLabel, t.muted))
             .child(Input.new(this.note).h(34).px(10).items_center().rounded(8).border_1()
