@@ -155,7 +155,7 @@ bare() { sed -E "s/$nbsp/ /g; s/^([[:space:]]|│|\|)*//"; }
 # prompt_line <screen>: the last line whose first mark (after bare) is the prompt marker ❯ or >.
 prompt_line() { printf '%s\n' "$1" | bare | grep -E '^(❯|>)' | tail -1; }
 # typed <line>: the prompt line holds input after the marker (open question 3 of 0013).
-# ponytail: measured on the host (#396): the prompt is "❯" + NBSP + input, between two rule lines,
+# ponytail: measured on the host: the prompt is "❯" + NBSP + input, between two rule lines,
 # above the status bar, so the last screen line is not it; a newer Claude Code screen may move it again.
 typed() { printf '%s\n' "$1" | bare | grep -Eq '^(❯|>)[[:space:]]+[^[:space:]│|]'; }
 # wake <terminal> <org id>: the one constant line when <org id> has unread mail and <terminal> is
