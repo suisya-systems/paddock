@@ -168,6 +168,10 @@ pass $T0; pass $((T0 + 30))
 reset; term secretary - working; term w-t5 t5 none; pass $T0; pass $((T0 + 600)); pass $((T0 + 630))
 [ "$(unread secretary | grep -c '^w-t5 has reported no status for 10 minutes$')" -eq 1 ]; check "no status for N minutes: one line" $?
 
+# the watcher's own writes fire no per-write nudge: only its guarded wake types (typed input here)
+reset; term secretary - idle; term w-t1 t1 blocked; screen secretary '❯ typing'; pass $T0
+unread secretary | grep -q '^w-t1 is blocked$' && ! grep -q '^send' "$tmp/stub/calls"; check "a watcher mailbox line over typed input: no send at all (no nudge)" $?
+
 # work_check is the same check as wait's (moved, not copied)
 reset; doc '[{"task_id":"t3","title":"y"}]'
 r=$(env -i PATH="$tools" HOME="$tmp" STUB="$tmp/stub" PADDOCK_STATE_DIR="$tmp/state" PADDOCK_HC_HOLD=0 bash "$org" --as watcher work_check)
@@ -195,6 +199,10 @@ printf '{"seq":1,"ts":"%s","kind":"ci_completed","from":"secretary","pr":42,"sha
 req; cat "$tmp/ci.line" >> "$tmp/state/events/$MON/secretary.jsonl"; pass $T0; settle
 wev | grep -q '"kind":"ci_completed"'; check "stage 1: the skill's own ci_completed does not close the watcher's request" $?
 
+reset; term secretary - working; mkdir -p "$tmp/state/events/2027-02" "$tmp/state/events/2026-12"
+env -i PATH="$tmp/nohc" HOME="$tmp" PADDOCK_STATE_DIR="$tmp/state" PADDOCK_NOW=2026-12-31T23:00:00Z "$BASH" "$org" --as secretary ci_requested --pr 7 --sha "$SHA" --repo o/r >/dev/null
+: > "$tmp/state/events/2027-02/secretary.jsonl"; pass $T0; settle
+wev | grep -q '"kind":"ci_completed".*"pr":7,'; check "a request from last month is watched although next month's folder exists" $?
 failcase() { # failcase <reason> <env...>
   local r=$1; shift
   reset; term secretary - working; req; pass $T0 "$@"; settle

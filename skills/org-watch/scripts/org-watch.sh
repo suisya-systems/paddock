@@ -179,10 +179,13 @@ wake() {
 # ci_lines: "open|super<TAB>pr<TAB>sha<TAB>repo<TAB>task" per ci_requested of the secretary with no
 # ci_completed or ci_watch_failed of the watcher at or after it for the same pr and sha (stage 1:
 # the skill's own ci_completed does not count). open: the newest request of its PR; super: an older
-# one with another head. This and the last month folder of the history.
+# one with another head. This and the last calendar month of the history.
 ci_lines() {
-  local ev=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/events d
-  for d in $(ls -d "$ev"/*/ 2>/dev/null | sort | tail -2); do
+  local ev=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/events d cur y m
+  # this calendar month and the last, as scripts/org's window (own_files makes next month's folder early)
+  cur=$(date -u -d "@$now" +%Y-%m 2>/dev/null) || cur=$(date -u +%Y-%m)
+  y=${cur%-*}; m=$((10#${cur#*-} - 1)); [ "$m" -gt 0 ] || { m=12; y=$((10#$y - 1)); }
+  for d in "$ev/$(printf '%04d-%02d' "$((10#$y))" "$m")" "$ev/$cur"; do
     [ ! -f "$d/secretary.jsonl" ] || grep -h '"kind":"ci_requested"' "$d/secretary.jsonl" | sed 's/^/R /'
     [ ! -f "$d/watcher.jsonl" ] || grep -hE '"kind":"(ci_completed|ci_watch_failed)"' "$d/watcher.jsonl" | sed 's/^/D /'
   done | awk '

@@ -225,8 +225,9 @@ put() {
   printf '%s\n' "$s" > "$state/events/$id.seq" && printf '{"seq":%s,%s}\n' "$s" "$1" >> "$d/$id.jsonl" && ok=1
   lock_drop "$lk"
   [ "$ok" -eq 1 ] || die 5 "cannot write $d/$id.jsonl"
-  # the secretary's own writes (its start records) are made while it works: no nudge
-  [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || case "$1" in *'"to":"secretary",'*|*"\"to\":\"${PADDOCK_SECRETARY_NAME:-secretary}\","*) nudge ;; esac
+  # the secretary's own writes (its start records) are made while it works: no nudge. Nor the
+  # watcher's (decision 0013): its wake, with the typed-input check and the rate limit, announces them.
+  [ "$id" = watcher ] || [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || case "$1" in *'"to":"secretary",'*|*"\"to\":\"${PADDOCK_SECRETARY_NAME:-secretary}\","*) nudge ;; esac
 }
 
 # nudge: Issue #385. An idle secretary starts no turn on mail alone (decision 0002), so after a write
