@@ -13,7 +13,7 @@
 # kept (generated data only). The terminal runs Claude Code in default permission mode.
 #
 # What it sends and what is checked (CHECK lines come from `hc read`, RESULT lines sum up):
-#   S0 launch   first message "say you are ready". Screen is printed. A folder-trust dialog is
+#   S0 launch   first message "What is 40 plus 2?". Screen is printed. A folder-trust dialog is
 #               expected (it appears without a plugin too; it is accepted and the terminal is
 #               relaunched in a sibling folder). Any OTHER dialog text mentioning a plugin is a
 #               finding: RESULT H4-dialog FAIL. Look at the printed screen yourself.
@@ -129,7 +129,7 @@ show() { echo "-- screen ($1):"; screen | tail -${2:-25}; }
 
 launch() { # $1 = dir; prints "yes" when the folder-trust dialog was seen
   mkdir -p "$1"
-  hc run --bg --name $NAME --cwd "$1" $NAME "Reply with one short sentence saying you are ready." \
+  hc run --bg --name $NAME --cwd "$1" $NAME "What is 40 plus 2? Answer with only the number." \
     || { echo "RESULT precondition-failed: hc run failed"; exit 1; }
   i=0; seen=no
   while [ $i -lt 120 ]; do
@@ -156,14 +156,22 @@ else
 fi
 sleep 8
 show S0-first-screen 30
-# A dialog about the plugin would sit on screen and the first message would not be answered.
-wait_idle 120 || echo "-- not idle after 120 s: a dialog may be waiting; see the screen above"
-if screen | grep -Eiq 'plugin' && ! screen | grep -q 'ready'; then
-  echo "RESULT H4-dialog: FAIL (plugin text on screen and no answer; read the screen)"
-elif screen | grep -q 'ready'; then
-  echo "RESULT H4-dialog: PASS (the first message was answered without an extra dialog)"
+# A dialog about the plugin would sit on screen and block the first message. Observe only:
+# this wait never presses a key (wait_idle does), so a dialog is recorded, not accepted.
+i=0; DLG=no
+while [ $i -lt 120 ]; do
+  is_idle && break
+  if state_is blocked; then DLG=yes; break; fi
+  i=$((i + 3)); sleep 3
+done
+# The answer to "40 plus 2" holds 42; the submitted prompt does not, so 42 is the assistant's.
+if [ "$DLG" = yes ]; then
+  echo "RESULT H4-dialog: FAIL (the terminal is blocked at launch; read the screen)"
+  show S0-blocked 30
+elif screen | grep -Eq '(^|[^0-9])42([^0-9]|$)'; then
+  echo "RESULT H4-dialog: PASS (the first message was answered, no key was pressed)"
 else
-  echo "RESULT H4-dialog: NO DATA (no answer and no plugin text; read the screen)"
+  echo "RESULT H4-dialog: NO DATA (no answer and not blocked; read the screen)"
 fi
 
 echo "== S1 skill list"
