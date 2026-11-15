@@ -2,6 +2,7 @@
 // roles placed by layouts/paddock.json through props.role:
 //   "workers"  left: one tile per worker terminal (labelled task_id): status colour, its last
 //              lines, "Needs you" when blocked. Click opens the terminal to answer there.
+//              Above them, always: "Back to the secretary" (Issue #389).
 //   "approval" bottom right: the oldest org-state approval as one card, answered Yes / No
 //              through the secretary (a worker's prompt too: the secretary relays it, #260).
 //   "consult"  floating: what the secretary asks the person, while its terminal is blocked.
@@ -82,6 +83,7 @@ const STR = {
     fallbackQuestion: (id, task) => `Approval ${id || "without an id"} for ${task}`, unnamedTask: "an unnamed task",
     sending: "Sending…", notSent: "Not sent. Try again.",
     openSecretary: "Open the secretary to answer in words", secretaryDown: "The secretary is not running",
+    backToSecretary: "Back to the secretary",
     nothingWaiting: "Nothing waiting for you.", nothingElse: "Nothing else waiting for you.",
     nothingWritten: "The secretary has not written anything yet.", answered: (n) => `+${n} answered`,
     sent: (word, task, late, d) => `${word} · ${task} · ${late ? `not passed on yet, ${d}` : "passing on"}`,
@@ -99,6 +101,7 @@ const STR = {
     fallbackQuestion: (id, task) => `${task}の承認依頼（${id || "IDなし"}）`, unnamedTask: "名前のないタスク",
     sending: "送信中…", notSent: "送信できませんでした。もう一度お試しください。",
     openSecretary: "言葉で答えるには窓口を開く", secretaryDown: "窓口は起動していません",
+    backToSecretary: "窓口に戻る",
     nothingWaiting: "確認待ちはありません。", nothingElse: "ほかに確認待ちはありません。",
     nothingWritten: "窓口からの書き込みはまだありません。", answered: (n) => `ほか${n}件回答済み`,
     sent: (word, task, late, d) => `${word} · ${task} · ${late ? `${d}経過、まだ伝わっていません` : "窓口に伝えています"}`,
@@ -314,12 +317,33 @@ export default class Cockpit extends View {
           .when(!msg, (el) => el.children(lines.map((l, i) => div().truncate().text_color(i === lines.length - 1 ? t.foreground : t.muted).child(l))))));
   }
 
+  // A worker peeked from its tile and kept ("keep as tab") has a pane and holds the centre. Herdr's
+  // terminal.park is the pane menu's "Send back": the pane goes, the worker keeps running and is
+  // a tile again (herdr-app AGENTS.md, Terminals). Then pane.focus brings the secretary's pane,
+  // and its tab, back to the centre. Parking restores the layout; no pane is stacked.
+  backToSecretary() {
+    const shown = new Set(panes().map((p) => p.terminal));
+    for (const w of this.workers()) if (shown.has(w.address)) run("terminal.park", { terminal: w.address });
+    const sec = this.secretary();
+    if (sec) run("pane.focus", { terminal: sec.address });
+  }
+
+  backButton(t, L) {
+    const sec = this.secretary();
+    return h_flex().id("back-to-secretary").flex_none().h(32).px(12).rounded(8).items_center().justify_center()
+      .bg(t.raised).text_size(13).font_semibold().text_color(sec ? t.foreground : t.muted)
+      .cursor_pointer().hover((st) => st.bg(t.hover))
+      .on_click(() => this.backToSecretary())
+      .child(sec ? L.backToSecretary : L.secretaryDown);
+  }
+
   renderWorkers(t) {
     const now = Date.now();
     const titles = new Map((this.value()?.work ?? []).map((w) => [w.task_id, w]));
     const ws = this.workers().sort((a, b) =>
       (RANK[a.status] ?? 5) - (RANK[b.status] ?? 5) || String(a.labels.task_id).localeCompare(String(b.labels.task_id)));
     return v_flex().size_full().min_h(0).gap(12)
+      .child(this.backButton(t, words(this.value()?.conversation_lang)))
       .child(h_flex().px(2).pt(4).items_center().justify_between()
         .child(this.label(t, "WORKERS"))
         .when(Boolean(this.error), (el) => el.child(div().text_size(11).text_color(t.blocked).child("hc unreachable"))))
