@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Issue #385: every write to the secretary's mailbox is followed by one nudge to an idle secretary
-# (hc send --if idle, then --if done), after the line is written; a refused or failed nudge never fails
+# (hc send --if idle; a `done` one, read with hc get, gets a plain hc send: Issue #388), after the line is written; a refused or failed nudge never fails
 # the write, and the nudge writes nothing. `org nudge` (the workers' PostToolUse hook, whose own write
 # cannot reach hc from the sandbox) nudges only when the secretary has unread mail.
 # hc is a stub on PATH that logs each call and whether the write was already on disk. Needs node.
@@ -15,7 +15,14 @@ cat > "$tmp/bin/hc" <<'EOS'
 #!/bin/sh
 n=$(cat "$STATE"/events/*/*.jsonl 2>/dev/null | wc -l | tr -d ' ')
 echo "$* lines=$n" >> "$CALLS"
-case "$1 $2 $3" in "send --if idle") exit "${RC_IDLE:-0}" ;; "send --if done") exit "${RC_DONE:-0}" ;; esac
+# like hc 0.1.18: --if takes only idle|working (else usage error, exit 2); blocked 9, other status 10
+st=${STATUS:-idle}
+case "$1" in
+  get) printf '{\n  "name": "%s",\n  "state": "live",\n  "status": {"app":"claude-code","state":"%s"}\n}\n' "$3" "$st"; exit 0 ;;
+  send) [ "$2" = --if ] || exit 0
+        case "$3" in idle|working) ;; *) echo "error: invalid value '$3' for '--if <STATUS>'" >&2; exit 2 ;; esac
+        [ "$st" != blocked ] || exit 9; [ "$st" = "$3" ] || exit 10 ;;
+esac
 exit 0
 EOS
 chmod +x "$tmp/bin/hc"
@@ -26,23 +33,32 @@ lines() { cat "$STATE"/events/*/*.jsonl 2>/dev/null | wc -l | tr -d ' '; }
 : > "$CALLS"; o --as w-t1 report done --task t1 "finished"; rc=$?
 [ $rc -eq 0 ]; check "a worker's report exits 0 ($rc)" $?
 grep -q '^send --if idle secretary .*check_messages.* lines=1$' "$CALLS"; check "the report nudges the secretary after the line is written" $?
-[ "$(grep -c '^send' "$CALLS")" -eq 1 ]; check "one nudge when the idle send goes through" $?
+[ "$(grep -c '^send' "$CALLS")" -eq 1 ] && ! grep -q '^get' "$CALLS"; check "one nudge when the idle send goes through" $?
+o --as secretary check_messages >/dev/null
+
+: > "$CALLS"; STATUS=done PADDOCK_NUDGE_RETRY=0 o --as w-t1 report done --task t1 "finished"
+grep -q '^send secretary .*check_messages' "$CALLS"; check "a secretary whose turn ended (done) gets the nudge" $?
+! grep -q '^send --if done' "$CALLS"; check "the nudge never passes --if done (hc rejects it)" $?
+o --as secretary check_messages >/dev/null
+: > "$CALLS"; STATUS=working PADDOCK_NUDGE_RETRY=0 o --as w-t1 report done --task t1 "finished"
+[ "$(grep -c '^send' "$CALLS")" -eq 1 ] && ! grep -q '^send secretary' "$CALLS"; check "a working secretary is not typed into" $?
+o --as secretary check_messages >/dev/null
 
 : > "$CALLS"; o --as person send_message secretary "ANSWER a1 yes"
 grep -q '^send --if idle secretary ' "$CALLS"; check "the card's ANSWER nudges the secretary" $?
 
-: > "$CALLS"; RC_IDLE=10 RC_DONE=10 PADDOCK_NUDGE_RETRY=0 o --as w-t1 send_message secretary "q?"; rc=$?
-[ $rc -eq 0 ] && [ "$(lines)" -eq 3 ]; check "a refused nudge does not fail the write ($rc)" $?
-grep -q '^send --if done secretary ' "$CALLS"; check "a send refused on idle is tried on done" $?
+n=$(lines); : > "$CALLS"; STATUS=working PADDOCK_NUDGE_RETRY=0 o --as w-t1 send_message secretary "q?"; rc=$?
+[ $rc -eq 0 ] && [ "$(lines)" -eq $((n + 1)) ]; check "a refused nudge does not fail the write ($rc)" $?
+grep -q '^get --json secretary' "$CALLS"; check "a send refused on idle reads the status for done" $?
 
 # refused as working (10): retried in the background while the mail is unread, then it stops
-: > "$CALLS"; RC_IDLE=10 RC_DONE=10 PADDOCK_NUDGE_RETRY=2 PADDOCK_NUDGE_INTERVAL=0.2 o --as w-t3 send_message secretary "late"; sleep 2
+: > "$CALLS"; STATUS=working PADDOCK_NUDGE_RETRY=2 PADDOCK_NUDGE_INTERVAL=0.2 o --as w-t3 send_message secretary "late"; sleep 2
 [ "$(grep -c '^send --if idle' "$CALLS")" -eq 3 ]; check "a nudge refused as working is retried (1 + 2 tries)" $?
 o --as secretary check_messages >/dev/null
-: > "$CALLS"; RC_IDLE=10 RC_DONE=10 PADDOCK_NUDGE_RETRY=3 PADDOCK_NUDGE_INTERVAL=0.5 o --as w-t3 send_message secretary "read soon"
+: > "$CALLS"; STATUS=working PADDOCK_NUDGE_RETRY=3 PADDOCK_NUDGE_INTERVAL=0.5 o --as w-t3 send_message secretary "read soon"
 o --as secretary check_messages >/dev/null; sleep 2
 [ "$(grep -c '^send --if idle' "$CALLS")" -eq 1 ]; check "no retry once the mail is read" $?
-: > "$CALLS"; RC_IDLE=9 RC_DONE=5 PADDOCK_NUDGE_INTERVAL=0.2 o --as w-t3 send_message secretary "blocked"; sleep 1
+: > "$CALLS"; STATUS=blocked PADDOCK_NUDGE_INTERVAL=0.2 o --as w-t3 send_message secretary "blocked"; sleep 1
 [ "$(grep -c '^send --if idle' "$CALLS")" -eq 1 ]; check "no retry on another failure (blocked, no core)" $?
 o --as secretary check_messages >/dev/null
 

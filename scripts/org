@@ -228,7 +228,11 @@ put() {
 nudge() {
   local t=${PADDOCK_SECRETARY_NAME:-secretary} m="You have mail: run bash scripts/org --as secretary check_messages and act on it." n rc
   command -v hc >/dev/null 2>&1 || return 0
-  send1() { hc send --if idle "$t" "$m" >/dev/null 2>&1 || hc send --if done "$t" "$m" >/dev/null 2>&1; }
+  # hc 0.1.18's --if takes only idle|working (Issue #388): `done` is read with hc get, then sent plainly
+  send1() { hc send --if idle "$t" "$m" >/dev/null 2>&1; local r=$?; [ "$r" -eq 10 ] || return "$r"
+    hc get --json "$t" 2>/dev/null | tr -d '\n' | grep -Eo '"state": *"(working|blocked|done|error|idle)"' | head -1 \
+      | grep -q '"done"' || return 10
+    hc send "$t" "$m" >/dev/null 2>&1; }
   send1; [ $? -eq 10 ] || return 0
   ( id=secretary; n=${PADDOCK_NUDGE_RETRY:-5}
     while [ "$n" -gt 0 ]; do
