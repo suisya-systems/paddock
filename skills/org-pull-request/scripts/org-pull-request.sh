@@ -158,7 +158,7 @@ else
   url="https://github.com/$repo/pull/$pr"
 fi
 echo "PR_URL=$url"
-again="bash $self --pr $pr --worktree $wt"   # the rerun the secretary is told to make
+again="bash $self --pr $pr --worktree $wt --repo $repo${mode:+ --mode $mode}"   # the rerun the secretary is told to make
 org=$root/scripts/org
 targs=(); [ -z "$task" ] || targs=(--task "$task")
 

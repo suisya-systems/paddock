@@ -48,12 +48,12 @@ git -C "$wt" symbolic-ref -q HEAD >/dev/null || die 2 "no branch checked out in 
 if ! git -C "$wt" fetch -q origin 2>/dev/null; then
   # A worker's sandbox cannot reach GitHub (docs/design/worker-github-access.md): it goes on with the
   # origin/<base> the secretary fetched in the project clone. The secretary's own failed fetch stays exit 5.
-  [ -n "${PADDOCK_ORG:-}" ] || die 5 "git fetch origin failed" "run git fetch origin in the project clone yourself, then rerun: bash $self --worktree $wt; if the fetch fails there too, ask the person: origin cannot be reached; why?"
+  [ -n "${PADDOCK_ORG:-}" ] || die 5 "git fetch origin failed" "run git fetch origin in the project clone yourself, then rerun: bash $self --worktree $wt --base $base; if the fetch fails there too, ask the person: origin cannot be reached; why?"
   echo "org-update-branch: fetch failed (a worker cannot fetch); using the existing origin/$base" >&2
 fi
 git -C "$wt" rev-parse -q --verify "refs/remotes/origin/$base^{commit}" >/dev/null \
   || die 5 "no origin/$base; a worker cannot fetch, ask the secretary to run git fetch origin in the project clone" "run git fetch origin in the project clone, then rerun: bash $self --worktree $wt --base $base"
-[ -z "$(git -C "$wt" status --porcelain --untracked-files=no)" ] || die 7 "tracked files have uncommitted changes; commit them first" "have the worker commit its changes, then rerun: bash $self --worktree $wt"
+[ -z "$(git -C "$wt" status --porcelain --untracked-files=no)" ] || die 7 "tracked files have uncommitted changes; commit them first" "have the worker commit its changes, then rerun: bash $self --worktree $wt --base $base"
 
 next_ok="next: run the org-pull-request skill: bash skills/org-pull-request/scripts/org-pull-request.sh --pr <n> --worktree $wt (it sends the branch, no force, and requests CI for the new head)"
 if git -C "$wt" merge-base --is-ancestor "origin/$base" HEAD; then echo "already up to date with origin/$base"; echo "$next_ok"; exit 0; fi
