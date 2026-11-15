@@ -198,6 +198,8 @@ None of these is assumed by the recommendation; each one can change it, as noted
 | H4 | `--plugin-dir` of the checkout in a template launch | Start a secretary-like template with `--plugin-dir`; check: no dialog at launch; `paddock:` skills in the skill list; a skill is invoked by situation; edit its `SKILL.md` and add a new skill folder while it runs, invoke again, see the new text and the new skill | If edits are not live or a dialog appears, part 2 falls back to (S) with symlinks |
 | H5 | `allowed-tools` pre-approves a skill's script call under the secretary's settings | Invoke a skill with `allowed-tools: Bash(bash skills/org-issue/scripts/org-issue.sh:*)` | Only decides whether the field is used |
 
+**H1 result (2026-11-16, `scripts/probes/h1-precedence.sh` at 0210a64, hc 0.1.18, Claude Code 2.1.325):** control PASS (without the rules the worker pushed to the local bare repository, so the repository's `AGENTS.md` does pull), at launch PASS, after `/compact` PASS (committed, not pushed); verdict PASS. Under (A), with the precedence section, the rules won in both stages, and the worker said which instruction it did not follow and still followed the repository's commit-message line. **Not established:** that the compaction completed. The screen after `/compact` showed only the input box, with no completion text, so `s3-compacted: yes` is the probe's grep on the echoed command, not proof. The after-compact PASS therefore stands only as "after sending `/compact`"; an automatic compaction was not measured. One run, mechanism (A) only; (B) was not measured.
+
 ## Build, in parallel units
 
 Each unit is one worker task. Units in the same wave touch different files and can run at once.
