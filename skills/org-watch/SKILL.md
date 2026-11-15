@@ -1,11 +1,25 @@
 ---
 name: org-watch
-description: The watcher that tells the person, outside the herdr-app window, when an approval card waits, when the secretary has stopped moving while a worker is blocked, or when a terminal never reported a status; and (decision 0013, stage 1) writes worker events into the secretary's mailbox as watcher, wakes an idle or done secretary or worker that has unread mail with one constant line, and watches CI for each ci_requested record. A resident script org-start runs as the kept terminal named watcher; org-down ends it. The person's channel is a desktop toast with sound, else notify-send, else a terminal bell.
+description: The resident watcher. It tells the person (a toast, outside the window) when an approval card waits, the secretary has stopped moving or a terminal never reported; writes worker events into the secretary's mailbox as watcher; wakes an idle secretary or worker that has unread mail; and watches CI for each ci_requested record. org-start runs it as the kept terminal named watcher; org-down ends it.
+when_to_use: Mail from watcher arrives (blocked, done with no report, gone, no status, a CI result); you end a turn idle and wait for the wake line; a worker's CI result or "CI watch failed" line arrives; the person asks why nothing woke you or why a toast came.
 ---
 
 # org-watch
 
 A shell loop that tells the person what the window cannot, because the window is closed or the secretary is the one not moving. Why it is built this way: [references/rationale.md](references/rationale.md).
+
+## For the secretary
+
+- End your turns idle at your prompt. The watcher wakes you: while you are idle or done with unread mail, it types one line into your prompt, `You have mail: run bash scripts/org --as secretary check_messages and act on it.` Run `check_messages` and act (an `ANSWER` goes through `org-escalation answer`). It does not type while you work (a `done` status is read again just before the send; a short window remains, decision 0013), nor over a line the person has half typed; mail that came while you worked is announced on its first pass after your turn ends. If the watcher terminal is gone, nothing wakes you: tell the person to rerun `org-start`.
+- Mail from `watcher` is its own: one recorded fact per line (tables below). Read it like a report and decide as usual:
+  - `w-<task> is blocked`: run `org-escalation prompt` for it.
+  - `w-<task> is done and sent no report`: `hc read` it, then close it or ask it.
+  - `w-<task> has no terminal and sent no done report`: look at `hc read w-<task_id>` if it is still there; tell the person.
+  - `w-<task> has reported no status for N minutes`: as for gone.
+  - `CI success|failure on PR <n> ...` or `CI watch failed on PR <n> ...`: see `org-pull-request`.
+- `bash scripts/org --as secretary wait --children` is a manual tool, not a rule: it holds until mail, a child terminal's end, the person's typed line or a timeout, and prints one JSON line: `"reason":"mail"`, `"children"`, `"exit"`, `"timeout"`, or `"reason":"message"` when the person typed a line during it (read and answer that line on your next turn). With `"gone"`, `"waiting"`, `"unreported"`, `"unreadable"` or `"watch_error"` read as for the watcher's lines. You need it for nothing; the watcher already does that check.
+
+## Run it
 
 ```sh
 bash skills/org-watch/scripts/org-watch.sh [--once]

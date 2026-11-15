@@ -16,14 +16,22 @@ Exit codes: 0 merged (or main already there), 2 bad argument, 3 git not found, 6
 USAGE
 }
 
-die() { code=$1; shift; echo "merge-local: $*" >&2; exit "$code"; }
+die() { # die <code> <message>: the message, then one next: line (decision 0014, the secretary's contract)
+  code=$1; shift; echo "merge-local: $*" >&2
+  case $code in
+    2) echo "next: fix the call (bash merge-local.sh --help) and run it again" ;;
+    3) echo "next: ask the person: git is not on PATH" ;;
+    *) echo "next: ask the person: main was not fast-forwarded (see the line above); nothing was merged" ;;
+  esac >&2
+  exit "$code"
+}
 
 task=
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --task) [ $# -ge 2 ] || die 2 "--task needs a value"; task=$2; shift 2 ;;
-    *) echo "merge-local: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+    *) usage >&2; die 2 "unknown argument: $1" ;;
   esac
 done
 case "$task" in ''|-*|*[!a-z0-9_-]*) die 2 "--task <task_id> is required: lowercase letters, digits, _ and -" ;; esac

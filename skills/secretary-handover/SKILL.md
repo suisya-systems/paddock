@@ -1,6 +1,7 @@
 ---
 name: secretary-handover
-description: Renew the secretary's context. Reads the secretary-handover document, ends the old secretary terminal, and launches a fresh secretary from its template with "resume from the handover" as the task. Run it from your own login shell or a service, never from the secretary.
+description: Renew the secretary's context. The secretary writes the secretary-handover document and tells the person; the person's script reads it, ends the old secretary terminal and launches a fresh secretary from its template with "resume from the handover" as the task.
+when_to_use: Your context is getting full, or the person asks you to renew yourself, and you are at the end of a turn with nothing half done (the writing half, yours). Running the script is the person's, from their own shell.
 ---
 
 # secretary-handover
@@ -15,8 +16,18 @@ Bash only, like [org-start](../org-start/SKILL.md).
 
 ## The two halves
 
-1. **The secretary writes the handover document** when its context is getting full (the instruction is in [`templates/secretary.md`](../../templates/secretary.md)), then tells the person it is ready. The secretary never ends its own terminal.
+1. **The secretary writes the handover document** when its context is getting full or the person asks, at the end of a turn with nothing half done, then tells the person it is ready. The secretary never ends its own terminal and never runs the script; nothing is typed into it.
 2. **This script** runs outside the secretary and does the renewal.
+
+### The writing half (the secretary)
+
+You renew yourself by handover, not by clearing your own context.
+
+- Write the core document with `bash scripts/org --as secretary doc set secretary-handover`, as for `org-state`. Replace the whole value each time. Keep it under 32 KiB.
+- Write only what `org-state` and the mailbox do not already hold: `last_exchange` (the last thing the person asked and what you answered, and what they are waiting for), `unrecorded_decisions` (decisions made in this conversation that no record has yet), `open_threads` (per worker `task_id`: what you asked or promised it, what you expect back), and `written_at` (UTC, ISO 8601).
+- Then tell the person the handover is ready and that `bash skills/secretary-handover/scripts/secretary-handover.sh` renews you: they (or a service) run it from outside; it ends your terminal and starts a fresh secretary.
+
+The fresh secretary's task text carries the resume steps: read `secretary-handover` and `org-state`, find the running workers by their `task_id` label (`hc ls`), take up the open threads, check the mailbox, clear the handover (`echo null | bash scripts/org --as secretary doc set secretary-handover`), and tell the person it is back.
 
 ## What the script does
 

@@ -1,6 +1,8 @@
 ---
 name: org-close
-description: End a finished or failed worker in one call. Checks the worker's done record in the mailbox and its task_id label, then hc kill, hc rm and removes the work entry; --drop also removes the worktree and the unused branch. Run it from the secretary.
+description: End a finished or failed worker in one call. Checks the worker's done record in the mailbox and its task_id label, then hc kill, hc rm and removes the work entry; --drop also removes the worktree and the unused branch.
+when_to_use: A worker's done report is in your mailbox and its work is taken up (a pull request opened, or the answer given); a worker failed to launch or is abandoned; a local-repository task is agreed and needs its main fast-forwarded.
+allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/scripts/org-close.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/scripts/merge-local.sh *)
 ---
 
 # org-close
@@ -8,8 +10,10 @@ description: End a finished or failed worker in one call. Checks the worker's do
 Closes a worker after its task. Run it from the secretary. Why it is built this way: [references/rationale.md](references/rationale.md).
 
 ```sh
-bash skills/org-close/scripts/org-close.sh --task <task_id> [--drop]
+bash ${CLAUDE_SKILL_DIR}/scripts/org-close.sh --task <task_id> [--drop]
 ```
+
+The rule that holds always: never `hc kill` a worker's terminal before that worker's report is in the mailbox, unless a person says so. A terminal stays until killed, so there is no rush: check the mailbox first. Close a worker through this skill, not by hand. `--drop` is for a worker that failed to launch or is abandoned. A non-zero exit ends with one `next:` line: do what it says.
 
 ## What it does
 
@@ -26,7 +30,7 @@ With `--drop` (the work is abandoned, or the launch failed): no report needed. I
 
 ## Task in a local repository (no PR)
 
-For a task run in a repository made by `local-repo.sh` ([org-delegate](../org-delegate/SKILL.md)) there is no PR. After the owner agrees, `bash skills/org-close/scripts/merge-local.sh --task <task_id>` fast-forwards that repository's `main` to the worker's branch (`git merge --ff-only`; no merge commit). It refuses a worktree that does not belong to `$PADDOCK_LOCAL_DIR/<task_id>`, uncommitted tracked changes, and a `main` that cannot fast-forward (exit 6). Run it before `org-close`; it pushes nothing. Tested with real git only (`tests/org-local-repo.test.sh`).
+For a task run in a repository made by `local-repo.sh` ([org-delegate](../org-delegate/SKILL.md)) there is no PR. After the owner agrees, `bash ${CLAUDE_SKILL_DIR}/scripts/merge-local.sh --task <task_id>` fast-forwards that repository's `main` to the worker's branch (`git merge --ff-only`; no merge commit). It refuses a worktree that does not belong to `$PADDOCK_LOCAL_DIR/<task_id>`, uncommitted tracked changes, and a `main` that cannot fast-forward (exit 6). Run it before `org-close`; it pushes nothing. Tested with real git only (`tests/org-local-repo.test.sh`).
 
 ## Exit codes
 

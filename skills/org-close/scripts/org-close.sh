@@ -26,7 +26,18 @@ task's label, 8 the worktree could not be removed.
 USAGE
 }
 
-die() { code=$1; shift; echo "org-close: $*" >&2; exit "$code"; }
+die() { # die <code> <message>: the message, then one next: line (decision 0014, the secretary's contract)
+  code=$1; shift; echo "org-close: $*" >&2
+  case $code in
+    2) echo "next: fix the call (bash org-close.sh --help) and run it again" ;;
+    3) echo "next: ask the person: hc is not on PATH; is herdr-core installed for this shell?" ;;
+    5) echo "next: run the same command again; if it fails again, ask the person: the core or org-state cannot be reached" ;;
+    6) echo "next: ask the worker to send its done report and run this again; for an abandoned or failed launch add --drop" ;;
+    7) echo "next: ask the person: the terminal does not carry the task's label, so it was not ended; look at hc ls" ;;
+    *) echo "next: ask the person: the worktree could not be removed (see the line above); it was left as it is" ;;
+  esac >&2
+  exit "$code"
+}
 
 task= drop=
 while [ $# -gt 0 ]; do
@@ -34,7 +45,7 @@ while [ $# -gt 0 ]; do
     -h|--help) usage; exit 0 ;;
     --task) [ $# -ge 2 ] || die 2 "--task needs a value"; task=$2; shift 2 ;;
     --drop) drop=1; shift ;;
-    *) echo "org-close: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+    *) usage >&2; die 2 "unknown argument: $1" ;;
   esac
 done
 case "$task" in ''|-*|*[!a-z0-9_-]*) die 2 "--task <task_id> is required: lowercase letters, digits, _ and -" ;; esac
