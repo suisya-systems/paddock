@@ -1,6 +1,8 @@
 ---
 name: org-resume
 description: Resume the organization after a pause. Finds the workers again by task_id label, compares each worktree's git state with the suspend record, prints a plan, and with --apply relaunches workers whose terminal is gone (claude --continue first, a fresh worker as the fallback). Run it from your own login shell.
+when_to_use: The person comes back after a pause or a shutdown and wants the workers found again (a plan first, --apply to relaunch). Run from the person's login shell, never from inside an agent.
+disable-model-invocation: true
 ---
 
 # org-resume
