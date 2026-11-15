@@ -39,6 +39,8 @@
 #   FAIL  compaction1=yes  s1=KESTREL-7  after-compaction1=none  (the rule was not followed after it;
 #         known-after-compaction1 says whether it is merely not applied or lost). F FAIL moves part 3 to (R);
 #         if R FAILs too, the rules need a SessionStart hook on the compact source (decision 0014, D17).
+#   UNCONFIRMED  compaction1=screen: only the word compact showed on the screen, no transcript marker; read
+#         the printed screens, and decide by hand whether a compaction happened.
 #   VOID  compaction1=no, or s1=none (not followed even before the long task), or the folder check failed.
 #         Rerun with PCT=20 or a larger MAXROUNDS, or read the printed screens.
 # The edit lines are a measurement, not a pass or fail: edit-before-compaction=HERON-3 means an edit
@@ -142,12 +144,14 @@ check() { # $1 = name, $2 = ERE; prints yes|no and sets CHK
 tfiles() { find "$PROJ" -maxdepth 2 -name '*.jsonl' -path "*$BASE*" 2>/dev/null | while read -r f; do echo "$f"; done | xargs -r ls -tr 2>/dev/null; }
 # Only visible reply text counts (not thinking or tool inputs), and only a code on the LAST line of the text.
 replies() { tfiles | while read -r f; do grep -h '"type":"assistant"' "$f" | grep -Eo '"text":"([^"\\]|\\.)*"' | sed -nE 's/.*("text":"|\\n)(\[\[[A-Za-z0-9-]+\]\])(\\n)*"$/\2/p'; done; }
+# Visible reply texts (JSON-escaped), the trailing code line cut off, so a recall check is not fed by the rule being followed.
+texts() { tfiles | while read -r f; do grep -h '"type":"assistant"' "$f" | grep -Eo '"text":"([^"\\]|\\.)*"' | sed -E 's/(\\n)+\[\[[A-Za-z0-9-]+\]\](\\n)*"$/"/'; done; }
 ncompact() { tfiles | while read -r f; do grep -Eo 'compact_boundary|isCompactSummary' "$f"; done | wc -l | tr -d ' '; }
 ask() { # $1 = step tag, $2 = text, $3 = max wait seconds; sets NEW (codes in the new replies)
-  n0=$(replies | wc -l | tr -d ' ')
+  n0=$(replies | wc -l | tr -d ' '); t0=$(texts | wc -l | tr -d ' ')
   hc send $NAME "$2"; wait_idle "${3:-180}"
   show "$1" 15
-  NEW=$(replies | tail -n +$((n0 + 1)) | tr '\n' ' ')
+  NEW=$(replies | tail -n +$((n0 + 1)) | tr '\n' ' '); NEWTXT=$(texts | tail -n +$((t0 + 1)))
   echo "REPLY-CODES $1: ${NEW:-none}"
 }
 code_of() { # reduce NEW to KESTREL-7, HERON-3, both or none
@@ -170,28 +174,23 @@ launch() { # $1 = dir: starts the terminal; prints "yes" when the trust dialog w
   echo "$seen"
 }
 
-fill() { # $1 = step tag, $2 = ncompact before, $3 = first: reads rounds of files until a compaction shows
-  r=0; got=no
+fill() { # $1 = step tag, $2 = ncompact before, $3 unused: reads rounds of files until a compaction shows.
+  # FILLED: yes = a new transcript marker; screen = only the word "compact" newly on the screen (a hint, never a PASS); no.
+  r=0; FILLED=no; SC0=$(screen | grep -Eci 'compact')
   while [ $r -lt "$MAXROUNDS" ]; do
     r=$((r + 1)); RND="$1$r"; gen "$RUN" "$RND"
     hc send $NAME "Read the files data-r$RND-1.txt to data-r$RND-$FILES.txt in the current folder, one file at a time with the Read tool, whole file each. After each file write a one sentence summary. Then write the number of files you read."
     wait_idle 1500
-    if [ "$TMARK" = yes ]; then
-      [ "$(ncompact)" -gt "$2" ] && got=yes
-      # the first compaction may be seen on the screen only (marker names not verified)
-      [ "${3:-}" = first ] && screen | grep -Eqi 'compact' && got=yes
-    else
-      screen | grep -Eqi 'compact' && got=yes
+    if [ "$(ncompact)" -gt "$2" ]; then FILLED=yes
+    elif [ "$(screen | grep -Eci 'compact')" -gt "$SC0" ]; then FILLED=screen
     fi
-    echo "-- $1 round $r: compaction seen: $got"
-    [ $got = yes ] && break
+    echo "-- $1 round $r: compaction evidence: $FILLED"
+    [ $FILLED != no ] && break
   done
   wait_idle 300
   show "$1" 25
-  FILLED=$got
 }
 
-TMARK=yes
 echo "== S0 launch"
 RUN="$ROOT/run1"; prep "$RUN"; gen "$RUN" 0
 seen=$(launch "$RUN" | tail -1)
@@ -219,19 +218,17 @@ check s1-bracket-line "^[[:space:]]*(.[[:space:]]*)?\[\[$CWA\]\]"
 
 echo "== S2 fill until a compaction happens (the probe does not type one)"
 c0=$(ncompact)
-fill S2 "$c0" first
+fill S2 "$c0"
 C1=$FILLED
-# If the screen showed the notice but no transcript marker was counted, the marker names are
-# wrong for this Claude Code: use the screen from here on.
-if [ "$C1" = yes ] && [ "$(ncompact)" -le "$c0" ]; then TMARK=no; echo "-- transcript has no compaction marker; using the screen"; fi
 echo "CHECK compaction1: $C1 (transcript markers: $(ncompact))"
 
 echo "== S3 after compaction 1: unrelated question, then ask for the rule"
 ask S3a "What is 17 plus 25? Answer in one short sentence." 180
 A1=$(code_of)
 ask S3b "State the codeword and the formatting rule you were given at the start of this session, in one or two sentences." 180
-check s3-codeword "$CWA"; K1=$CHK
-check s3-format "[Ss]quare bracket"
+K1=no
+if printf '%s' "$NEWTXT" | grep -q "$CWA" && printf '%s' "$NEWTXT" | grep -Eqi 'square bracket|\[\['; then K1=yes; fi
+echo "CHECK s3-known (codeword and format, from the S3b reply only): $K1"
 
 echo "== S4 edit the rules file mid-session: $CWA -> $CWB"
 sed "s/$CWA/$CWB/g" "$RULESFILE" > "$RULESFILE.new" && mv "$RULESFILE.new" "$RULESFILE"
@@ -258,6 +255,7 @@ R1=$(code_of)
 echo "== files kept in $OUT (screens); transcripts:"; tfiles
 echo "RESULT h3-$MODE: compaction1=$C1 s1=$S1 after-compaction1=$A1 known-after-compaction1=$K1 edit-before-compaction=$E1 compaction2=$C2 after-compaction2=$A2 after-restart=$R1"
 case "$C1:$S1:$A1:$K1" in
+  screen:$CWA:*) echo "RESULT h3-$MODE verdict: UNCONFIRMED (compaction seen on the screen only; read the screens in $OUT)" ;;
   yes:$CWA:$CWA:yes) echo "RESULT h3-$MODE verdict: PASS (the rules survived an automatic compaction)" ;;
   yes:$CWA:*) echo "RESULT h3-$MODE verdict: FAIL (not followed after compaction 1; known=$K1)" ;;
   *) echo "RESULT h3-$MODE verdict: VOID (compaction1=$C1 s1=$S1)" ;;
