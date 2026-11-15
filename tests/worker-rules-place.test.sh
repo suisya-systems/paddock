@@ -36,11 +36,12 @@ chmod +x "$bin/claude" "$bin/hc"
 home=$tmp/home; mkdir -p "$home/.config/paddock"
 mkdir -p "$home/.config/herdr-core"; printf 'notes = false\n' > "$home/.config/herdr-core/config.toml"
 clean() { # clean <cmd...>: scratch HOME, none of the folder overrides, no agent variables
-  env -u APPDATA -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME \
+  env -u APPDATA -u WSL_DISTRO_NAME -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME \
       -u PADDOCK_CORE_TEMPLATES_DIR -u PADDOCK_APP_MODS_DIR -u PADDOCK_BIN_DIR \
       -u PADDOCK_STATE_DIR \
       -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID \
       -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN \
+      PADDOCK_PROC_DIR="$tmp/no-proc" PADDOCK_WIN_C_DIR="$tmp/no-c" \
       HOME="$home" PATH="$bin:$PATH" STUB="$tmp/stub" PADDOCK_READY_TRIES=1 "$@"
 }
 arg_after() { grep -A1 -x -- "$1" "$tmp/args" | sed -n 2p; } # arg_after <flag>: the value claude got
