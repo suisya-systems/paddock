@@ -89,4 +89,4 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs, on every push 
 
 ## License
 
-Not decided yet. The repository is private.
+MIT License. See [LICENSE](LICENSE).
