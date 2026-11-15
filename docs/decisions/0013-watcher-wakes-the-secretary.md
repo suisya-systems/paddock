@@ -1,6 +1,6 @@
 # 0013. A deterministic watcher wakes the secretary on unread mail and worker events
 
-Status: **Proposed** (2026-11-15). Refs #391, #392. This file records the proposal only; nothing is built for it. The choices the owner has to make are in [Open questions](#open-questions).
+Status: **Proposed** (2026-11-15; open question 1 decided by the owner). Refs #391, #392. This file records the proposal only; nothing is built for it. The choices the owner still has to make are in [Open questions](#open-questions).
 
 ## The question, in plain words
 
@@ -25,7 +25,7 @@ The secretary is a model. Today it is kept awake by rules it must follow itself 
 
 ### Who runs it
 
-`org-watch` takes the job (open question 1). It already polls the facts this needs, already has a ledger, and already starts and ends with the organization. A second resident loop would read the same `hc ls` and `org-state` on its own clock and need its own start, stop and ledger.
+`org-watch` takes the job, not a separate dispatcher (owner, 2026-11-15, open question 1). It already polls the facts this needs, already has a ledger, and already starts and ends with the organization. A second resident loop would read the same `hc ls` and `org-state` on its own clock and need its own start, stop and ledger.
 
 The cost is that `org-watch` stops being read-only: it would type one fixed line into one terminal. The line is a constant (no text from a worker or a person is ever typed), it goes only to the secretary, and only on an exact status.
 
@@ -129,7 +129,7 @@ Not stale: [templates/worker-rules.md](../../templates/worker-rules.md):38 and [
 
 ## Open questions
 
-1. **Does `org-watch` take the wake job, rather than a separate dispatcher terminal?** Recommended: **Yes.** It already reads every fact needed, has the ledger and the start/stop wiring; a second loop doubles that for one constant line. Yes: `org-watch` gains the mailbox lines and the wake, and loses its "types into nothing" property. No: a new kept terminal (for example `dispatcher`) with its own script, ledger and `org-start`/`org-down` wiring; `org-watch` stays read-only.
+1. **Does `org-watch` take the wake job, rather than a separate dispatcher terminal?** **Decided (owner, 2026-11-15): Yes.** Recommended was Yes. It already reads every fact needed, has the ledger and the start/stop wiring; a second loop doubles that for one constant line. Yes: `org-watch` gains the mailbox lines and the wake, and loses its "types into nothing" property. No: a new kept terminal (for example `dispatcher`) with its own script, ledger and `org-start`/`org-down` wiring; `org-watch` stays read-only.
 2. **Should the watcher also read CI state of open PRs from GitHub directly (`gh pr checks` per open PR), instead of only noticing a `ci-<pr>` watch that ended without `ci_completed`?** Recommended: **No, for now.** The watcher then needs no network, no GitHub login and no rate-limit budget, and #392's own fix (a watch that ends for any reason leaves one line) is on the writer's side; the ended-watch check covers the symptom that was seen. Yes: the watcher calls `gh` each pass or every few passes and writes a line when a head's checks finish with no `ci_completed`, catching watches it never saw. No: CI facts come only from `org-pull-request`'s record and the ended-watch check.
 3. **Should the watcher hold off the wake while the person has typed something into the secretary's prompt?** Recommended: **No.** hc reports no fact about the input line, so this would mean reading the screen (against principle 2); the line is joined only in that rare moment, and the rate limit keeps it to once per batch. Yes: each wake first reads the secretary's last screen line and skips when it holds input. No: the join is accepted as a known nuisance.
 4. **Should the watcher wake idle workers with unread mail too (and so replace the worker nudge after `org-escalation answer`, #282)?** Recommended: **No, not in this decision.** The owner's scope is the secretary; workers wait in `org wait` when blocked, and the #282 nudge is a single send that has not been reported broken. Yes: the same rule and rate limit for every `w-*` terminal, and #282's nudge goes in stage 3. No: workers keep today's path; revisit if a worker misses an answer.
