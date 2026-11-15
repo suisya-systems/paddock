@@ -1,6 +1,6 @@
 # 0013. A deterministic watcher wakes the secretary on unread mail and worker events
 
-Status: **Proposed** (2026-11-15; all four open questions decided by the owner). Refs #391, #392. This file records the proposal only; nothing is built for it. The owner's answers to its open questions are in [Open questions](#open-questions).
+Status: **Proposed** (2026-11-15; all four open questions decided by the owner). Refs #391, #392. Stage 1 ("Beside") is built: `org-watch` writes the mailbox lines, wakes, and runs `ci-watch.sh`; `org-pull-request` writes `ci_requested`; `org work_check` is the worker check both share. Stages 2 and 3 are not done. The owner's answers to its open questions are in [Open questions](#open-questions).
 
 ## The question, in plain words
 

@@ -14,7 +14,7 @@ check() { if [ "$2" -eq 0 ]; then echo "ok   $1"; else echo "FAIL $1"; fail=1; f
 
 # A PATH of its own, so the host's real powershell.exe / notify-send never answer.
 tools=$tmp/tools; mkdir -p "$tools"
-for t in awk sed grep date cut sort cksum tr mkdir dirname basename cat rm mv cp head tail env printenv wc od sleep touch tee uniq expr test timeout; do
+for t in awk sed grep date cut sort cksum tr mkdir rmdir dirname basename cat rm mv cp head tail env printenv wc od sleep touch tee uniq expr test timeout; do
   p=$(command -v "$t" 2>/dev/null) && [ -x "$p" ] && ln -sf "$p" "$tools/$t"
 done
 cat > "$tools/hc" <<'EOF'
@@ -192,7 +192,9 @@ reset ps; term other - none 0 0 $((T0*1000 - 7200000)); term secretary - working
 reset ps; doc "[$card]"; pass $T0 STUB_LS_FAIL=1
 [ "$rc" -eq 5 ] && [ "$(toasts)" -eq 0 ]; check "--once with the core unreachable exits 5 and tells nobody" $?
 reset ps; doc "[$card]"; term secretary - working 3 $((T0*1000)) $((T0*1000)); term w-t1 t1 blocked 1 $((T0*1000)) $((T0*1000)); pass $T0; pass $((T0 + NS))
-! grep -Eq '^(send|keys|interrupt|kill|rm|run|server) ' "$calls"; check "read only: no send, keys, kill, rm, run or server call" $?
+# Decision 0013: it may now write mailbox lines and wake an idle target (tests/org-watch-wake.test.sh);
+# a working secretary is never sent a plain line, and nothing else is typed or ended.
+! grep -Eq '^(keys|interrupt|kill|rm|run|server) ' "$calls" && ! grep -Eq '^send [^-]' "$calls"; check "no keys, kill, rm, run or server call, and no plain send to a working secretary" $?
 
 # The loop form (no --once) repeats and stops with its terminal.
 reset ps; doc "[$card]"

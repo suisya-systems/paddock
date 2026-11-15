@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# org-pull-request: push a worker's branch, open the PR, watch CI as a child terminal,
-# record ci_completed, then stop (human) or merge (acceptance). Needs bash, git, gh and hc.
+# org-pull-request: push a worker's branch, open the PR, record ci_requested for the watcher
+# (decision 0013), watch CI as a child terminal, record ci_completed, then stop (human) or merge
+# (acceptance). Needs bash, git, gh and hc.
 # See ../SKILL.md. Run it from the secretary.
 set -u
 
@@ -9,7 +10,8 @@ usage() {
 Usage: org-pull-request.sh --title TITLE (--body-file FILE | --body TEXT) [options]
        org-pull-request.sh --pr N [options]
 
-Pushes the worktree's branch to origin, opens a PR, watches its CI run as a background
+Pushes the worktree's branch to origin, opens a PR, appends ci_requested (org-watch watches
+the head too and mails its own result, decision 0013), watches its CI run as a background
 child (hc run --bg ... gh run watch --exit-status, then hc wait), appends a ci_completed
 line to the secretary's history with scripts/org, then acts by approval mode.
 
@@ -19,7 +21,7 @@ Options:
                      never guessed from anything else)
   --project NAME     a project name in projects.md; its base is the default base
   --base BRANCH      base branch (default: the project row's base, else main)
-  --task-id ID       recorded in the ci_completed line
+  --task-id ID       recorded in the ci_requested and ci_completed lines
   --mode MODE        human | acceptance (default: merge_approval_mode in org-config.md, else human)
   --pr N             use an open PR instead of creating one (still pushes)
   -h, --help         this text
@@ -111,6 +113,15 @@ else
   url="https://github.com/$repo/pull/$pr"
 fi
 echo "PR_URL=$url"
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+org=$root/scripts/org
+targs=(); [ -z "$task" ] || targs=(--task "$task")
+
+# 2b. decision 0013, stage 1: ask the watcher to watch CI of this head too. Its own result comes
+# later as a mailbox line (from watcher); this script still watches and records as below. A failed
+# write only warns, so today's watch is unchanged.
+bash "$org" --as secretary ci_requested --pr "$pr" --sha "$sha" --repo "$repo" "${targs[@]}" \
+  || echo "org-pull-request: warning: the ci_requested line could not be written; the watcher will not watch PR $pr" >&2
 
 # 3. CI run id from the head sha, retrying while no run exists yet
 tries=${PADDOCK_RUN_TRIES:-10}; run=
@@ -130,9 +141,6 @@ code=$(printf '%s' "$res" | sed -n 's/.*"exit_code": *\([0-9][0-9]*\).*/\1/p')
 [ -n "$code" ] || die 8 "no integer exit_code in the hc wait answer: $res"
 
 # 4. ci_completed through scripts/org: the secretary's folder, seq and lock.
-root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
-org=$root/scripts/org
-targs=(); [ -z "$task" ] || targs=(--task "$task")
 bash "$org" --as secretary ci_completed --pr "$pr" --sha "$sha" --run-id "$run" --exit-code "$code" "${targs[@]}" \
   || die 12 "the ci_completed line could not be written (scripts/org --as secretary ci_completed)"
 

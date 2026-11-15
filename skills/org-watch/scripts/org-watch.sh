@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # org-watch: tells the person, outside the window, about a waiting approval card, the secretary's
-# incident and a terminal that never reported a status. Run by org-start as a kept terminal named
-# watcher. Needs only bash, awk, sed, grep, coreutils and hc. See ../SKILL.md.
+# incident and a terminal that never reported a status. Since decision 0013 (stage 1) it also writes
+# worker events into the secretary's mailbox as watcher, wakes an idle or done secretary or worker
+# that has unread mail with one constant line, and watches CI for each ci_requested record
+# (ci-watch.sh). Run by org-start as a kept terminal named watcher. Needs bash, awk, sed, grep,
+# coreutils and hc; gh for the CI watch. See ../SKILL.md.
 set -u
 
 usage() {
@@ -14,11 +17,17 @@ Polls the core and tells the person (a desktop toast with sound, else a terminal
     changed for N minutes (Q3),
   - when a terminal reported no status N minutes after it was created.
 Each item is told once, and again after N minutes if it is still waiting.
-It only reads (hc ls, get, read and the org-state document); it never types into a terminal.
+Decision 0013: worker events (blocked, done with no report, gone, no status) become one line
+each in the secretary's mailbox, written as watcher; a background ci-watch.sh per open
+ci_requested record writes ci_completed or ci_watch_failed and a mailbox line. The secretary
+and each worker with unread mail are woken with one constant line, only when idle or done,
+never over typed input, at most once per unread batch per PADDOCK_WATCH_WAKE seconds; each
+wake, skip and mailbox line is logged to watcher/woke.
   --once  one pass, then exit (0 done, 5 core unreachable); without it, loop until killed
 Environment: PADDOCK_WATCH_N (minutes, default 10), PADDOCK_WATCH_INTERVAL (seconds, default 30),
 PADDOCK_SECRETARY_NAME (default secretary), PADDOCK_POWERSHELL (powershell.exe path),
-PADDOCK_STATE_DIR (the ledger is in its watcher folder).
+PADDOCK_STATE_DIR (the ledger is in its watcher folder), PADDOCK_WATCH_WAKE (seconds between
+wakes for one unread batch, default 60).
 
 Exit codes: 0 done, 2 bad argument, 3 hc not found, 5 core unreachable (--once).
 USAGE
@@ -42,7 +51,9 @@ sec=${PADDOCK_SECRETARY_NAME:-secretary}
 N=${PADDOCK_WATCH_N:-10}; limit=$((N * 60))
 wdir=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/watcher
 mkdir -p "$wdir" || die 5 "cannot create $wdir"
-told=$wdir/told; seen=$wdir/secretary.seen
+told=$wdir/told; seen=$wdir/secretary.seen; woke=$wdir/woke; wakes=$wdir/wake; cidir=$wdir/ci
+WAKE=${PADDOCK_WATCH_WAKE:-60}
+mkdir -p "$cidir" || die 5 "cannot create $cidir"
 tab=$(printf '\t')
 
 # --- channel: a toast with sound, else notify-send, else the bell (the floor) ---
@@ -121,9 +132,118 @@ approval_lines() {
 }
 num() { printf '%s' "$1" | grep -o "\"$2\": *[0-9][0-9]*" | head -1 | sed 's/.*: *//'; }
 
+# --- decision 0013: mailbox lines, wakes and CI watches ---
+# wlog <kind> <target> <key> <status> <input> <rc>: one line on the terminal and in watcher/woke
+# (kind mail, wake or skip; rc "rate" for a skip by the rate limit, "-" when nothing was sent)
+wlog() {
+  printf 'org-watch: %s %s %s status=%s input=%s rc=%s\n' "$1" "$2" "$3" "$4" "$5" "$6"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$now" "$1" "$2" "$3" "$4" "$5" "$6" >> "$woke"
+}
+# mail_once <key> <text>: one line to the secretary's mailbox as watcher, once while the item holds
+mail_once() {
+  active="$active$1
+"
+  K=$1 awk -F'\t' '$1 == ENVIRON["K"] { f = 1 } END { exit !f }' "$told" 2>/dev/null && return 0
+  local rc; "$BASH" "$org" --as watcher send_message secretary "$2" >/dev/null 2>&1; rc=$?
+  wlog mail secretary "$1" - - "$rc"
+  [ "$rc" -ne 0 ] || mark "$1"
+}
+# typed <line>: the screen line holds input after the prompt marker (open question 3 of 0013).
+# ponytail: the marker is Claude Code's ❯ (or >), inside an optional box; not measured on the host.
+# Alternation, not a bracket, for the multibyte box and marker: the kept terminal may run in the C locale.
+typed() { printf '%s\n' "$1" | sed -E 's/^([[:space:]]|│|\|)*//' | grep -Eq '^(❯|>)[[:space:]]+[^[:space:]│|]'; }
+# wake <terminal> <org id>: the one constant line when <org id> has unread mail and <terminal> is
+# idle or done, its last screen line holds no typed input, and this batch was not woken in WAKE s.
+# A batch is the highest unread seq per sender.
+wake() {
+  local t=$1 oid=$2 peek batch last st line rc msg
+  peek=$("$BASH" "$org" --as "$oid" check_messages --peek 2>/dev/null) || return 0
+  batch=$(printf '%s\n' "$peek" | sed -n 's/^\[\([a-z0-9_-]*\)#\([0-9]*\) .*/\1 \2/p' \
+    | awk '{ if ($2 + 0 > m[$1] + 0) m[$1] = $2 + 0 } END { for (s in m) print s "#" m[s] }' | sort | tr '\n' ',')
+  batch=${batch%,}; [ -n "$batch" ] || return 0
+  last=$(T=$t B=$batch awk -F'\t' '$1 == ENVIRON["T"] && $2 == ENVIRON["B"] { l = $3 } END { print l }' "$wakes" 2>/dev/null)
+  if [ -n "$last" ] && [ $((now - last)) -lt "$WAKE" ]; then wlog skip "$t" "$batch" - - rate; return 0; fi
+  st=$(term_status "$t") || st=not_found
+  case "$st" in idle|done) ;; *) wlog skip "$t" "$batch" "$st" - -; return 0 ;; esac
+  line=$(hc read --lines 1 "$t" 2>/dev/null | tail -1)
+  if typed "$line"; then wlog skip "$t" "$batch" "$st" yes -; return 0; fi
+  if [ "$oid" = secretary ]; then msg="You have mail: run bash scripts/org --as secretary check_messages and act on it."
+  else msg="You have mail: run bash \"\$PADDOCK_ORG\" --as $oid check_messages and act on it."; fi
+  # hc has no --if done: done was read just above, so it is a plain send
+  if [ "$st" = idle ]; then hc send --if idle "$t" "$msg" >/dev/null 2>&1; rc=$?
+  else hc send "$t" "$msg" >/dev/null 2>&1; rc=$?; fi
+  wlog wake "$t" "$batch" "$st" no "$rc"
+  [ "$rc" -eq 0 ] || return 0
+  { T=$t awk -F'\t' '$1 != ENVIRON["T"]' "$wakes" 2>/dev/null; printf '%s\t%s\t%s\n' "$t" "$batch" "$now"; } > "$wakes.new" && mv "$wakes.new" "$wakes"
+}
+# ci_lines: "open|super<TAB>pr<TAB>sha<TAB>repo<TAB>task" per ci_requested of the secretary with no
+# ci_completed or ci_watch_failed of the watcher at or after it for the same pr and sha (stage 1:
+# the skill's own ci_completed does not count). open: the newest request of its PR; super: an older
+# one with another head. This and the last month folder of the history.
+ci_lines() {
+  local ev=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/events d
+  for d in $(ls -d "$ev"/*/ 2>/dev/null | sort | tail -2); do
+    [ ! -f "$d/secretary.jsonl" ] || grep -h '"kind":"ci_requested"' "$d/secretary.jsonl" | sed 's/^/R /'
+    [ ! -f "$d/watcher.jsonl" ] || grep -hE '"kind":"(ci_completed|ci_watch_failed)"' "$d/watcher.jsonl" | sed 's/^/D /'
+  done | awk '
+    function v(k) { if (match($0, "\"" k "\":\"[^\"]*\"")) return substr($0, RSTART + length(k) + 4, RLENGTH - length(k) - 5)
+                    if (match($0, "\"" k "\":[0-9]+")) return substr($0, RSTART + length(k) + 3, RLENGTH - length(k) - 3); return "" }
+    $1 == "R" { n++; ts[n] = v("ts"); pr[n] = v("pr"); sh[n] = v("sha"); rp[n] = v("repo"); tk[n] = v("task_id")
+                if (ts[n] >= nt[pr[n]]) { nt[pr[n]] = ts[n]; ns[pr[n]] = sh[n] } next }
+    $1 == "D" { k = v("pr") " " v("sha"); t = v("ts"); if (t > dt[k]) dt[k] = t }
+    END { for (i = n; i >= 1; i--) { k = pr[i] " " sh[i]; if ((k in dt) && dt[k] >= ts[i]) continue
+            if (k in seen) continue; seen[k] = 1
+            printf "%s\t%s\t%s\t%s\t%s\n", (ns[pr[i]] == sh[i] ? "open" : "super"), pr[i], sh[i], rp[i], tk[i] } }'
+}
+ci_watch() { # ci_watch --pr N --sha S ...: ci-watch.sh in the background of this shell, output in its log
+  local pr=$2 sha=$4
+  "$BASH" "$here/ci-watch.sh" "$@" </dev/null >> "$cidir/$pr-${sha:0:7}.log" 2>&1 &
+  printf '%s %s\n' "$!" "$sha" > "$cidir/$pr.pid"
+}
+ci_fail() { # ci_fail <reason> --pr N --sha S ...: the record and the mailbox line, with no watch
+  local r=$1; shift
+  "$BASH" "$here/ci-watch.sh" "$@" --fail "$r" >> "$cidir/$2-${4:0:7}.log" 2>&1
+}
+ci_pass() {
+  local pf pid psha pr dead= lines kind sha repo tk ta
+  # first the watches that ended, then the records: a line written as a watch ended is seen
+  for pf in "$cidir"/*.pid; do
+    [ -f "$pf" ] || continue
+    read -r pid psha < "$pf"; pr=${pf##*/}; pr=${pr%.pid}
+    kill -0 "$pid" 2>/dev/null || dead="$dead$pr $psha
+"
+  done
+  lines=$(ci_lines)
+  # a watch gone with no line of its own (SIGKILL, no trap ran): vanished
+  while read -r pr psha; do
+    [ -n "$pr" ] || continue
+    rm -f "${cidir:?}/${pr:?}.pid"
+    IFS="$tab" read -r kind pr sha repo tk <<< "$(printf '%s\n' "$lines" | awk -F'\t' -v p="$pr" -v s="$psha" '$2 == p && $3 == s' | head -1)"
+    [ -n "$sha" ] || continue
+    ta=(); [ -z "$tk" ] || ta=(--task "$tk")
+    ci_fail vanished --pr "$pr" --sha "$sha" --repo "$repo" "${ta[@]}"
+    lines=$(ci_lines)
+  done <<< "$dead"
+  while IFS="$tab" read -r kind pr sha repo tk; do
+    [ -n "$pr" ] || continue
+    ta=(); [ -z "$tk" ] || ta=(--task "$tk")
+    psha=; pid=; [ ! -f "$cidir/$pr.pid" ] || read -r pid psha < "$cidir/$pr.pid"
+    if [ "$kind" = super ]; then
+      # a newer head of the same PR: its live watch is ended (USR1, it writes superseded), else the line is written here
+      if [ "$psha" = "$sha" ]; then kill -USR1 "$pid" 2>/dev/null
+      else ci_fail superseded --pr "$pr" --sha "$sha" --repo "$repo" "${ta[@]}"; fi
+      continue
+    fi
+    [ -z "$pid" ] || continue   # one watch per PR; a superseded one clears its pid file as it ends
+    ci_watch --pr "$pr" --sha "$sha" --repo "$repo" "${ta[@]}"
+  done <<< "$lines"
+}
+# listed <json> <member>: the task ids of a work_check member, space separated
+listed() { printf '%s' "$1" | sed -n "s/.*\"$2\":\[\([^]]*\)\].*/\1/p" | tr -d '"' | tr ',' ' '; }
+
 pass() {
   now=${PADDOCK_WATCH_NOW:-$(date +%s)}; active=; local prune=1
-  local terms n j doc cards id tk qu ms cr fp since
+  local terms n j doc cards id tk qu ms cr fp since wc_out
   terms=$(paddock_terminals) || { echo "org-watch: cannot reach the core (hc ls failed)" >&2; return 5; }
 
   # 1. approval cards (org-state.approvals), once per card
@@ -163,7 +283,28 @@ pass() {
     cr=$(num "$j" created_ms); [ -n "$cr" ] || continue
     [ $((now - cr / 1000)) -ge "$limit" ] || continue
     tell "nostatus:$n" "No status from $n" "Terminal $n has reported no status for $N minutes (a startup dialog, or the agent never started)."
+    [ "$n" = "$sec" ] || mail_once "mail:nostatus:$n" "$n has reported no status for $N minutes"
   done
+
+  # 4. decision 0013: worker events as lines in the secretary's mailbox, once per item
+  while IFS="$tab" read -r n tk; do
+    [ -n "$n" ] || continue
+    [ "$(term_status "$n")" != blocked ] || mail_once "mail:blocked:$n" "$n is blocked"
+  done <<< "$terms"
+  wc_out=$("$BASH" "$org" --as watcher work_check 2>/dev/null) || wc_out='{"watch_error":""}'
+  case "$wc_out" in *'"watch_error"'*|*'"unreadable"'*) prune= ;; esac
+  for tk in $(listed "$wc_out" unreported); do mail_once "mail:unreported:w-$tk" "w-$tk is done and sent no report"; done
+  for tk in $(listed "$wc_out" gone); do mail_once "mail:gone:w-$tk" "w-$tk has no terminal and sent no done report"; done
+
+  # 5. CI: one background ci-watch.sh per open ci_requested record
+  ci_pass
+
+  # 6. the wake: the secretary and each live worker with unread mail
+  wake "$sec" secretary
+  while IFS="$tab" read -r n tk; do
+    [ -n "$n" ] || continue
+    wake "$n" "w-$tk"
+  done <<< "$terms"
 
   # Forget what is no longer waiting, so it is told afresh if it comes back.
   if [ -n "$prune" ] && [ -f "$told" ]; then

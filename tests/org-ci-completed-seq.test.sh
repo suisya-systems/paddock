@@ -51,7 +51,7 @@ out=$(pr "$x"); rc=$?
 grep -q '"kind":"ci_completed"' "$ev/$cur/secretary.jsonl" 2>/dev/null; check "the ci_completed line is in the secretary's file under scripts/org's events folder" $?
 o "$x" "$now_cur" --as secretary send_message w-t1 later >/dev/null
 s=$(seqs "$ev")
-increasing "$s" && [ "$(wc -w <<<"$s")" -eq 6 ]; check "secretary's seq is strictly increasing across messages and ci_completed (got: $s)" $?
+increasing "$s" && [ "$(wc -w <<<"$s")" -eq 7 ]; check "secretary's seq is strictly increasing across messages, ci_requested and ci_completed (got: $s)" $?
 o "$x" "$now_cur" --as w-t1 check_messages --peek | grep -q '^later$'; check "the reader sees the message after ci_completed as unread" $?
 
 # 2. History already damaged by the old writer (a ci_completed line with a lower seq at the
