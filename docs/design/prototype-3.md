@@ -93,7 +93,7 @@ From the paddock repository root (clean `main`; the runbook may be called by abs
 
 0. Prepare the host (Issue #267): `sh scripts/probes/prototype-3-setup.sh --repo OWNER/NAME --project <clone folder> [--paddock <clean clone folder>]`. It clones the throwaway repository and a clean paddock (run the rest from that clean clone), makes the workers folder, and prints as `TODO` lines what only a person can do, with the exact action: the folder trust of the throwaway clone (Q13, reopened: workers are its worktrees and take its trust, not the workers folder's; `claude` run once there). Exit 0 when nothing is left; `prepare` checks the same things (`worker-token`, `project-trust`) and names this command when one fails.
 
-   From a stale clone, or a host with no clone yet (Issue #286: an older clone has no such file), run it from outside the clone: fetch the script from `main` (the repository is private), then run that copy in place of `sh scripts/probes/prototype-3-setup.sh`. It does not depend on where it lives:
+   From a stale clone, or a host with no clone yet (Issue #286: an older clone has no such file), run it from outside the clone: fetch the script from `main` (the repository is public: `gh api` below, or without a login `curl -fsSL https://raw.githubusercontent.com/suisya-systems/paddock/main/scripts/probes/prototype-3-setup.sh`), then run that copy in place of `sh scripts/probes/prototype-3-setup.sh`. It does not depend on where it lives:
 
 ```sh
 gh api repos/suisya-systems/paddock/contents/scripts/probes/prototype-3-setup.sh -H "Accept: application/vnd.github.raw" > "$HOME/prototype-3-setup.sh"
