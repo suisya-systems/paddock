@@ -281,7 +281,7 @@ if [ -n "$placeonly" ]; then # what each change needs; Claude Code re-reads a ch
   from=${fromorigin:+origin/}${fromorigin:-$root}
   [ -n "$changed" ] || { echo "org-start: placed again from $from; nothing changed"; exit 0; }
   echo "org-start: placed again from $from; changed:$changed"
-  echo "org-start: the bin copies (the workers' org script, the review gate, hooks, secretary-settings.json) take effect now; the secretary's own scripts/org and skills run from $root, which this does not update; worker.md, worker-rules.md, worker-settings.json and curator.md from the next worker or curator started"
+  echo "org-start: the bin copies (the workers' org script, the review gate, hooks, secretary-settings.json) take effect now; the secretary's own scripts/org and skills run from $root, which this does not update; worker.md, worker-rules.md, worker-settings.json and curator.md reach new workers or a new curator fully only once that checkout is updated too (git pull --ff-only in $root), since org-delegate reads some of them from it; running ones keep the old ones"
   exit 0
 fi
 # The app's check needs a display; a failure warns and does not stop the start.

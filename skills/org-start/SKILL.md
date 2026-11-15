@@ -33,7 +33,7 @@ It never runs `hc server stop` or `hc server restart`.
 It prints the placed template and bin files that changed (or `nothing changed`) and what each needs:
 
 - The bin copies (`org`, which workers run as `PADDOCK_ORG`, the review gate, the hook scripts) and `secretary-settings.json`: in effect at once. A script is read on each run, and Claude Code re-reads the hooks of a settings file that changed, so no restart is needed. The secretary's own `scripts/org` and skill scripts run from the paddock folder's checkout, which this does not update.
-- `worker.md`, `worker-rules.md`, `worker-settings.json`, `curator.md`: from the next worker or curator started; running ones keep the old ones.
+- `worker.md`, `worker-rules.md`, `worker-settings.json`, `curator.md`: they reach new workers or a new curator fully only once the paddock folder's checkout is updated too (`git pull --ff-only` there), because org-delegate builds each worker's settings from that checkout's `templates/worker-settings.json` and resends the checkout's `worker.md` after a folder-trust dialog. Running ones keep the old ones.
 - `secretary.md`: a template body reaches only a new secretary. It then prints a `RENEWAL NEEDED: ...` line as soon as that file is copied (so a failed later copy cannot hide it), and the secretary asks the person to renew it (`secretary-handover`).
 
 Exit 0 placed, 2 bad argument, 6 a file could not be placed or the fetch failed.
