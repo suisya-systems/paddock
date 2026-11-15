@@ -104,7 +104,7 @@ Same order as the predecessor:
 The screen is not an admin console. It is drawn by herdr-app mods ([decision 0003](../decisions/0003-screen-as-app-mods.md)) and follows these rules:
 
 - Dark theme. No borders.
-- **Left**: one tile per worker, a live view of its terminal showing its last one or two lines and a status color.
+- **Left**: one tile per worker, a live view of its terminal showing its last one or two lines and a status color. Under the tiles, always, the watcher strip (Issue #411): when the watcher last passed (a warning after 90 s with no pass, with its terminal's last line), each open CI watch, and its last wakes and mailbox lines; a plain warning when the watcher terminal is gone, since then nothing wakes the secretary or the workers. Read only from the watcher's own files (`watcher/`, its mailbox lines).
 - **Center**: the secretary, large. A worker peeked from its tile and kept takes the centre; "Back to the secretary", always above the tiles, puts every kept worker back to its tile and the secretary in the centre (Issue #389).
 - Only the secretary's questions to you float above the window.
 - A pending approval shows as a single card in the bottom right.
