@@ -140,7 +140,8 @@ check() { # $1 = name, $2 = ERE; prints yes|no and sets CHK
 
 # Replies from the session transcript(s) of this run, oldest file first.
 tfiles() { find "$PROJ" -maxdepth 2 -name '*.jsonl' -path "*$BASE*" 2>/dev/null | while read -r f; do echo "$f"; done | xargs -r ls -tr 2>/dev/null; }
-replies() { tfiles | while read -r f; do grep -h '"type":"assistant"' "$f" | grep -o '\[\[[A-Za-z0-9-]*\]\]'; done; }
+# Only visible reply text counts (not thinking or tool inputs), and only a code on the LAST line of the text.
+replies() { tfiles | while read -r f; do grep -h '"type":"assistant"' "$f" | grep -Eo '"text":"([^"\\]|\\.)*"' | sed -nE 's/.*("text":"|\\n)(\[\[[A-Za-z0-9-]+\]\])(\\n)*"$/\2/p'; done; }
 ncompact() { tfiles | while read -r f; do grep -Eo 'compact_boundary|isCompactSummary' "$f"; done | wc -l | tr -d ' '; }
 ask() { # $1 = step tag, $2 = text, $3 = max wait seconds; sets NEW (codes in the new replies)
   n0=$(replies | wc -l | tr -d ' ')
@@ -169,16 +170,18 @@ launch() { # $1 = dir: starts the terminal; prints "yes" when the trust dialog w
   echo "$seen"
 }
 
-fill() { # $1 = step tag, $2 = ncompact before: reads rounds of files until a compaction shows
+fill() { # $1 = step tag, $2 = ncompact before, $3 = first: reads rounds of files until a compaction shows
   r=0; got=no
   while [ $r -lt "$MAXROUNDS" ]; do
     r=$((r + 1)); RND="$1$r"; gen "$RUN" "$RND"
     hc send $NAME "Read the files data-r$RND-1.txt to data-r$RND-$FILES.txt in the current folder, one file at a time with the Read tool, whole file each. After each file write a one sentence summary. Then write the number of files you read."
     wait_idle 1500
-    if [ "$TMARK" = no ]; then
-      screen | grep -Eqi 'compact' && got=yes
-    else
+    if [ "$TMARK" = yes ]; then
       [ "$(ncompact)" -gt "$2" ] && got=yes
+      # the first compaction may be seen on the screen only (marker names not verified)
+      [ "${3:-}" = first ] && screen | grep -Eqi 'compact' && got=yes
+    else
+      screen | grep -Eqi 'compact' && got=yes
     fi
     echo "-- $1 round $r: compaction seen: $got"
     [ $got = yes ] && break
@@ -196,6 +199,7 @@ if [ "$seen" = yes ]; then
   echo "CHECK trust-dialog: seen; accepting, then relaunching in a sibling folder"
   hc keys $NAME down enter; sleep 5
   hc kill $NAME >/dev/null 2>&1; hc rm $NAME >/dev/null 2>&1
+  rm -f "$ROOT/run1/AGENTS.md" "$ROOT/run1/CLAUDE.md"  # an ancestor folder's rules would load too
   RUN="$ROOT/run1/run2"; prep "$RUN"; gen "$RUN" 0
   seen2=$(launch "$RUN" | tail -1)
   [ "$seen2" = yes ] && { echo "RESULT void: dialog again in the sub folder"; exit 1; }
@@ -215,7 +219,7 @@ check s1-bracket-line "^[[:space:]]*(.[[:space:]]*)?\[\[$CWA\]\]"
 
 echo "== S2 fill until a compaction happens (the probe does not type one)"
 c0=$(ncompact)
-fill S2 "$c0"
+fill S2 "$c0" first
 C1=$FILLED
 # If the screen showed the notice but no transcript marker was counted, the marker names are
 # wrong for this Claude Code: use the screen from here on.
