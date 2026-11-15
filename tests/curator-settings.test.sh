@@ -99,7 +99,7 @@ out=$(cd "$tmp" && clean_env PADDOCK_BIN_DIR="$bd" PADDOCK_STATE_DIR="$st" sh -c
 [ "$rc" -ne 0 ] && ! grep -q '^args=' <<<"$out"; check "without the settings file the curator does not start" $?
 
 # 6. The secretary and the count line start it through org-curate.sh start.
-grep -q 'org-curate.sh start' "$here/templates/secretary.md"; check "secretary.md starts the curator with org-curate.sh start" $?
+grep -q "org-curate.sh start" "$here/skills/org-curate/SKILL.md"; check "the org-curate skill starts the curator with org-curate.sh start" $?
 ! grep -q 'hc run --bg --name curator curator' "$here/templates/secretary.md"; check "no bare hc run of the curator is left in secretary.md" $?
 grep -q 'start the curator: bash skills/org-curate/scripts/org-curate.sh start' "$oc"; check "the count line says to start the curator with org-curate.sh start" $?
 
