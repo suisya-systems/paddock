@@ -188,6 +188,8 @@ echo "Merged PR $url at $sha (squash, approval mode acceptance)."
 # the files org-start placed: place them again from the fetched base, starting nothing.
 gitdir() { (cd "$1" && cd "$(git rev-parse --git-common-dir)" && pwd -P) 2>/dev/null; }
 if [ "$(gitdir "$wt")" = "$(gitdir "$root")" ]; then
+  # the branch the PR landed on: a --pr rerun need not repeat --base.
+  b=$(gh pr view "$pr" --repo "$repo" --json baseRefName --jq .baseRefName 2>/dev/null); base=${b:-$base}
   bash "$root/skills/org-start/scripts/org-start.sh" --place-only --from-origin "$base" \
     || die 13 "merged, but the placed files were not renewed; run: bash skills/org-start/scripts/org-start.sh --place-only --from-origin $base"
 fi

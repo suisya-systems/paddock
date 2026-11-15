@@ -277,7 +277,7 @@ if [ -n "$placeonly" ]; then # what each change needs; Claude Code re-reads a ch
   from=${fromorigin:+origin/}${fromorigin:-$root}
   [ -n "$changed" ] || { echo "org-start: placed again from $from; nothing changed"; exit 0; }
   echo "org-start: placed again from $from; changed:$changed"
-  echo "org-start: the org scripts, hooks and secretary-settings.json take effect now; worker.md, worker-rules.md, worker-settings.json and curator.md from the next worker or curator started"
+  echo "org-start: the bin copies (the workers' org script, the review gate, hooks, secretary-settings.json) take effect now; the secretary's own scripts/org and skills run from $root, which this does not update; worker.md, worker-rules.md, worker-settings.json and curator.md from the next worker or curator started"
   case " $changed " in *" secretary.md "*)
     echo "org-start: RENEWAL NEEDED: secretary.md changed, and a template body reaches only a new secretary. Ask the person to renew the secretary (secretary-handover)." ;;
   esac

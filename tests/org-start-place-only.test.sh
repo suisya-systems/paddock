@@ -19,7 +19,7 @@ cat > "$tmp/bin/gh" <<'EOF2'
 #!/bin/sh
 echo "gh $*" >> "$STUB/calls"
 case "$1 $2" in
-  "pr view") cat "$STUB/head" ;;
+  "pr view") case "$*" in *baseRefName*) echo main ;; *) cat "$STUB/head" ;; esac ;;
   "pr merge") git -C "$STUB/land" push -q origin HEAD:main || exit 1 ;;
 esac
 exit 0
