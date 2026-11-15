@@ -31,9 +31,20 @@ grep -q '^send --if idle secretary .*check_messages.* lines=1$' "$CALLS"; check 
 : > "$CALLS"; o --as person send_message secretary "ANSWER a1 yes"
 grep -q '^send --if idle secretary ' "$CALLS"; check "the card's ANSWER nudges the secretary" $?
 
-: > "$CALLS"; RC_IDLE=10 RC_DONE=10 o --as w-t1 send_message secretary "q?"; rc=$?
+: > "$CALLS"; RC_IDLE=10 RC_DONE=10 PADDOCK_NUDGE_RETRY=0 o --as w-t1 send_message secretary "q?"; rc=$?
 [ $rc -eq 0 ] && [ "$(lines)" -eq 3 ]; check "a refused nudge does not fail the write ($rc)" $?
 grep -q '^send --if done secretary ' "$CALLS"; check "a send refused on idle is tried on done" $?
+
+# refused as working (10): retried in the background while the mail is unread, then it stops
+: > "$CALLS"; RC_IDLE=10 RC_DONE=10 PADDOCK_NUDGE_RETRY=2 PADDOCK_NUDGE_INTERVAL=0.2 o --as w-t3 send_message secretary "late"; sleep 2
+[ "$(grep -c '^send --if idle' "$CALLS")" -eq 3 ]; check "a nudge refused as working is retried (1 + 2 tries)" $?
+o --as secretary check_messages >/dev/null
+: > "$CALLS"; RC_IDLE=10 RC_DONE=10 PADDOCK_NUDGE_RETRY=3 PADDOCK_NUDGE_INTERVAL=0.5 o --as w-t3 send_message secretary "read soon"
+o --as secretary check_messages >/dev/null; sleep 2
+[ "$(grep -c '^send --if idle' "$CALLS")" -eq 1 ]; check "no retry once the mail is read" $?
+: > "$CALLS"; RC_IDLE=9 RC_DONE=5 PADDOCK_NUDGE_INTERVAL=0.2 o --as w-t3 send_message secretary "blocked"; sleep 1
+[ "$(grep -c '^send --if idle' "$CALLS")" -eq 1 ]; check "no retry on another failure (blocked, no core)" $?
+o --as secretary check_messages >/dev/null
 
 : > "$CALLS"; o --as secretary send_message w-t1 "answer"; o --as secretary send_message secretary "self"
 ! grep -q "^send" "$CALLS"; check "a message to a worker, or the secretary's own line to itself, nudges no one" $?
