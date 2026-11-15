@@ -132,7 +132,18 @@ has "$out" "The watcher is not running. Nothing wakes the secretary or the worke
 out=$(drive 0 '{"conversation_lang":"ja"}')
 has "$out" "ウォッチャーが止まっています"; check "no watcher terminal, ja" $?
 
-rm -rf "$w" "$PADDOCK_STATE_DIR/events"
+if [ "$(id -u)" -ne 0 ]; then
+  chmod 000 "$w/woke"
+  out=$(drive 1 '{}')
+  has "$out" "Can't read the watcher's files." && has "$out" "cannot read $w/woke"; check "an unreadable watcher file: says it cannot read, not an empty state ($out)" $?
+  chmod 644 "$w/woke"
+fi
+
+rm -rf "$w"
+out=$(drive 1 '{}')
+has "$out" "Can't read the watcher's files." && has "$out" "no folder $w"; check "no watcher folder: says it cannot read, and where it looked" $?
+
+rm -rf "$PADDOCK_STATE_DIR/events"; mkdir -p "$w"
 out=$(drive 1 '{}')
 has "$out" "running · no pass time recorded yet" && has "$out" "Nothing yet." && ! has "$out" "cannot reach the core"
 check "no told yet (a quiet watcher): says no pass time yet, not stale ($out)" $?

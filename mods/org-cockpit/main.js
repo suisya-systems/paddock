@@ -195,7 +195,11 @@ function lastLines(text, n = 2) {
 // last screen line). A per-pass stamp written by the watcher would be exact.
 // ponytail: the state folder is this shell's default; a watcher started with another
 // PADDOCK_STATE_DIR is not found. /proc is Linux's: elsewhere no CI watch is listed.
+// The watcher makes watcher/ as it starts: with none, or a file there that cannot be read, the
+// read fails and the strip says it cannot read the files, never an empty state.
 const WATCH_SH = 's=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}; w=$s/watcher\n' +
+  '[ -d "$w" ] || { echo "no folder $w" >&2; exit 1; }\n' +
+  'for f in "$w" "$w/ci" "$w/told" "$w/woke" "$s"/events/*/watcher.jsonl; do [ ! -e "$f" ] || [ -r "$f" ] || { echo "cannot read $f" >&2; exit 1; }; done\n' +
   'echo "now $(date +%s)"\n' +
   'p=0; [ ! -f "$w/told" ] || p=$(date -r "$w/told" +%s 2>/dev/null) || p=0; echo "pass $p"\n' +
   'for f in "$w"/ci/*.pid; do [ -f "$f" ] || continue; read -r pid sha repo pr < "$f"; ' +
