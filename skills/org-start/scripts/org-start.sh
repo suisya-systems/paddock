@@ -167,7 +167,7 @@ name=${PADDOCK_SECRETARY_NAME:-secretary} # terminal name only; the template sta
 # the files placed come from src: the checkout, or with --from-origin the fetched origin branch.
 src=$root
 if [ -n "$fromorigin" ]; then
-  git -C "$root" fetch -q origin "$fromorigin" || die 6 "git fetch origin $fromorigin failed in $root"
+  git -C "$root" fetch -q origin "+refs/heads/$fromorigin:refs/remotes/origin/$fromorigin" || die 6 "git fetch origin $fromorigin failed in $root"
   src=$(mktemp -d) || die 6 "cannot make a temporary folder"
   trap 'rm -rf "$src"' EXIT
   git -C "$root" archive "refs/remotes/origin/$fromorigin" templates scripts mods layouts | tar -x -C "$src" \
@@ -175,8 +175,12 @@ if [ -n "$fromorigin" ]; then
 fi
 changed=
 put() { # put <from> <to>: copy, and note the target when it changes
-  cmp -s "$1" "$2" || changed="$changed ${2##*/}"
-  cp -f "$1" "$2"
+  cmp -s "$1" "$2" && { cp -f "$1" "$2"; return; }
+  changed="$changed ${2##*/}"
+  cp -f "$1" "$2" || return
+  # said at once, so a later failed copy (and a retry that finds it equal) cannot lose it
+  [ -z "$placeonly" ] || [ "${2##*/}" != secretary.md ] \
+    || echo "org-start: RENEWAL NEEDED: secretary.md changed, and a template body reaches only a new secretary. Ask the person to renew the secretary (secretary-handover)."
 }
 
 if [ -z "$placeonly" ]; then
@@ -278,9 +282,6 @@ if [ -n "$placeonly" ]; then # what each change needs; Claude Code re-reads a ch
   [ -n "$changed" ] || { echo "org-start: placed again from $from; nothing changed"; exit 0; }
   echo "org-start: placed again from $from; changed:$changed"
   echo "org-start: the bin copies (the workers' org script, the review gate, hooks, secretary-settings.json) take effect now; the secretary's own scripts/org and skills run from $root, which this does not update; worker.md, worker-rules.md, worker-settings.json and curator.md from the next worker or curator started"
-  case " $changed " in *" secretary.md "*)
-    echo "org-start: RENEWAL NEEDED: secretary.md changed, and a template body reaches only a new secretary. Ask the person to renew the secretary (secretary-handover)." ;;
-  esac
   exit 0
 fi
 # The app's check needs a display; a failure warns and does not stop the start.
