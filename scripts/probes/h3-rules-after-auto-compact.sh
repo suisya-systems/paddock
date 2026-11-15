@@ -149,7 +149,7 @@ texts() { tfiles | while read -r f; do grep -h '"type":"assistant"' "$f" | grep 
 ncompact() { tfiles | while read -r f; do grep -Eo 'compact_boundary|isCompactSummary' "$f"; done | wc -l | tr -d ' '; }
 ask() { # $1 = step tag, $2 = text, $3 = max wait seconds; sets NEW (codes in the new replies)
   n0=$(replies | wc -l | tr -d ' '); t0=$(texts | wc -l | tr -d ' ')
-  hc send $NAME "$2"; wait_idle "${3:-180}"
+  hc send $NAME "$2"; wait_idle "${3:-180}" || TIMEDOUT=yes
   show "$1" 15
   NEW=$(replies | tail -n +$((n0 + 1)) | tr '\n' ' '); NEWTXT=$(texts | tail -n +$((t0 + 1)))
   echo "REPLY-CODES $1: ${NEW:-none}"
@@ -180,7 +180,7 @@ fill() { # $1 = step tag, $2 = ncompact before, $3 unused: reads rounds of files
   while [ $r -lt "$MAXROUNDS" ]; do
     r=$((r + 1)); RND="$1$r"; gen "$RUN" "$RND"
     hc send $NAME "Read the files data-r$RND-1.txt to data-r$RND-$FILES.txt in the current folder, one file at a time with the Read tool, whole file each. After each file write a one sentence summary. Then write the number of files you read."
-    wait_idle 1500
+    wait_idle 1500 || TIMEDOUT=yes
     if [ "$(ncompact)" -gt "$2" ]; then FILLED=yes
     elif [ "$(screen | grep -Eci 'compact')" -gt "$SC0" ]; then FILLED=screen
     fi
@@ -191,6 +191,7 @@ fill() { # $1 = step tag, $2 = ncompact before, $3 unused: reads rounds of files
   show "$1" 25
 }
 
+TIMEDOUT=no
 echo "== S0 launch"
 RUN="$ROOT/run1"; prep "$RUN"; gen "$RUN" 0
 seen=$(launch "$RUN" | tail -1)
@@ -252,12 +253,15 @@ wait_idle 120
 ask S6 "What is 5 plus 6? Answer in one short sentence." 180
 R1=$(code_of)
 
-echo "== files kept in $OUT (screens); transcripts:"; tfiles
+echo "== files kept in $OUT (screens); transcripts copied to $OUT/transcripts:"
+mkdir -p "$OUT/transcripts"; tfiles | while read -r f; do cp "$f" "$OUT/transcripts/" && echo "   $f"; done
 echo "RESULT h3-$MODE: compaction1=$C1 s1=$S1 after-compaction1=$A1 known-after-compaction1=$K1 edit-before-compaction=$E1 compaction2=$C2 after-compaction2=$A2 after-restart=$R1"
-case "$C1:$S1:$A1:$K1" in
-  screen:$CWA:*) echo "RESULT h3-$MODE verdict: UNCONFIRMED (compaction seen on the screen only; read the screens in $OUT)" ;;
-  yes:$CWA:$CWA:yes) echo "RESULT h3-$MODE verdict: PASS (the rules survived an automatic compaction)" ;;
-  yes:$CWA:*) echo "RESULT h3-$MODE verdict: FAIL (not followed after compaction 1; known=$K1)" ;;
+[ "$TIMEDOUT" = yes ] && echo "RESULT h3-$MODE: a wait timed out: the values above may be missing replies, not lost rules"
+case "$TIMEDOUT:$C1:$S1:$A1:$K1" in
+  yes:*) echo "RESULT h3-$MODE verdict: VOID (a wait timed out; rerun or read the screens in $OUT)" ;;
+  no:screen:$CWA:*) echo "RESULT h3-$MODE verdict: UNCONFIRMED (compaction seen on the screen only; read the screens in $OUT)" ;;
+  no:yes:$CWA:$CWA:yes) echo "RESULT h3-$MODE verdict: PASS (the rules survived an automatic compaction)" ;;
+  no:yes:$CWA:*) echo "RESULT h3-$MODE verdict: FAIL (not followed after compaction 1; known=$K1)" ;;
   *) echo "RESULT h3-$MODE verdict: VOID (compaction1=$C1 s1=$S1)" ;;
 esac
 echo "== done; paste everything above back (versions are at the top)"
