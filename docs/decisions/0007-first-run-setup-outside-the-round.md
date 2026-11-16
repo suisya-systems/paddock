@@ -1,6 +1,6 @@
 # 0007. First-run setup: which steps stay outside a round, and how the rest is made mechanical
 
-Status: **accepted** (2026-11-14, owner: Q1 yes, Q2 (c), Q3 `/proc`). Refs #328 (goal clause G1). The implementation (`org-start --check` and the core PATH check) is a separate task; this file records the decision only.
+Status: **accepted** (2026-11-14, owner: Q1 yes, Q2 (c), Q3 `/proc`); **revised** (2026-11-16): row 2 now has a person-typed fix, `org-start --restart-core` (see "Revision" at the end). Refs #328 (goal clause G1). The implementation (`org-start --check` and the core PATH check) is a separate task; this file records the decision only.
 
 ## The question, in plain words
 
@@ -11,7 +11,7 @@ Goal G1 says a round needs no typed command and no hand-written settings file. R
 | # | Hand step | Seen in | What exists today | Can paddock do it itself? |
 | --- | --- | --- | --- | --- |
 | 1 | Write `notes = false` at the top of the core's `config.toml` | `org-start.sh` exit 8 | org-start checks and stops with one line telling you what to add. `prototype-3.sh prepare` checks it too (`notes-off`). | **No.** The core's config is trusted code that no agent may write (L-N1 in the [inventory](../design/predecessor-inventory.md)). A script run by an agent is an agent writing it. A person can write it. |
-| 2 | Start or restart the core from a login shell, so `~/.local/bin` is on its PATH | #305, Run 6 | org-start refuses to run inside an agent (Q17, exit 4). It does **not** check the PATH of a core that is already running. `prototype-3.sh prepare` does (reads `/proc/<core pid>/environ`) and says to restart herdr from a login shell. org-start does record the absolute path of `claude` and `codex` (#268, #298). | **Partly.** It can *detect* a core without `hc` on its PATH (Linux only, through `/proc`). It cannot fix it: restarting the core kills every running terminal, and the new core takes the environment of whoever starts it. |
+| 2 | Start or restart the core from a login shell, so `~/.local/bin` is on its PATH | #305, Run 6 | org-start refuses to run inside an agent (Q17, exit 4). It does **not** check the PATH of a core that is already running. `prototype-3.sh prepare` does (reads `/proc/<core pid>/environ`) and says to restart herdr from a login shell. org-start does record the absolute path of `claude` and `codex` (#268, #298). | **Partly.** It can *detect* a core without `hc` on its PATH (Linux only, through `/proc`). It does not fix it by itself: restarting the core kills every running terminal, and the new core takes the environment of whoever starts it. *Revised:* the person can have it done with one command, `org-start --restart-core` (see the end). |
 | 3 | Run `org-start` and `layout.switch` | Runs 7/8 | org-start already runs `layout.switch` itself (#270) and already answers the secretary's own folder-trust dialog (#244). | **Already mechanical.** What remains is that someone has to type `org-start` once per core start. That is the start of the organization, not a setup step. |
 | 4 | Trust the project clone once with `claude` | Q13 | `prototype-3-setup.sh` checks whether the clone is recorded as trusted and prints the exact `claude` command. org-delegate never presses keys for a worktree (Q13). | **No, by design.** Trust follows the git repository; the only supported way to record it is the dialog, and writing `~/.claude.json` was rejected in Q13 (option c: undocumented key). One person, one answer, once per clone per machine. |
 
@@ -73,3 +73,18 @@ What this means in practice:
 - The goal ledger is not in this repository; G1's wording is taken from the Issue text.
 - The core's PATH check was measured in `prepare` (Run 6/7), not run again for this document.
 - Whether the core re-reads `config.toml` without a restart is still unmeasured (org-start's exit 8 message says so).
+
+## Revision (2026-11-16): row 2 gets a command the person types
+
+**Conclusion.** Row 2 is no longer "detect only". `org-start --restart-core [--yes]` fixes it when the person types it. Nothing else changed: org-start still never restarts a core on its own, `--check` stays read-only, and the notes and trust steps are untouched.
+
+**Why.** With exit 10 the person had to run `hc server stop`, `hc server start` and `org-start` by hand, in that order, and `hc server restart` looks right but does not help (the holder process keeps its PATH, [prototype-3](../design/prototype-3.md) Run 3 stop 3). The reason for not fixing it, that a restart ends every terminal, is a reason to show the person what will end and let them decide, not a reason to leave three commands to type.
+
+**What it does.**
+- Refused inside an agent, or in a terminal of the core itself (`HC_TERMINAL_SOCKET` set: the stop would end the script before the start) (exit 4, before any hc call): an agent must not end the core, and a core started by an agent has the agent's environment (Q17).
+- Acts only when the running core's PATH lacks hc (the `/proc` read of `--check`). A core that is fine, or that is not running or not readable, is left alone and org-start goes on.
+- Lists the terminals with `hc ls` and asks y/N; `--yes` skips only the question, the list is still printed. No answer is No (exit 11, nothing ended).
+- hc must already be on the PATH of the calling login shell (the exit 3 check, before anything is ended), since the new core takes that environment.
+- `hc server stop`, then `hc server start`, then removes the secretary's and the watcher's terminals (kept terminals come back as plain shells, [architecture](../design/architecture.md)) so the ordinary org-start, to its end, launches them again (workers are left to `org-resume`); a failure of either exits 5 with a `next:` line.
+
+**Costs accepted.** Every terminal ends, including a live secretary and workers; the confirmation and the list are the only guard, and `--yes` removes the question for a person who has decided. Work in a worker's terminal that is not committed is not saved by this; `org-suspend` first is the person's choice.
