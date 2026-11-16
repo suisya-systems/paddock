@@ -129,6 +129,13 @@ pass $T0
 pass $((T0 + 30)); [ "$(runs)" -eq 1 ] && [ ! -e "$M" ]; check "then run on the next pass" $?
 mv "$tools/hc.real" "$tools/hc"
 
+# one run across watchers: a claim held by a live watcher holds the run off; a dead holder's is broken
+reset idle; o bash "$org" --as secretary renew_secretary >/dev/null
+mkdir "$tmp/state/watcher/renew.lock"; echo $$ > "$tmp/state/watcher/renew.lock/pid"; pass $T0
+[ "$(runs)" -eq 0 ] && [ -f "$M" ] && woke | grep -q '	skip	secretary	renew-secretary	idle	claimed	-$'; check "another watcher holds the claim: not run" $?
+bash -c 'exit 0' & dead=$!; wait "$dead"; echo "$dead" > "$tmp/state/watcher/renew.lock/pid"; pass $((T0 + 30))
+[ "$(runs)" -eq 1 ] && [ ! -e "$M" ] && [ ! -e "$tmp/state/watcher/renew.lock" ]; check "a dead holder's claim is broken; run once, the claim released" $?
+
 # a hand run that succeeds clears the marker too
 reset idle; o bash "$org" --as secretary renew_secretary >/dev/null
 o bash "$here/skills/secretary-handover/scripts/secretary-handover.sh" >/dev/null 2>&1; [ $? -eq 0 ] && [ ! -e "$M" ]; check "the person's own run clears the request" $?
