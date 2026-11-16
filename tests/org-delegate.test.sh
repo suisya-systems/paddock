@@ -183,7 +183,7 @@ if command -v node >/dev/null 2>&1; then
     const ok = al.includes("Bash(git add:*)") && al.includes("Bash(git commit:*)")
       && !ex.some(x => /^git /.test(x))
       && !al.some(x => /^Bash\(git (push|reset|rebase|checkout|branch|-c)/.test(x) || x.includes("--no-verify"))
-      && deny.includes("Bash(git push:*)") && deny.includes("Bash(git commit *--no-verify*)");
+      && deny.includes("Bash(git push:*)") && ["git push:*", "git commit *--no-verify*", "git commit -n*", "git commit * -n*"].every(d => deny.includes(`Bash(${d})`));
     process.exit(ok ? 0 : 1);' "$tmp/state/settings/t1.json"
   check "git add and git commit are allowed in the sandbox; push, -c and --no-verify are not" $?
 fi

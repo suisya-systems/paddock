@@ -292,7 +292,7 @@ case "$gate" in /*) ;; *) fail_undone 2 "PADDOCK_BIN_DIR must be an absolute pat
 case "$gate" in *[\"\\]*|*[[:cntrl:]]*) fail_undone 2 "the gate path has a quote, backslash or control character: $gate" ;; esac
 # the worker's own staging and commit are allowed (inside the sandbox, not excluded), so auto mode
 # does not refuse them after an unrelated hook refusal. Prefix rules: push, reset, rebase, checkout and `git -c ...`
-# do not start with these; --no-verify is denied in templates/worker-settings.json.
+# do not start with these; --no-verify and -n are denied in templates/worker-settings.json.
 ex= al='"Bash(git add:*)","Bash(git commit:*)"'
 for c in "bash \\\"$gate\\\"" "bash $gate" "bash \\\"$gate\\\" --design" "bash $gate --design"; do
   ex="$ex${ex:+,}\"$c\""; al="$al,\"Bash($c)\""
