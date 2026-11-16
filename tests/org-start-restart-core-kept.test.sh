@@ -46,4 +46,9 @@ ln() { grep -n "$1" "$c" | head -n1 | cut -d: -f1; }
 t=$(ln '^server start'); a=$(ln '^rm secretary'); b=$(ln '^rm watcher'); ka=$(ln '^kill secretary'); kb=$(ln '^kill watcher'); r=$(ln '^run .*--name secretary'); w=$(ln '^run .*--name watcher')
 [ -n "$t" ] && [ -n "$ka" ] && [ "$t" -lt "$ka" ] && [ "$ka" -lt "$a" ] && [ "$a" -lt "$r" ]; check "start, then kill and rm secretary, then the secretary is launched again" $?
 [ -n "$kb" ] && [ "$t" -lt "$kb" ] && [ "$kb" -lt "$b" ] && [ "$b" -lt "$w" ]; check "start, then kill and rm watcher, then the watcher is launched again" $?
+# a shell that is itself a terminal of the core would be ended by the stop: refused before any hc call
+: > "$tmp/stub/calls"
+out=$(env -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN HC_TERMINAL_SOCKET=/x/sock STUB="$tmp/stub" PATH="$tmp/hcdir:$tmp/bin:$PATH" PADDOCK_CORE_CONFIG_DIR="$tmp/cfg" \
+  bash "$script" --restart-core --yes 2>&1 </dev/null); rc=$?
+[ "$rc" -eq 4 ] && grep -q 'outside herdr' <<<"$out" && [ ! -s "$tmp/stub/calls" ]; check "run in a core terminal (HC_TERMINAL_SOCKET): exit 4, no hc call" $?
 exit $fail

@@ -110,6 +110,9 @@ if [ -z "$check$placeonly" ]; then # place-only calls no hc, so it may run insid
   # ponytail: a core that an agent already started cannot be detected yet (no probe
   # reads the core's own environment); the start rule and the template's env -u cover it.
   v=$(agentvar) && die 4 "$v is set: this shell is inside an agent. Run org-start from your own login shell."
+  # --restart-core ends every terminal of the core, this one too: stop would kill this script before the start.
+  [ -z "$restartcore" ] || [ -z "${HC_TERMINAL_SOCKET:-}" ] \
+    || die 4 "--restart-core: this shell is a terminal of the core (HC_TERMINAL_SOCKET is set), and the restart would end it before the new core starts. Run it from a shell outside herdr (a WSL or system terminal)."
 fi
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)

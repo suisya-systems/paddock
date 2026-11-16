@@ -81,7 +81,7 @@ What this means in practice:
 **Why.** With exit 10 the person had to run `hc server stop`, `hc server start` and `org-start` by hand, in that order, and `hc server restart` looks right but does not help (the holder process keeps its PATH, [prototype-3](../design/prototype-3.md) Run 3 stop 3). The reason for not fixing it, that a restart ends every terminal, is a reason to show the person what will end and let them decide, not a reason to leave three commands to type.
 
 **What it does.**
-- Refused inside an agent (exit 4, before any hc call): an agent must not end the core, and a core started by an agent has the agent's environment (Q17).
+- Refused inside an agent, or in a terminal of the core itself (`HC_TERMINAL_SOCKET` set: the stop would end the script before the start) (exit 4, before any hc call): an agent must not end the core, and a core started by an agent has the agent's environment (Q17).
 - Acts only when the running core's PATH lacks hc (the `/proc` read of `--check`). A core that is fine, or that is not running or not readable, is left alone and org-start goes on.
 - Lists the terminals with `hc ls` and asks y/N; `--yes` skips only the question, the list is still printed. No answer is No (exit 11, nothing ended).
 - hc must already be on the PATH of the calling login shell (the exit 3 check, before anything is ended), since the new core takes that environment.
