@@ -10,3 +10,11 @@
 - **Toast text goes in the environment, not the command line.** Questions and task titles come from workers; nothing they wrote is quoted into a command.
 - **The bell is the floor.** It needs nothing, so a person is never told nothing. It is visible only where the terminal is on screen, hence the toast first.
 - **The absolute `powershell.exe` path.** Measured on the host: from a login shell the name resolves; from a kept terminal it did not (its PATH holds no `/mnt/c`), and the default absolute path raised the toast.
+
+## Plugin reload
+
+`org-start --place-only --from-origin` leaves a marker `watcher/reload-plugins` holding a fresh request id in the state folder when the fast-forward changed a `SKILL.md` (a running secretary serves the old skill text until `/reload-plugins`, decision 0014 H4). The watcher decides nothing about it; it only types the one command when the marker says so:
+
+- A request not yet sent: `/reload-plugins` is typed into the secretary under the same rules as a wake (exact `idle`/`done` status, never over typed input), once; the id and send time go into `watcher/reload-sent`, the send into `watcher/woke` as `reload`. In that pass the secretary gets no wake line.
+- A sent request: a `Reloaded:` line below the last `/reload-plugins` on the secretary's screen removes the marker if it still holds that id (`reloaded` in `watcher/woke`). None N minutes after the send: the person is told outside the window, as for a waiting card (again every N minutes), to type `/reload-plugins`; nothing is typed again. A new landing writes a new id, so it is typed once more.
+- Each pass touches `watcher/reload-ready`. A watcher started from an older script keeps its old code and never does, so `org-start` says the watcher types it only when that file is under 5 minutes old; otherwise it asks the secretary to ask the person (and to renew the watcher: `hc kill watcher`, then `org-start`, which replaces a finished watcher).
