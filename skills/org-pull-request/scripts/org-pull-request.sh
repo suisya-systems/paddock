@@ -321,7 +321,8 @@ fi
 now=$(gh pr view "$pr" --repo "$repo" --json headRefOid --jq .headRefOid 2>/dev/null)
 moved="run once the new head is pushed (it requests that head): $again"
 if [ "$now" != "$sha" ]; then
-  [ -z "$approved" ] || { bash "$esc" remove --id "$approved" >/dev/null 2>&1 && echo "Merge card $approved withdrawn: the PR head moved."; }
+  # an empty answer is a failed lookup, not a moved head: the card (and the person's yes) stays
+  [ -z "$approved" ] || [ -z "$now" ] || { bash "$esc" remove --id "$approved" >/dev/null 2>&1 && echo "Merge card $approved withdrawn: the PR head moved."; }
   die 10 "head moved: watched $sha, PR is at ${now:-unknown}; not merged" "$moved"
 fi
 # --watch: other workflows of the same head may still run; wait for them, do not refuse early.

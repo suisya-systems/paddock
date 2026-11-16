@@ -19,7 +19,7 @@ cat > "$stubdir/gh" <<'EOF2'
 echo "gh $*" >> "$STUB/calls"
 case "$1 $2" in
   "pr create") echo "https://github.com/o/r/pull/42" ;;
-  "pr view") case "$*" in *state*) echo "${STUB_STATE:-OPEN}" ;; *) echo "${STUB_HEAD:-$(cat "$STUB/head")}" ;; esac ;;
+  "pr view") case "$*" in *state*) echo "${STUB_STATE:-OPEN}" ;; *) [ -z "${STUB_VIEW_FAIL:-}" ] || exit 1; echo "${STUB_HEAD:-$(cat "$STUB/head")}" ;; esac ;;
   "pr checks") exit "${STUB_CHECKS_RC:-0}" ;;
 esac
 exit 0
@@ -100,6 +100,13 @@ check "the new head, once green, gets its own card" $?
 green; out=$(run --pr 42); id=$(idof "$out"); say person "ANSWER $id yes"
 out=$(ENVX=STUB_HEAD=0000000000000000000000000000000000000000 run --pr 42 --approved "$id"); rc=$?
 [ "$rc" -eq 10 ] && ! merged && [ "$(ncards)" -eq 0 ]; check "the PR head moved: exit 10, card withdrawn, not merged" $?
+
+# A failed head lookup is not a moved head: not merged, but the card and the yes stay.
+green; out=$(run --pr 42); id=$(idof "$out"); say person "ANSWER $id yes"
+out=$(ENVX=STUB_VIEW_FAIL=1 run --pr 42 --approved "$id"); rc=$?
+[ "$rc" -eq 10 ] && ! merged && [ "$(ncards)" -eq 1 ]; check "a failed head lookup: exit 10, not merged, the card kept" $?
+out=$(run --pr 42 --approved "$id"); rc=$?
+[ "$rc" -eq 0 ] && merged; check "the rerun then merges on the same yes" $?
 
 # Only the exact merge card of this task counts: another approval that merely looks like one is
 # neither taken as the card nor withdrawn.
