@@ -135,9 +135,41 @@ place_landing() {
   echo "next: $1"
 }
 
+ev=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/events
+# a rerun without --task-id: the task the first run recorded with this PR's ci_requested
+[ -n "$task" ] || task=$(cat "$ev"/*/secretary.jsonl 2>/dev/null | grep '"kind":"ci_requested"' | grep "\"pr\":$pr,\"sha\"" \
+  | grep "\"repo\":\"$repo\"" | sed -n 's/.*"task_id":"\([A-Za-z0-9._-]*\)".*/\1/p' | tail -1)
+
+# The merge card (human mode) is an org-escalation approval of the task whose question is exactly
+# cardq <full head sha> <lang>: the head is the full sha, so the card is bound to that one commit.
+esc=$root/skills/org-escalation/scripts/org-escalation.sh; qesc=$(printf "%q" "$esc")
+cardq() { if [ "$2" = ja ]; then printf 'PR #%s (%s, head %s) をマージしますか?' "$pr" "$repo" "$1"
+          else printf 'Merge PR #%s (%s, head %s)?' "$pr" "$repo" "$1"; fi; }
+# scan_cards <keep sha> <why, %s = the old head>: reads the open cards (org-escalation list; sets listed).
+# The merge card of this PR and task for <keep sha> is $card (raised once per head); any other one
+# is withdrawn with a plain remove (nobody's answer is taken), and is no longer --approved.
+card=; listed=
+scan_cards() {
+  local cards cid tid q h o
+  [ -n "$pr" ] && [ -n "$task" ] || return 0
+  cards=$(bash "$esc" list 2>/dev/null) || return 0
+  listed=1
+  while IFS=$'\t' read -r cid tid q; do
+    [ "$tid" = "$task" ] || continue
+    h=$(printf '%s' "$q" | sed -n 's/.*, head \([0-9a-f]\{40\}\)).*/\1/p')
+    [ -n "$h" ] && { [ "$q" = "$(cardq "$h" en)" ] || [ "$q" = "$(cardq "$h" ja)" ]; } || continue
+    if [ "$h" = "$1" ]; then card=$cid; continue; fi
+    o=$(bash "$esc" remove --id "$cid" 2>&1) || die 14 "the merge card $cid of PR $pr could not be withdrawn: $(printf '%s' "$o" | grep -v '^next:' | tr '\n' ' ')" \
+      "ask the person: the merge card $cid of PR $pr no longer applies and could not be withdrawn (output above); never merge on it. How do they want to proceed?"
+    echo "Merge card $cid withdrawn: $(printf "$2" "${h:0:7}"). Not merged by the script."
+    [ "$cid" != "$approved" ] || approved=
+  done <<< "$cards"
+}
+
 # A --pr rerun after the PR was merged by hand (human mode): nothing to push or watch; place and finish.
 if [ -n "$pr" ] && [ "$(gh pr view "$pr" --repo "$repo" --json state --jq .state 2>/dev/null)" = MERGED ]; then
   echo "PR https://github.com/$repo/pull/$pr is merged."
+  scan_cards "" "the PR (card for head %s) is merged already"   # its merge card, if one is still up
   place_landing "close the worker (org-close skill)"
   exit 0
 fi
@@ -179,10 +211,6 @@ else
 fi
 echo "PR_URL=$url"
 org=$root/scripts/org
-ev=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/events
-# a rerun without --task-id: the task the first run recorded with this PR's ci_requested
-[ -n "$task" ] || task=$(cat "$ev"/*/secretary.jsonl 2>/dev/null | grep '"kind":"ci_requested"' | grep "\"pr\":$pr,\"sha\"" \
-  | grep "\"repo\":\"$repo\"" | sed -n 's/.*"task_id":"\([A-Za-z0-9._-]*\)".*/\1/p' | tail -1)
 again="bash $qself --pr $pr --worktree $(printf "%q" "$wt") --repo $repo${mode:+ --mode $mode}${task:+ --task-id $task}"   # the rerun the secretary is told to make
 targs=(); [ -z "$task" ] || targs=(--task "$task")
 
@@ -211,22 +239,10 @@ ci=$(for d in "$ev/$(printf '%04d-%02d' "$((10#$y))" "$m")" "$ev/$cur"; do
           else if (dk == "ci_completed") print dc, dr; else print "failed", dw, dt }')
 # --recheck: a recorded result is set aside, so the head is requested again (an open request stays one)
 [ -z "$recheck" ] || case $ci in none|open|failed*) ;; *) ci="failed recheck $(date -u +%Y-%m-%dT%H:%M:%SZ)" ;; esac
-# Human mode: the merge cards of this PR (org-escalation list). Each names its head in the question
-# ("PR #<n> (<repo>, head <sha7>)"): one for the current head is kept (raised once per head), one for an
-# older head is withdrawn (plain remove), and the new head is requested below like any other.
-esc=$root/skills/org-escalation/scripts/org-escalation.sh; qesc=$(printf "%q" "$esc")
-s7=${sha:0:7}; mark="PR #$pr ($repo, head "; card=; listed=
-if [ "$mode" = human ] && { [ -n "$prgiven" ] || [ "${ci%% *}" = success ]; } && cards=$(bash "$esc" list 2>/dev/null); then
-  listed=1
-  while IFS=$'\t' read -r cid _ q; do
-    case $q in *"$mark"*) ;; *) continue ;; esac
-    h=${q#*"$mark"}; h=${h%%)*}
-    if [ "$h" = "$s7" ]; then card=$cid; continue; fi
-    o=$(bash "$esc" remove --id "$cid" 2>&1) || die 14 "the merge card $cid for the old head $h could not be withdrawn: $(printf '%s' "$o" | grep -v '^next:' | tr '\n' ' ')" \
-      "ask the person: the merge card $cid of PR $pr names an old head and could not be withdrawn (output above); never merge on it. How do they want to proceed?"
-    echo "Merge card $cid withdrawn: it was raised for head $h, the head is now $s7. Not merged."
-    [ "$cid" != "$approved" ] || approved=
-  done <<< "$cards"
+# Human mode: the merge cards of this PR, kept for the current head, withdrawn for an older one.
+s7=${sha:0:7}
+if [ "$mode" = human ] && { [ -n "$prgiven" ] || [ "${ci%% *}" = success ]; }; then
+  scan_cards "$sha" "it names head %s, the head is now $s7"
 fi
 
 case $ci in
@@ -256,6 +272,8 @@ run=${ci#* }; concl=${ci%% *}
 nomerge="do not merge. If the person answered no: send their note to the worker, then run: bash $qesc remove --id ${approved:-<card id>} --text no (add --note \"<their note, as written>\" when the answer had one)"
 if [ "$mode" = human ]; then
   echo "CI green on $sha (run $run). Approval mode human: the person decides on the merge card. PR: $url"
+  [ -n "$task" ] || die 14 "no task id for PR $pr (no --task-id, and its ci_requested records name none); no merge card raised" \
+    "$fixcall: run $again --task-id <the worker's task id>"
   [ -n "$listed" ] || die 14 "the open cards could not be read (org-escalation list); no merge card raised" \
     "ask the person: PR $url is green at $s7 (watcher: run $run), but its merge card could not be raised (org-state unreadable); merge it?"
   if [ -n "$approved" ] && [ "$approved" != "$card" ]; then
@@ -264,23 +282,20 @@ if [ "$mode" = human ]; then
   fi
   if [ -z "$approved" ]; then
     if [ -n "$card" ]; then echo "Merge card $card for head $s7 is up already; not raised again. Not merged."
-    elif [ -z "$task" ]; then
-      die 14 "no task id for PR $pr (no --task-id, and its ci_requested records name none); no merge card raised" \
-        "$fixcall: run $again --task-id <the worker's task id>"
     else
       lang=$(bash "$org" --as secretary doc get org-state 2>/dev/null | sed -n 's/.*"conversation_lang" *: *"\([A-Za-z-]*\)".*/\1/p' | head -1)
       ciline="CI success on PR $pr, head $s7, run $run (recorded by the watcher)"
       gl=$(gate_rec); gok=; case $gl in *'"kind":"codex_round_passed"'*) gok=1 ;; esac
       if [ -n "$gl" ]; then gate=$(gate_text "$gl" | cut -c1-200); else gate="no diff review recorded for task $task"; fi
       if [ "$lang" = ja ]; then
-        q="PR #$pr ($repo, head $s7) をマージしますか?"
+        q=$(cardq "$sha" ja)
         bg="$url / $ciline。第二モデルのレビュー(タスク履歴): $gate"
         yes="秘書が PR #$pr を head $s7 のまま squash でマージし(head が変わらず必須チェックが緑のときだけ)、ワーカーを閉じます。"
         no="マージしません。メモはワーカーに送られ、ワーカーがブランチを直します。新しい head には新しいカードが出ます。"
         if [ -n "$gok" ]; then why="この head で CI が緑で、第二モデルのレビューも通っています。"
         else why="この head で CI が緑です。第二モデルのレビューは通っていません(背景を参照)。"; fi
       else
-        q="Merge PR #$pr ($repo, head $s7)?"
+        q=$(cardq "$sha" en)
         bg="$url / $ciline. Second-model review (task history): $gate"
         yes="The secretary merges PR #$pr at head $s7 (squash; only if the head is unchanged and the required checks are green), then closes the worker."
         no="Not merged. Your note goes to the worker, who changes the branch; the new head gets a new card."

@@ -19,7 +19,7 @@ cat > "$stubdir/gh" <<'EOF2'
 echo "gh $*" >> "$STUB/calls"
 case "$1 $2" in
   "pr create") echo "https://github.com/o/r/pull/42" ;;
-  "pr view") case "$*" in *state*) echo OPEN ;; *) echo "${STUB_HEAD:-$(cat "$STUB/head")}" ;; esac ;;
+  "pr view") case "$*" in *state*) echo "${STUB_STATE:-OPEN}" ;; *) echo "${STUB_HEAD:-$(cat "$STUB/head")}" ;; esac ;;
   "pr checks") exit "${STUB_CHECKS_RC:-0}" ;;
 esac
 exit 0
@@ -54,7 +54,7 @@ green; out=$(run --pr 42); rc=$?
 s7=$(git -C "$wt" rev-parse --short=7 HEAD)
 [ "$rc" -eq 0 ] && [ "$(ncards)" -eq 1 ] && ! merged; check "green, human: exit 0, one merge card, not merged ($out)" $?
 id=$(idof "$out")
-[ -n "$id" ] && cards | grep -q "^$id	t1	Merge PR #42 (o/r, head $s7)?"; check "the card is for task t1 and names the PR and its head" $?
+[ -n "$id" ] && cards | grep -qx "$id	t1	Merge PR #42 (o/r, head $(git -C "$wt" rev-parse HEAD))?"; check "the card is for task t1 and names the PR and its full head" $?
 grep -q '^next: .*merge card .* up.*--approved '"$id" <<<"$out" && grep -q -- "--text no" <<<"$out"
 check "next: says the card is up, gives the --approved rerun and the checked no" $?
 d=$(cat "$STUB/docval-org-state")
@@ -93,13 +93,30 @@ check "head moved after the card: card withdrawn, not merged ($out)" $?
 grep '"kind":"ci_requested"' "$state"/events/*/secretary.jsonl | grep -q "\"sha\":\"$(git -C "$wt" rev-parse HEAD)\""
 check "head moved: CI is requested for the new head" $?
 watcher; out=$(run --pr 42); rc=$?
-[ "$rc" -eq 0 ] && [ "$(ncards)" -eq 1 ] && cards | grep -q "head $(git -C "$wt" rev-parse --short=7 HEAD))"
+[ "$rc" -eq 0 ] && [ "$(ncards)" -eq 1 ] && cards | grep -q "head $(git -C "$wt" rev-parse HEAD))"
 check "the new head, once green, gets its own card" $?
 
 # The PR head on GitHub moved under an approved card: withdrawn, exit 10, not merged.
 green; out=$(run --pr 42); id=$(idof "$out"); say person "ANSWER $id yes"
 out=$(ENVX=STUB_HEAD=0000000000000000000000000000000000000000 run --pr 42 --approved "$id"); rc=$?
 [ "$rc" -eq 10 ] && ! merged && [ "$(ncards)" -eq 0 ]; check "the PR head moved: exit 10, card withdrawn, not merged" $?
+
+# Only the exact merge card of this task counts: another approval that merely looks like one is
+# neither taken as the card nor withdrawn.
+green; old=0123456789abcdef0123456789abcdef01234567
+for a in "t1:Merge PR #42 (o/r, head $old)? Also tag a release" "t2:Merge PR #42 (o/r, head $old)?"; do
+  penv bash "$here/skills/org-escalation/scripts/org-escalation.sh" ask --task "${a%%:*}" --question "${a#*:}" >/dev/null
+  sleep 1   # approval ids hold the second
+done
+out=$(run --pr 42); rc=$?
+[ "$rc" -eq 0 ] && [ "$(ncards)" -eq 3 ] && ! grep -q withdrawn <<<"$out" && grep -q 'raised for head' <<<"$out"
+check "a look-alike question or another task's card is not the merge card and is not withdrawn ($out)" $?
+
+# The person merged by hand while the card was up: the rerun withdraws it.
+green; out=$(run --pr 42); id=$(idof "$out")
+out=$(ENVX=STUB_STATE=MERGED run --pr 42); rc=$?
+[ "$rc" -eq 0 ] && [ "$(ncards)" -eq 0 ] && grep -q "Merge card $id withdrawn" <<<"$out" && ! merged
+check "merged by hand: the rerun withdraws the open merge card ($out)" $?
 
 # The conversation language from org-state (org-escalation lang).
 DOC='{"conversation_lang":"ja"}' green; out=$(run --pr 42)
