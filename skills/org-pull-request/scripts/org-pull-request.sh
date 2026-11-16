@@ -47,7 +47,7 @@ is up, or merged on its checked yes; --pr, acceptance: merged; --pr, PR already 
 landing placed), 2 bad argument,
 3 gh or git not found, 4 no CI result recorded for the head yet (requested now or still
 watched; the watcher mails it), 5 push failed, 6 PR could not be created, 9 CI failed,
-10 merge refused (head moved or required checks not green), 11 merge failed, 12 the
+10 merge refused (head moved, or required checks not green; with none configured, the watcher's record of the head is the check), 11 merge failed, 12 the
 ci_requested line could not be written, 13 merged, but the files org-start placed were not
 placed again (a landing in the paddock repository), 14 the merge card could not be raised
 or read, 15 --approved: no yes in the person's file (not merged, card kept).
@@ -291,14 +291,14 @@ if [ "$mode" = human ]; then
       if [ "$lang" = ja ]; then
         q=$(cardq "$sha" ja)
         bg="$url / $ciline。第二モデルのレビュー(タスク履歴): $gate"
-        yes="秘書が PR #$pr を head $s7 のまま squash でマージし(head が変わらず必須チェックが緑のときだけ)、ワーカーを閉じます。"
+        yes="秘書が PR #$pr を head $s7 のまま squash でマージし(head が変わらず、必須チェックが緑のときだけ。必須チェックがないリポジトリでは、この head の CI 記録が緑のときだけ)、ワーカーを閉じます。"
         no="マージしません。メモはワーカーに送られ、ワーカーがブランチを直します。新しい head には新しいカードが出ます。"
         if [ -n "$gok" ]; then why="この head で CI が緑で、第二モデルのレビューも通っています。"
         else why="この head で CI が緑です。第二モデルのレビューは通っていません(背景を参照)。"; fi
       else
         q=$(cardq "$sha" en)
         bg="$url / $ciline. Second-model review (task history): $gate"
-        yes="The secretary merges PR #$pr at head $s7 (squash; only if the head is unchanged and the required checks are green), then closes the worker."
+        yes="The secretary merges PR #$pr at head $s7 (squash; only if the head is unchanged and the required checks are green, or, on a repository with no required checks, the CI record of this head is green), then closes the worker."
         no="Not merged. Your note goes to the worker, who changes the branch; the new head gets a new card."
         if [ -n "$gok" ]; then why="CI is green on this exact head and the second-model review passed."
         else why="CI is green on this exact head; the second-model review did not pass (see the background)."; fi
@@ -326,8 +326,22 @@ if [ "$now" != "$sha" ]; then
   die 10 "head moved: watched $sha, PR is at ${now:-unknown}; not merged" "$moved"
 fi
 # --watch: other workflows of the same head may still run; wait for them, do not refuse early.
-gh pr checks "$pr" --repo "$repo" --required --watch >/dev/null 2>&1 \
-  || die 10 "required checks are not all green on $sha; not merged" "$moved"
+# A branch with no required checks makes gh exit 1 with exactly the line
+#   no required checks reported on the '<branch>' branch   (gh 2.x; the match takes any branch name without a space, quotes included)
+# then the watcher's ci_completed record for this exact head (read in step 3; success, else exit 9
+# above) is the check. gh prints the same line when a required check is configured but never
+# reported, so the fallback also needs GitHub's mergeStateStatus CLEAN (BLOCKED while a required
+# check is missing). Any other failure, an empty or unknown error included, refuses.
+cerr=$(gh pr checks "$pr" --repo "$repo" --required --watch 2>&1 >/dev/null); crc=$?
+if [ "$crc" -eq 0 ]; then
+  echo "Merge check: the required checks are green on $sha (gh pr checks --required)."
+elif [ "$crc" -eq 1 ] && printf '%s\n' "$cerr" | grep -qxE "no required checks reported on the [^ ]+ branch" \
+     && [ "$(printf '%s\n' "$cerr" | wc -l)" -eq 1 ] && [ "$concl" = success ] \
+     && [ "$(gh pr view "$pr" --repo "$repo" --json mergeStateStatus --jq .mergeStateStatus 2>/dev/null)" = CLEAN ]; then
+  echo "Merge check: the branch has no required checks (merge state CLEAN); used the watcher's ci_completed record for $sha (success, run $run)."
+else
+  die 10 "required checks are not all green on $sha; not merged" "$moved"
+fi
 if [ -n "$approved" ]; then # the person's yes, from their own file (org-escalation's check); the card goes with it
   o=$(bash "$esc" remove --id "$approved" --text yes ${note:+--note "$note"} 2>&1) \
     || die 15 "no yes for $approved in the person's file: $(printf '%s' "$o" | grep -v '^next:' | tr '\n' ' ')" "$nomerge"
