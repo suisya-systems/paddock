@@ -7,16 +7,19 @@
 # exact calls, so a round cannot be taken in any other form. The hook counts the round; this script
 # does not. The last line says what happened, and only "passed" lets the worker read the findings
 # as a review that happened:
-#   0 CODEX_GATE: passed           a command ran, none failed, the reviewer exited 0
-#   1 CODEX_GATE: not-established  an empty pass (no command ran), a failure, or nothing to review
+#   0 CODEX_GATE: passed           the reviewer exited 0, ran a command and gave its final review text
+#   1 CODEX_GATE: not-established  an empty pass (no command ran), no final text, a non-zero exit,
+#                                  or nothing to review
 #   2 usage error (an argument, or no / empty design file)
 #   3 CODEX_GATE: unavailable      neither reviewing CLI (codex, else claude) is installed
 #   4 CODEX_GATE: dirty-worktree   tracked files differ from HEAD; the reviewer would read a stale diff
 # An "empty pass": when the reviewer cannot place its helpers it runs no command and prints a
-# no-findings text with exit 0. So success is judged by a recorded command run ("succeeded in <time>"
-# at a line start), not by the absence of an error. Claude, the fallback when codex is not installed,
-# is judged the same way from its stream-json log (a tool call ran, none failed, exit 0). The
-# parentheses of the last line start with reviewer=codex or reviewer=claude.
+# no-findings text with exit 0. So success needs a recorded command run ("succeeded in <time>", or
+# "exited <n> in <time>", at a line start of the progress log). Commands that failed while the reviewer explored are counted (failed=N) as information
+# only. Claude, the fallback when codex is not installed, is judged the same way from its stream-json
+# log (a tool call ran, a final result with is_error false and text, exit 0). stdout carries only the
+# reviewer lines, the final review text and the last line; the full log is the file named by log= on
+# the last line. The parentheses of the last line start with reviewer=codex or reviewer=claude.
 # Every outcome after the hook counted the round is recorded (Issue #253): the last line goes to
 # `org --as codex-gate codex_round result` as codex_round_passed or codex_round_failed, with the
 # round, so the result does not rest on the worker quoting it. The task is the worktree's folder
@@ -97,13 +100,21 @@ if [ "$reviewer" = codex ]; then
   if [ -n "$src" ] && [ "$src" != "$(cd "$CODEX_HOME" && pwd -P)" ]; then
     ln -sfn "$src/auth.json" "$CODEX_HOME/auth.json"; ln -sfn "$src/config.toml" "$CODEX_HOME/config.toml"
   fi
+  # Its progress goes to stderr and only its final message to stdout: the progress goes to the log
+  # file alone, the final message is the review text, and is then appended to the log too.
+  msg=$(mktemp "${TMPDIR:-/tmp}/second-review-msg.XXXXXX") || { end 1 "CODEX_GATE: not-established (cannot create the message file)"; }
+  trap 'rm -f "$msg"' EXIT
   if [ "$mode" = design ]; then
-    "$codex_bin" exec -c model_reasoning_effort=high -c sandbox_mode='"read-only"' "$design_prompt" </dev/null 2>&1 | tee "$log"
+    "$codex_bin" exec -c model_reasoning_effort=high -c sandbox_mode='"read-only"' "$design_prompt" </dev/null >"$msg" 2>"$log"
   else
-    "$codex_bin" exec review --base "$base" -c model_reasoning_effort=medium -c sandbox_mode='"read-only"' </dev/null 2>&1 | tee "$log"
+    "$codex_bin" exec review --base "$base" -c model_reasoning_effort=medium -c sandbox_mode='"read-only"' </dev/null >"$msg" 2>"$log"
   fi
-  status=${PIPESTATUS[0]}
+  status=$?
+  # counted before the message is appended: review prose quoting such a line is not a command run
   ok=$(grep -cE '^ *succeeded in [0-9]+(ms|s|m)' "$log"); bad=$(grep -cE '^ *(failed|exited [0-9]+) in [0-9]+(ms|s|m)' "$log")
+  ran=$((ok + bad))
+  cat "$msg" >> "$log"
+  text=$(cat "$msg")
 else
   # Claude, headless: a new session (no --continue or --resume, not kept on disk) that knows nothing of
   # the worker's conversation. The worker's session variables are dropped, no settings file is loaded
@@ -122,7 +133,6 @@ else
       || { end 1 "CODEX_GATE: not-established (cannot write the diff of $base...HEAD)"; }
     prompt="Review the change in $tmpd/change.diff: the commits $base..HEAD of this repository (listed at the top), then git diff $base...HEAD. Read the changed files and their callers in the repository to verify it. Report bugs, regressions and gaps against the change's intent, as Blocker / Major / Minor, each with evidence (file:line) and a concrete fix."
   fi
-  echo "reviewing with claude; its log is $log"
   env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_CHILD_SESSION \
       -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_CODE_SESSION_ATTENDED \
       -u CLAUDE_PID -u CLAUDE_TMPDIR -u CLAUDE_PROJECT_DIR CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 \
@@ -137,7 +147,7 @@ else
   # no final result, or one that says it failed: the run did not end well, whatever the exit code
   grep -qF '"is_error":false' <<<"$res" || [ "$status" -ne 0 ] || status=1
   # the review text, JSON-unescaped (a \uXXXX outside ASCII is printed as written)
-  printf '%s\n' "$res" | awk '{ i = index($0, "\"result\":\""); if (!i) exit
+  text=$(printf '%s\n' "$res" | awk '{ i = index($0, "\"result\":\""); if (!i) exit
     s = substr($0, i + 10); o = ""
     for (j = 1; j <= length(s); j++) { c = substr(s, j, 1)
       if (c == "\"") break
@@ -151,11 +161,17 @@ else
         else o = o n
         continue }
       o = o c }
-    print o }'
+    print o }')
   ok=$(grep -oF '"type":"tool_use"' "$log" | wc -l | tr -d ' ')
   bad=$(grep -F '"type":"tool_result"' "$log" | grep -oF '"is_error":true' | wc -l | tr -d ' ')
+  ran=$ok
 fi
 
+[ -n "$text" ] && printf '%s\n' "$text"
+# A reviewer explores: a grep with no match or a test under the wrong interpreter fails, and the
+# review still finishes. Failed commands are counted (failed=N) but do not decide; the reviewer's
+# exit, a command run and its final text do.
 summary="reviewer=$reviewer succeeded=$ok failed=$bad status=$status $reviewer=$rev_bin ${rev_ver:-unknown version} log=$log"
-if [ "$ok" -ge 1 ] && [ "$bad" -eq 0 ] && [ "$status" -eq 0 ]; then end 0 "CODEX_GATE: passed ($summary)"; fi
+if [ "$ran" -ge 1 ] && [ "$status" -eq 0 ] && grep -q '[^[:space:]]' <<<"$text"; then end 0 "CODEX_GATE: passed ($summary)"; fi
+grep -q '[^[:space:]]' <<<"$text" || summary="$summary; no final review text"
 end 1 "CODEX_GATE: not-established ($summary; HEAD=$(git rev-parse --short HEAD 2>/dev/null))"
