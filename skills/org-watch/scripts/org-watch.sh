@@ -386,7 +386,7 @@ pass() {
   # once the same done (turn, status_ms) has held N minutes: status_ms is when that status began,
   # and a new turn or status gives a new status_ms, which restarts the wait.
   for tk in $(listed "$wc_out" unreported); do
-    j=$(term_json "w-$tk") || continue
+    j=$(term_json "w-$tk") || { prune=; continue; }   # a failed re-read keeps the ledger as it is
     ms=$(num "$j" status_ms)
     [ "$(jstate "$j")" = done ] && [ -n "$ms" ] && [ $((now - ms / 1000)) -ge "$limit" ] || continue
     mail_once "mail:unreported:w-$tk" "w-$tk is done and sent no report"; done
