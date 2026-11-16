@@ -134,6 +134,13 @@ reset idle; mkdir -p "$PADDOCK_STATE_DIR/watcher"; echo $$ > "$PADDOCK_STATE_DIR
 check "another run holds the claim: exit 13, nothing ended, the claim left alone" $?
 bash -c 'exit 0' & dead=$!; wait "$dead"; echo "$dead" > "$PADDOCK_STATE_DIR/watcher/renew.claim"; out=$(run); rc=$?
 [ "$rc" -eq 0 ] && [ ! -e "$PADDOCK_STATE_DIR/watcher/renew.claim" ]; check "a dead holder's claim is broken; the run releases its own" $?
+# breaking a dead claim is guarded: a .break held by another run, or a claim with no pid, is left alone
+reset idle; echo "$dead" > "$PADDOCK_STATE_DIR/watcher/renew.claim"; echo 1 > "$PADDOCK_STATE_DIR/watcher/renew.claim.break"; out=$(run); rc=$?
+[ "$rc" -eq 13 ] && ! grep -q '^kill' "$tmp/stub/calls" && [ "$(cat "$PADDOCK_STATE_DIR/watcher/renew.claim")" = "$dead" ] && grep -q 'renew.claim.break' <<<"$out"
+check "a dead claim whose .break another run holds: exit 13, the claim not removed, the .break named" $?
+rm -f "$PADDOCK_STATE_DIR/watcher/renew.claim.break"; : > "$PADDOCK_STATE_DIR/watcher/renew.claim"; out=$(run); rc=$?
+[ "$rc" -eq 13 ] && [ -e "$PADDOCK_STATE_DIR/watcher/renew.claim" ]; check "a claim with no pid (just taken) is never broken: exit 13" $?
+rm -f "$PADDOCK_STATE_DIR/watcher/renew.claim"
 reset idle; echo other > "$PADDOCK_STATE_DIR/watcher/renew-secretary"; out=$(run PADDOCK_RENEW_ID=mine); rc=$?
 [ "$rc" -eq 13 ] && ! grep -q '^kill' "$tmp/stub/calls"; check "the watcher's request replaced or gone: exit 13, nothing ended" $?
 rm -f "$PADDOCK_STATE_DIR/watcher/renew-secretary"

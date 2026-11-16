@@ -251,7 +251,8 @@ reload_pass() {
 # while it holds); a new id is a new request. 0 when it ran this pass and the secretary is not woken.
 renew_pass() {
   local id fid frc fline out rc last
-  : > "$wdir/renew-ready"   # tells scripts/org renew_secretary this watcher acts on the marker
+  # tells scripts/org renew_secretary a watcher that acts on the marker keeps running (not a --once pass)
+  [ -n "$once" ] || : > "$wdir/renew-ready"
   [ -f "$renew" ] || { rm -f "$renew-failed"; return 1; }
   id=$(cat "$renew" 2>/dev/null)
   IFS="$tab" read -r fid frc fline 2>/dev/null < "$renew-failed" || fid=
@@ -467,7 +468,8 @@ pass() {
 
   # 6. the secretary's renewal (watcher/renew-secretary), else /reload-plugins after a skill landing; then the wake: the secretary
   # (not in the pass that typed the reload) and each live worker with unread mail
-  : > "$wdir/reload-ready"   # tells org-start this watcher acts on watcher/reload-plugins
+  # tells org-start a watcher that acts on watcher/reload-plugins keeps running (not a --once pass)
+  [ -n "$once" ] || : > "$wdir/reload-ready"
   renew_pass || reload_pass || wake "$sec" secretary
   while IFS="$tab" read -r n tk; do
     [ -n "$n" ] || continue

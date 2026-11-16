@@ -66,12 +66,20 @@ ph=$(cat "$bd/paddock-home" 2>/dev/null)
 # The watcher passes the request it runs for in PADDOCK_RENEW_ID: a request gone or replaced meanwhile
 # (another run fulfilled it) is not run again.
 wdir=${sdir%/secretary}/watcher; lk=$wdir/renew.claim; me=$$
-claim() { local r; set -C; { echo "$me" > "$lk"; } 2>/dev/null; r=$?; set +C; return "$r"; }
 mkdir -p "$wdir" 2>/dev/null
+# Breaking a dead claim is guarded as scripts/org's lock_take does: only the holder of <claim>.break
+# (noclobber) breaks it, and only if the pid it re-reads there is still the dead one, so a claim a
+# racer just took is never removed. A .break left behind is never broken: exit 13 names it.
+excl() { local r; set -C; { echo "$me" > "$1"; } 2>/dev/null; r=$?; set +C; return "$r"; }
+claim() { excl "$lk"; }
 if ! claim; then
   o=$(cat "$lk" 2>/dev/null)
-  { [ -n "$o" ] && ! kill -0 "$o" 2>/dev/null && rm -f "$lk" && claim; } \
-    || die 13 "another renewal is running (pid ${o:-not recorded}, $lk); nothing was ended."
+  case "$o" in ''|*[!0-9]*) die 13 "another renewal is running or its claim has no pid ($lk); if no renewal runs, remove it. Nothing was ended." ;; esac
+  kill -0 "$o" 2>/dev/null && die 13 "another renewal is running (pid $o, $lk); nothing was ended."
+  excl "$lk.break" || die 13 "another run is breaking the stale claim $lk; if none runs, remove $lk.break. Nothing was ended."
+  [ "$(cat "$lk" 2>/dev/null)" = "$o" ] && ! kill -0 "$o" 2>/dev/null && rm -f "$lk"
+  rm -f "$lk.break"
+  claim || die 13 "another renewal took the claim $lk; nothing was ended."
 fi
 trap '[ "$(cat "$lk" 2>/dev/null)" != "$me" ] || rm -f "$lk"' EXIT
 if [ -n "${PADDOCK_RENEW_ID:-}" ] && [ "$(cat "$wdir/renew-secretary" 2>/dev/null)" != "$PADDOCK_RENEW_ID" ]; then

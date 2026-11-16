@@ -71,7 +71,10 @@ id1=$(cat "$M"); o bash "$org" --as secretary renew_secretary >/dev/null; [ "$(c
 # no marker: nothing
 reset idle; pass $T0
 [ "$rc" -eq 0 ] && [ "$(runs)" -eq 0 ] && ! grep -q '^kill' "$tmp/stub/calls"; check "no marker: the script is not run" $?
-r=$(o bash "$org" --as secretary renew_secretary); grep -q 'end your turn' <<<"$r"; check "after a watcher pass, renew_secretary says the watcher runs it" $?
+r=$(o bash "$org" --as secretary renew_secretary); grep -q 'no watcher' <<<"$r" && [ ! -e "$tmp/state/watcher/renew-ready" ]
+check "a --once pass does not touch renew-ready: renew_secretary still says no watcher" $?
+rm -f "$M"; env -i "${E[@]}" PADDOCK_WATCH_INTERVAL=60 timeout 5 bash "$script" >/dev/null 2>&1
+r=$(o bash "$org" --as secretary renew_secretary); grep -q 'end your turn' <<<"$r"; check "after a pass of the running loop, renew_secretary says the watcher runs it" $?
 
 # marker + idle: run once, marker cleared
 reset idle; o bash "$org" --as secretary renew_secretary >/dev/null; pass $T0
