@@ -2,7 +2,7 @@
 
 An organization cockpit for coding agents, built on herdr-core (`hc`) and herdr-app.
 
-You talk to one agent, the **secretary**. The secretary hands work to **workers**, each in its own git worktree, answers their questions, and brings to you only what it cannot decide. Each piece of work ends in a pull request.
+You talk to one agent, the **secretary**. The secretary hands work to **workers**, each in its own git worktree, answers their questions, and brings to you only what it cannot decide. Work on a GitHub repository ends in a pull request.
 
 paddock is a prototype: it has run full tasks, from a request to a pull request, on a host. How it is built and what is not built yet: [docs/development.md](docs/development.md).
 
@@ -77,7 +77,7 @@ The paddock screen has:
 
 ### A request
 
-The secretary starts a worker for each task. When the work is done it opens a pull request and, depending on your approval setting, waits for you or merges it.
+The secretary starts a worker for each task. When work on a GitHub repository is done, it opens a pull request and, depending on your approval setting, waits for you or merges it. Work in a local repository with no GitHub remote gets no pull request: the secretary tells you the summary and the folder, and merges it into that repository's `main` only after you agree.
 
 ## Answering approval cards
 
