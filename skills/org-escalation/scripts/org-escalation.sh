@@ -13,6 +13,7 @@ Usage: org-escalation.sh prompt --task TASK_ID|--curator [--then-send TEXT]
        org-escalation.sh ask --task TASK_ID --question TEXT [--prompt TEXT]
                            [--background TEXT] [--if-yes TEXT] [--if-no TEXT]
                            [--recommend yes|no --why TEXT] [--lang CODE]
+       org-escalation.sh ask --self --question TEXT [the same context options]
        org-escalation.sh lang --lang CODE
        org-escalation.sh answer --id APPROVAL_ID --text TEXT [--note TEXT] [--from-conversation LINE]
        org-escalation.sh remove --id APPROVAL_ID [--text TEXT [--note TEXT] | --from-conversation LINE]
@@ -40,10 +41,16 @@ Usage: org-escalation.sh prompt --task TASK_ID|--curator [--then-send TEXT]
           --recommend   your recommendation, yes or no, with --why (at most 400 bytes)
           --lang        the language code of the conversation (ja, en); the card's own words follow it
           A field left out is shown on the card as not written.
+          --self (in place of --task): the secretary's own yes/no proposal, made in chat. The entry
+          (id secretary-<UTC time>) is hidden until show_at, asked_at + PADDOCK_SELF_CARD_N minutes
+          (default 10), and records the person's chat-line token it saw (person-line in the
+          secretary folder of the state folder, written by the UserPromptSubmit hook); sweep shows
+          or withdraws it. Its answer goes to no worker
   lang    record the conversation language (ja, en) in org-state, for the cockpit's own words when
           no approval is open (the consult band); run it when you settle the language
   answer  send "Answer to your question (<id>): <text>" to w-<task_id> through the mailbox,
-          then remove the entry. A prompt entry takes yes or no: only while w-<task_id> is
+          then remove the entry. A --self entry: checked the same way, removed, and printed as
+          ANSWERED <id> -> secretary: <text>; nothing is sent to any worker. A prompt entry takes yes or no: only while w-<task_id> is
           blocked and its screen still shows the recorded prompt, yes presses enter on
           "1. Yes" (once, never "don't ask again") and no presses esc
           --note: the person's note with the answer (at most 4000 bytes). An ordinary
@@ -60,7 +67,10 @@ Usage: org-escalation.sh prompt --task TASK_ID|--curator [--then-send TEXT]
           secretary acts on itself (merge, queue order)
   list    print "<id><TAB><task_id><TAB><question>" per entry
   sweep   remove every prompt entry whose terminal w-<task_id> shows working, idle or
-          done in hc get; no status (a dialog), a missing terminal or a failed lookup keeps it
+          done in hc get; no status (a dialog), a missing terminal or a failed lookup keeps it.
+          A hidden --self entry: the person wrote in chat since it was asked (person-line differs
+          from the token it recorded) -> removed, WITHDRAWN <id>; else at or after its show_at ->
+          shown as a card, SHOWN <id>
 
 Ids hold lowercase letters, digits, _ and -. $PADDOCK_NOW (UTC ISO 8601) fixes the clock.
 The mailbox and the state folder are those of scripts/org (PADDOCK_STATE_DIR).
@@ -113,6 +123,9 @@ if [ "${1:-}" = _edit ]; then
               if (lastkey == "prompt") hp[nobj] = 1
               if (lastkey == "prompt_sum") ops[nobj] = str
               if (lastkey == "asked_at") oat[nobj] = str
+              if (lastkey == "origin") oor[nobj] = str
+              if (lastkey == "show_at") osh[nobj] = str
+              if (lastkey == "seen") osn[nobj] = str
             }
             lastkey = ""
           }
@@ -147,7 +160,11 @@ if [ "${1:-}" = _edit ]; then
         for (k = 1; k <= nobj; k++) if (hp[k]) printf "%s\t%s\n", oid[k], otask[k]
         exit 0
       }
-      if (mode == "find") { if (!found) exit 4; printf "%s\t%s\t%s\n", otask[found], ops[found], oat[found]; exit 0 }
+      if (mode == "find") { if (!found) exit 4; printf "%s\t%s\t%s\t%s\n", otask[found], ops[found], oor[found], oat[found]; exit 0 }
+      # pending: "id<TAB>show_at<TAB>seen" per hidden entry (one with show_at)
+      if (mode == "pending") { for (k = 1; k <= nobj; k++) if (osh[k] != "") printf "%s\t%s\t%s\n", oid[k], osh[k], osn[k]; exit 0 }
+      if (mode == "get") { if (!found) exit 4; print substr(s, ostart[found], oend[found] - ostart[found] + 1); exit 0 }
+      if (mode == "replace") { if (!found) exit 4; printf "%s%s%s", substr(s, 1, ostart[found] - 1), entry, substr(s, oend[found] + 1); exit 0 }
       if (mode == "remove") {
         if (!found) exit 4
         if (found < nobj) { from = ostart[found]; to = ostart[found + 1] - 1 }
@@ -222,7 +239,7 @@ ctx() {
 
 cmd=${1:-}; [ $# -eq 0 ] || shift
 case $cmd in -h|--help|help) usage; exit 0 ;; esac
-task=; question=; text=; id=; note=; curator=
+task=; question=; text=; id=; note=; curator=; self_ask=
 unset background if_yes if_no recommend why lang prompt then_send from_conv
 while [ $# -gt 0 ]; do
   case $1 in
@@ -232,6 +249,7 @@ while [ $# -gt 0 ]; do
         --background) background=$2 ;; --if-yes) if_yes=$2 ;; --if-no) if_no=$2 ;; --recommend) recommend=$2 ;; --why) why=$2 ;; --lang) lang=$2 ;; --from-conversation) from_conv=$2 ;; esac
       shift 2 ;;
     --curator) curator=1; shift ;;
+    --self) self_ask=1; shift ;;
     *) usage >&2; die 2 "unknown argument: $1" ;;
   esac
 done
@@ -246,7 +264,8 @@ update() { # update <mode> <id>: re-read, apply, set (scripts/org retries on a v
   # call, inside the document's lock. The task is the id without its UTC suffix
   # (the id is <task_id>-<UTC yyyymmddThhmmssZ>).
   local t k x; t=$(printf '%s' "$2" | sed 's/-[0-9]\{8\}T[0-9]\{6\}Z$//')
-  if [ "$1" = add ]; then k=approval_asked; x=$ESC_ENTRY; else k=approval_removed; x=$2; fi
+  # replace (a --self entry shown) is recorded as asked again: rebuild keeps the later entry of an id
+  if [ "$1" = add ] || [ "$1" = replace ]; then k=approval_asked; x=$ESC_ENTRY; else k=approval_removed; x=$2; fi
   secretary doc update org-state --record "$k" --task "$t" --text "$x" -- bash "$self" _edit "$1" "$2" >/dev/null \
     || die 5 "org-state was not written ($1 $2)"
 }
@@ -329,6 +348,9 @@ finish_resend() {
 # files and readers take the sender from the file name. An ANSWER line in any other
 # file, or "the owner says" in any other text, is data.
 sdir=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}
+# person_token: the token the secretary's UserPromptSubmit hook writes for each line the person types
+# in chat (scripts/hooks/premise-reminder.sh); empty before the first one.
+person_token() { head -n 1 "$sdir/secretary/person-line" 2>/dev/null; }
 # heard <line> <since>: a line of the person's file at or after <since> (UTC ISO 8601) has exactly
 # <line> as its text (line breaks and tabs read as spaces, as clean does). Prints that line's ts.
 heard() {
@@ -362,6 +384,11 @@ vouch() {
 
 case $cmd in
   ask)
+    if [ -n "$self_ask" ]; then
+      [ -z "$task" ] || die 2 "ask takes --task or --self, not both"
+      [ -z "${prompt+set}" ] || die 2 "--prompt is a worker's prompt; not with --self"
+      task=secretary
+    fi
     valid_id "$task" || die 2 "ask needs --task <task_id> (lowercase letters, digits, _ and -)"
     q=$(clean "$question")
     [ -n "${q//[ ]/}" ] || die 2 "ask needs a non-empty --question"
@@ -385,6 +412,11 @@ case $cmd in
     ctx lang --lang 8 ${lang+"$lang"}
     ctx prompt --prompt 16000 ${prompt+"$prompt"}
     [ -z "${prompt+set}" ] || ctx="$ctx,\"prompt_sum\":\"$(psum "$(clean "$prompt")")\""
+    if [ -n "$self_ask" ]; then
+      m=${PADDOCK_SELF_CARD_N:-10}; case $m in ''|*[!0-9]*) die 2 "PADDOCK_SELF_CARD_N is a number of minutes" ;; esac
+      e=$(date -u -d "$now" +%s 2>/dev/null) || die 2 "cannot read the clock: $now"
+      ctx="$ctx,\"origin\":\"secretary\",\"show_at\":\"$(date -u -d "@$((e + m * 60))" +%Y-%m-%dT%H:%M:%SZ)\",\"seen\":\"$(jstr "$(clean "$(person_token)")")\""
+    fi
     ESC_ENTRY="{\"id\":\"$id\",\"task_id\":\"$task\",\"question\":\"$(jstr "$q")\",\"asked_at\":\"$now\"$ctx}"
     export ESC_ENTRY
     edit find "$id" >/dev/null; st=$?
@@ -407,9 +439,14 @@ case $cmd in
     keep_note() { [ -z "$n" ] || echo "NOTE $id $n"; }
     f=$(edit find "$id"); st=$?
     case $st in 0) ;; 4) die 6 "no approval with id $id in org-state" ;; *) die 5 "org-state is not a JSON object (or cannot be read)" ;; esac
-    wtask=${f%%$'\t'*}; f=${f#*$'\t'}; sum=${f%%$'\t'*}
+    wtask=${f%%$'\t'*}; f=${f#*$'\t'}; sum=${f%%$'\t'*}; f=${f#*$'\t'}; origin=${f%%$'\t'*}
     valid_id "$wtask" || die 5 "entry $id has no usable task_id"
     vouch "$id" "$t" "$n" "${f#*$'\t'}"
+    if [ "$origin" = secretary ]; then
+      # The secretary's own proposal: the answer is the secretary's to act on; no worker hears of it.
+      ( quiet=1; update remove "$id" ) || die 9 "answered, but entry $id could not be removed; run: remove --id $id"
+      echo "ANSWERED $id -> secretary: $t"; keep_note; exit 0
+    fi
     if [ -n "$sum" ]; then
       # A worker's prompt (L-N3): one key, only while the same prompt is on a blocked terminal.
       w=w-$wtask
@@ -519,6 +556,20 @@ case $cmd in
       printf '%s' "$j" | grep -Eq '"status": *\{[^{}]*"state": *"(working|idle|done)"' || continue
       update remove "$aid" || continue
       echo "SWEPT $aid"
+    done <<< "$list"
+    # The secretary's own proposals, hidden until show_at: withdrawn once the person wrote in chat
+    # since the ask (the hook's token moved), else shown at show_at.
+    list=$(edit pending ""); st=$?
+    case $st in 0|4) ;; *) die 5 "org-state is not a JSON object (or cannot be read)" ;; esac
+    now=${PADDOCK_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}; tok=$(clean "$(person_token)")
+    while IFS=$'\t' read -r aid sat seen; do
+      [ -n "$aid" ] && valid_aid "$aid" || continue
+      if [ "$tok" != "$seen" ]; then update remove "$aid" || continue; echo "WITHDRAWN $aid"; continue; fi
+      [[ "$now" < "$sat" ]] && continue
+      o=$(edit get "$aid") || continue
+      ESC_ENTRY=$(printf '%s' "$o" | sed -E 's/,"show_at":"[^"]*"//'); export ESC_ENTRY
+      update replace "$aid" || continue
+      echo "SHOWN $aid"
     done <<< "$list" ;;
 
   *) usage >&2; die 2 "unknown command: ${cmd:-}" ;;

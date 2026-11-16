@@ -670,7 +670,8 @@ export default class Cockpit extends View {
     else {
       // Oldest first: the one that has waited longest is answered first. The loud card is the
       // oldest not yet answered here, so a queue can be answered one click after another.
-      const approvals = [...(this.value().approvals ?? [])].sort((x, y) => Date.parse(x.asked_at) - Date.parse(y.asked_at));
+      // A proposal of the secretary's own waits hidden until its show_at (the secretary's sweep shows it).
+      const approvals = [...(this.value().approvals ?? [])].filter((a) => !a.show_at).sort((x, y) => Date.parse(x.asked_at) - Date.parse(y.asked_at));
       const isSent = (a) => this.sent.get(a.id)?.state === "sent";
       const waiting = approvals.filter((a) => !isSent(a));
       const sent = approvals.filter(isSent);

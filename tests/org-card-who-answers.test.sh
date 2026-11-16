@@ -125,6 +125,12 @@ has "$out" 'task-a-4'; check "no question: the card shows the approval id" $?
 has "$out" 'task-a'; check "no question: the card shows the task" $?
 [ "$fail" -eq 0 ] || printf '%s\n' "$out" | sed 's/^/     | /'
 
+# Issue #444: a proposal of the secretary's own with show_at is hidden; without it, an ordinary card.
+out=$(card '{"id":"secretary-20261110T090000Z","task_id":"secretary","origin":"secretary","question":"Merge both?","asked_at":"2026-11-10T09:00:00Z","show_at":"2026-11-10T09:10:00Z"}')
+has "$out" '^yesno 0$' && ! has "$out" 'Merge both?'; check "a hidden proposal (show_at) shows no card" $?
+out=$(card '{"id":"secretary-20261110T090000Z","task_id":"secretary","origin":"secretary","question":"Merge both?","asked_at":"2026-11-10T09:00:00Z"}')
+has "$out" '^yesno 2$' && has "$out" 'Merge both?'; check "a shown proposal (no show_at) is an ordinary card" $?
+
 # ---- org-escalation ask writes the field -------------------------------------
 
 script=$here/skills/org-escalation/scripts/org-escalation.sh
