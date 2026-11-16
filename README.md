@@ -2,121 +2,128 @@
 
 An organization cockpit for coding agents, built on herdr-core (`hc`) and herdr-app.
 
-You talk to one agent, the **secretary**. The secretary delegates work to **workers**, answers their questions, and brings to you only what it cannot decide. The organization grows by adding **skills**, and it keeps **its own records** of what ran and what was said.
+You talk to one agent, the **secretary**. The secretary hands work to **workers**, each in its own git worktree, answers their questions, and brings to you only what it cannot decide. Work on a GitHub repository ends in a pull request.
 
-paddock rebuilds these ideas from its predecessor, claude-org-ja, on a new base: herdr-core owns terminals and agent status, and herdr-app owns the screen through paddock's own mods ([decision 0003](docs/decisions/0003-screen-as-app-mods.md)).
+paddock is a prototype: it has run full tasks, from a request to a pull request, on a host. How it is built and what is not built yet: [docs/development.md](docs/development.md).
 
-## Status
+## Requirements
 
-A prototype that has run full tasks on a host. [Prototype 1](docs/design/prototype-1.md) showed approvals and work in progress in a mod. [Prototype 2](docs/design/prototype-2.md) ran the whole loop on 2026-11-10: a request typed to the secretary, a worker in its own worktree, one question answered on the screen's card, a pull request at the end, with no terminal touched. [Prototype 3](docs/design/prototype-3.md) repeated it with the acceptance check and a second-model review: Runs 7 and 8 (2026-11-13) each passed a full round with every step passing. What is built: the secretary template ([`templates/secretary.md`](templates/secretary.md): the opening task and situations mapped to skills, with its rules file [`templates/secretary-rules.md`](templates/secretary-rules.md) and settings file), the worker template ([`templates/worker.md`](templates/worker.md), with its rules and settings files), the mailbox commands, the skills below and [the screen](#the-screen).
+- **herdr-core** (`hc`, 0.1 series): runs every agent terminal.
+- **herdr-app** (0.1 series): the window.
+- **Claude Code** (`claude`): the agents.
+- `git`, `gh` (the GitHub CLI, logged in), `codex` (a second model is asked to review each worker's diff before its pull request: [`scripts/second-model-review.sh`](scripts/second-model-review.sh); when the review could not run, the pull request says so), `sh`, `awk` and the usual coreutils. Python and Node are not needed.
+- On Windows: herdr-core and the agents run inside WSL2. The window can be herdr-app for Windows.
 
-Run these from your own login shell, never from inside an agent (Bash only for now):
+## Install and start
 
-- To start the secretary and install the prototype-1 mod (`org-agents`), run `bash skills/org-start/scripts/org-start.sh` ([skill](skills/org-start/SKILL.md)). Its `--place-only` mode starts nothing and is the exception to the login-shell rule: the secretary runs it after a landing, so changed files are placed again without a person.
-- To renew the secretary's context, run `bash skills/secretary-handover/scripts/secretary-handover.sh` once the secretary has written its handover ([skill](skills/secretary-handover/SKILL.md)).
-- To pause and come back: [`org-suspend`](skills/org-suspend/SKILL.md) records the state and leaves terminals alive, [`org-resume`](skills/org-resume/SKILL.md) prints a plan (and relaunches workers with `--apply`), and [`org-down`](skills/org-down/SKILL.md) ends only the terminals carrying a `task_id` label (the secretary too with `--secretary`) and stops your core only with `--stop-core`.
-- To be told outside the window (a toast with sound, else a bell) of a waiting approval card, a stopped secretary or a terminal with no status: [`org-watch`](skills/org-watch/SKILL.md), a shell loop that `org-start` runs as a kept terminal named `watcher` and `org-down` ends ([decision 0008](docs/decisions/0008-who-tells-the-person-outside-the-window.md)). Since [decision 0013](docs/decisions/0013-watcher-wakes-the-secretary.md) (stage 1) it also writes worker events into the secretary's mailbox as `watcher`, types one constant "You have mail" line into an idle or done secretary or worker with unread mail, and watches CI for each `ci_requested` record.
+Run every command in this README from your own login shell in this folder, never from inside an agent.
 
-The secretary works in its own folder, `<state>/secretary` (default `~/.local/state/paddock/secretary`), not in this one. `org-start` places its standing rules there as `AGENTS.md` (from [`templates/secretary-rules.md`](templates/secretary-rules.md)) beside a `CLAUDE.md` whose only line is `@AGENTS.md`, and records this folder in `~/.local/share/paddock/bin/paddock-home`. `org-start` and the handover script start the secretary with `--cwd` set to that folder and answer its folder-trust dialog once. The template's `command` exports `PADDOCK_HOME` (this folder, from `paddock-home`) and loads the plugin from it, so the secretary runs `scripts/org` and the skill scripts as `bash "$PADDOCK_HOME/..."`. Its settings deny `Edit` and `Write` on the two files. A changed rules file reaches a running secretary at its next compaction or when it is renewed.
+First check your machine:
 
-Agents talk through the mailbox commands in [`scripts/org`](scripts/org) (`send_message`, `check_messages`, `set_summary`, `report`, `ci_completed` (written by `org-pull-request` and by the watcher for a watched CI run), `ci_requested` (by `org-pull-request`, for the watcher), `ci_watch_failed` (by the watcher), `work_check` (the worker check of `wait`, for the watcher), `list_runs`, `wait` (held by the secretary between turns while work or approvals are in progress, so a card answer or a report reaches it with nobody typing), `doc` for the secretary's two core documents, and `codex_round`, the Codex review-round cap: the workers' gate hook counts each review as writer `codex-gate` in `~/.local/share/paddock/codex-rounds`, which workers may not write, and the secretary raises one task's allowance): shell only, no resident process, so they work with no window open. Messages and run records are JSON lines in `events/<YYYY-MM>/<id>.jsonl` under `~/.local/state/paddock` (`$XDG_STATE_HOME/paddock` when that is set; `PADDOCK_STATE_DIR` changes it); a sender appends only to its own file (`bash scripts/org --help`). Workers reach the copy that `org-start` places in `~/.local/share/paddock/bin` (outside the herdr-core folder their settings deny) as `$PADDOCK_ORG`; the worker rules and settings files go to the same folder, which workers may read and not write (not into the herdr-core templates folder, where `hc templates` would list the rules file). The sender id is the caller's own claim (`--as`); nothing checks it.
+```sh
+bash skills/org-start/scripts/org-start.sh --check
+```
 
-The secretary runs these skills itself:
+It prints `ok <step>` or `TODO <step>: <fix>` for each step (`hc`, `claude`, `notes = false` in the herdr-core config, `hc` on the running core's PATH, the herdr-app mods folder). Do each `TODO` and run it again until none is left.
 
-- [`org-delegate`](skills/org-delegate/SKILL.md) hands a task to a new worker: it creates the worktree under the trusted workers folder (`PADDOCK_WORKERS_DIR`, default `~/paddock-workers`), writes the per-task settings file, starts the worker with `hc run --bg` and a `task_id` label, and records the start. The worker's settings ([`templates/worker-settings.json`](templates/worker-settings.json)) turn on Claude Code's sandbox and stop the worker when the sandbox cannot start. Host runs of the probes of Issues #40, #42 and #43 on a worker started this way, measured 2026-11-10, found it could not read a denied decoy file, write outside its worktree (its own history file stays writable) or rewrite its settings files ([inventory](docs/design/predecessor-inventory.md) rows L-K1, L-K4, L-K5; which layer refused is not always measured).
-- [`org-escalation`](skills/org-escalation/SKILL.md) puts a worker's question the secretary cannot decide on the screen as an approval card, and forwards the person's answer to the worker.
-- [`org-pull-request`](skills/org-pull-request/SKILL.md), when a worker is done: it pushes, opens the PR, watches CI as a child terminal, and stops for you or merges by the approval mode.
-- [`org-clone`](skills/org-clone/SKILL.md), before `org-delegate`, when a request names a GitHub repository (`OWNER/NAME` or a URL) that is not on the machine: it clones it with the secretary's own login into `~/paddock-projects/<owner>/<name>` (`PADDOCK_PROJECTS_DIR`) through a `.partial` folder, adds the `projects.md` row and prints the name; nothing is recorded on a failure. The first worker's folder-trust dialog on such a clone is held for the person's approval card, never answered automatically ([decision 0011](docs/decisions/0011-clone-a-repository-the-request-names.md)). Host probe: [`scripts/probes/clone-trust.sh`](scripts/probes/clone-trust.sh).
-- [`org-update-branch`](skills/org-update-branch/SKILL.md), when main moved under a pushed branch: it merges `origin/main` in (no force needed), and in a worker stops before the merge when the range touches a sandbox-protected path.
-- [`org-issue`](skills/org-issue/SKILL.md) opens a GitHub issue of one kind (decide, build or follow-up) with its dependencies on one `Depends on #N` line, the form of [the issue template](.github/ISSUE_TEMPLATE/issue.md).
-- Review by a second model (Codex) before a pull request: a worker runs [`scripts/second-model-review.sh`](scripts/second-model-review.sh) (placed by `org-start`, named by `PADDOCK_CODEX_GATE`) for a review of its diff or, with `--design`, of a design it wrote. It refuses an empty pass (a review that ran no command or had nothing to look at), the round counter bounds the rounds (3 diff rounds and 1 design review per task), and [the worker rules](templates/worker-rules.md) say when to ask. The reviewing CLI starts its own sandbox, which cannot start inside the worker's, so the two argument-free gate calls are the only commands `org-delegate` lets out of the worker sandbox (exact strings in `sandbox.excludedCommands` and `permissions.allow` of the per-task settings file). Measured on the host (Claude Code 2.1.322): with the gate inside the sandbox the CLI's outbound requests were refused and no review was reached; called from the worker in the excluded form, the CLI runs to a review and the round counter's hook counts the call ([`scripts/probes/second-model-review-reach.sh`](scripts/probes/second-model-review-reach.sh); [inventory](docs/design/predecessor-inventory.md) rows L-K10, GT-2, HK-14).
+### Linux, macOS, or WSL with a Linux herdr-app
 
-Not built yet, though the predecessor relied on them ([inventory](docs/design/predecessor-inventory.md) rows in brackets):
+1. Open herdr-app.
+2. Run:
 
-- Growth through skills and knowledge, built per [decision 0009](docs/decisions/0009-growth-through-skills-smallest-form.md): the raw note at the end of a done report, the count in `org-close`, the curator template, the skill template and the check of the acceptance chain (SK-7, SK-8, REG-4, GT-11). Not yet run for real: `org-start` installs the curator template and the secretary starts it with `org-curate.sh start`, which first writes the curator's settings file (Bash and the file tools write only the state folder's `knowledge/`, Issue #353); but acceptance link 5 (a later task uses a learned skill) has no real run.
-- The organization settings files `org-config.md` and `projects.md` ([Q14](docs/design/open-questions.md#q14-where-do-organization-settings-and-registries-live), decided): `org config` ([#193](https://github.com/suisya-systems/paddock/issues/193)) changes them: `set` for `merge_approval_mode` (read by `org-pull-request`) and `conversation_language` (ends the secretary's launch task in `org-start` and `secretary-handover`), and `project add`, `set` and `drop` for the table `--project <name>` reads; the other values are not settings yet and the scripts use their defaults and `PADDOCK_*` variables.
-- The optional features: conveyor, work discovery, metrics and defense reports ([Q15](docs/design/open-questions.md#q15-which-of-the-predecessors-optional-organization-features-carry-over), open).
+   ```sh
+   bash skills/org-start/scripts/org-start.sh
+   ```
 
-Start with:
+   It places the paddock layout ([`layouts/paddock.json`](layouts/paddock.json)) and its mod under `~/.config/herdr-app`, starts the secretary (and a `watcher` terminal that tells you when something waits for you), and ends with `org-start: ready`. Running it again starts no second secretary.
+3. It also switches the window to the paddock screen. If it printed `org-start: warning: layout.switch failed`, run the command it printed after `org-start: to open the screen:`, for example:
 
-- [Architecture](docs/design/architecture.md): where each part lives, and the rules that hold it together.
-- [Open questions](docs/design/open-questions.md): Q1 to Q20, each with what we know and, for most, the owner's dated decision. Still open: Q15 (which optional predecessor features carry over), and parts of Q3 (who runs the incident check) and Q11 (the predecessor tools other than the merge gate).
-- [Decisions](docs/decisions/): short records of what is settled.
-- [Worker GitHub access](docs/design/worker-github-access.md): options for a worker's GitHub access without a hand-made PAT, compared against Q20; decided 2026-11-14: the local mirror, no credential in the worker.
-- [Predecessor inventory](docs/design/predecessor-inventory.md): each part of claude-org-ja, whether paddock keeps, rewrites or retires it, and what was measured.
+   ```sh
+   herdr-app do layout.switch '{"name":"paddock"}'
+   ```
 
-## The screen
+### WSL with herdr-app for Windows
 
-The window is the herdr-app layout [`layouts/paddock.json`](layouts/paddock.json) with its mod [`mods/org-cockpit/`](mods/org-cockpit/) ([architecture §7](docs/design/architecture.md#7-the-screen)): worker tiles on the left (status colour, last lines, "Needs you" when blocked; click one to peek at its terminal) under a "Back to the secretary" button and above the watcher strip (alive and its last pass, open CI watches, its last wakes and mailbox lines; a warning when its terminal is gone), the secretary's terminal in the centre, the secretary's questions floating at the top right while its terminal is blocked, and the oldest unanswered approval from `org-state` as one card at the bottom right, with Yes and No buttons (a worker's own prompt too: the secretary relays the answer to it after reading its screen, Issue #260) and an optional note field ("anything to add", Issue #386) that send the answer to the secretary through the mailbox (`ANSWER <approval id> yes|no`, or `ANSWER <approval id> yes|no; note: <note>`, from `person`; the card reaches `org` where `org-start` places it) and a link to the secretary's pane to answer in words. Workers are the terminals labelled `task_id`; the secretary is the terminal named `secretary`.
+The core and the agents run in WSL; the window runs on Windows.
 
-To open it, run `org-start`: it places `layouts/paddock.json` and `mods/org-cockpit/` under `~/.config/herdr-app` (on WSL with herdr-app for Windows, the Windows user's `.config/herdr-app`), keeps a `secretary` prop already in the installed layout, and runs `herdr-app check` when it finds herdr-app. The numbered steps are in [Opening the screen](#opening-the-screen).
+1. Once, in PowerShell on Windows, add your WSL distribution as a machine named `wsl` (replace `Ubuntu` with your distribution):
 
-The centre is the layout's active tab. The mod labels the secretary's terminal `herdr.space=paddock` and `herdr.tab=secretary` when it lacks them, so herdr-app adopts it as the only pane of a `paddock` space, and it brings that pane to the front whenever the secretary's address changes (a renewed secretary is adopted the same way). A worker peeked from its tile and kept (herdr's "keep as tab") takes the centre; "Back to the secretary", always at the top of the worker tiles, sends every kept worker back to its tile (herdr's `terminal.park`, the pane menu's "Send back"; the worker keeps running) and focuses the secretary's pane. The centre does not use a layout terminal block: in herdr-app 0.1.13 such a block is removed when its terminal ends, and the next save rewrites the layout file without it. When the secretary runs on another machine (for example a `wsl` machine added with `hc machine add`), add a `"secretary": "<machine>/secretary"` prop to each `org-cockpit` block in your copy of the layout (org-start writes it on WSL with herdr-app for Windows, machine `wsl` or `PADDOCK_APP_MACHINE`). The mod then also reads `org-state` from that machine's core, where the secretary writes it.
+   ```powershell
+   hc machine add --via 'wsl.exe -d Ubuntu -e sh -c' --name wsl
+   ```
 
-### Opening the screen
+   Use the Windows `hc` 0.1.20 or later (`hc --version`). If you choose another name, set `PADDOCK_APP_MACHINE` to it in WSL before step 2.
+2. In WSL, run `bash skills/org-start/scripts/org-start.sh`. It places the layout and mod in the Windows user's `.config/herdr-app` and points the screen at the secretary on the `wsl` machine.
+3. If the screen did not switch, run the command printed after `org-start: to open the screen:`. It starts with the path of `herdr-app.exe`.
+4. If org-start warns that it could not find the Windows user folder, set `PADDOCK_APP_MODS_DIR` to the Windows herdr-app's mods folder and `PADDOCK_APP_MACHINE` to the machine name from step 1 (`wsl` unless you chose another), both of them, then run it again.
 
-On Linux, macOS or WSL with a Linux herdr-app:
+### Switching screens
 
-1. Open a terminal of your own (a login shell, not an agent's) and run `bash skills/org-start/scripts/org-start.sh` from this folder. It places the layout and the mod, starts the secretary unless one runs, and ends with `org-start: ready`. It also tries to switch the window itself: it prints `org-start: switched the screen to the paddock layout with <herdr-app>` or, on failure, `org-start: warning: layout.switch failed: <reason>`.
-2. If the screen did not switch, run the command org-start printed on the line `org-start: to open the screen:` (`herdr-app do layout.switch '{"name":"paddock"}'`). `herdr-app` must be running with its window open.
-3. The secretary's terminal is in the centre. Type your request there.
+The secretary and the workers keep running while the window shows another layout.
 
-Back to a normal herdr screen, and to the paddock screen again (the same command and key in either direction):
+- With the window focused, press `ctrl-shift-l` to go to the next layout (press again if you have more than two).
+- Or name it: `herdr-app do layout.switch '{"name":"main"}'` for herdr-app's own layout, `'{"name":"paddock"}'` to come back.
 
-1. With the window focused, press `ctrl-shift-l`. In herdr-app's `keys.json` it is bound to `layout.switch` with no name, which shows the next layout in `layouts/`, so with more than two layouts you may need to press it again.
-2. Or name the layout: `herdr-app do layout.switch '{"name":"<layout>"}'`, with `<layout>` the file name in `layouts/` without `.json` (`main` is one herdr-app ships; `paddock` is this one).
+## Asking the secretary for work
 
-The secretary and the workers keep running while you look at another layout: the window only shows them.
+### The screen
 
-On WSL with herdr-app for Windows (the core and agents in WSL, the window on Windows):
+The paddock screen has:
 
-1. Once, on Windows (PowerShell, with `hc.exe`), add the WSL distribution as a machine named `wsl`: `hc machine add --via 'wsl.exe -d Ubuntu -e sh -c' --name wsl` (replace `Ubuntu` with your distribution; this is the form `hc machine add --help` shows for WSL). The name `wsl` is the one org-start assumes; another name goes in `PADDOCK_APP_MACHINE`. Not measured on Windows: the Windows core 0.1.19 rejected every `--via wsl.exe ...` form as "bad command" because it ran the command through `sh` (recorded in [open-questions.md](docs/design/open-questions.md)); the 0.1.20 `hc machine add --help` describes a no-shell form for Windows, so update the Windows `hc` first (`hc --version`).
-2. In WSL, run `bash skills/org-start/scripts/org-start.sh` as above. On WSL it places the layout and mod under the Windows user's `.config/herdr-app` and writes `"secretary": "wsl/secretary"` into each `org-cockpit` block of the installed layout, so the cockpit reads `org-state` from the WSL core. A later run keeps the prop.
-3. org-start runs herdr-app by its Windows path, which it finds through `cmd.exe` and `wslpath`: `herdr-app.exe` on `PATH`, else `<Windows user folder>/AppData/Local/Programs/herdr-app/herdr-app.exe` (for example `/mnt/c/Users/<you>/AppData/Local/Programs/herdr-app/herdr-app.exe`). If the switch failed, run the printed command, which starts with that path. A Linux `herdr-app` in WSL cannot reach a window open on Windows (its socket is `~/.config/herdr-app/herdr-app.sock`, the Windows window's is in the Windows user's folder).
-4. If org-start warns that it could not find the Windows user folder, set `PADDOCK_APP_MODS_DIR` to the Windows herdr-app's mods folder and `PADDOCK_APP_MACHINE=wsl` (or the name you gave the machine; setting the mods folder alone skips the WSL detection, so the layout would get no `secretary` prop) and run it again. `bash skills/org-start/scripts/org-start.sh --check` lists every step and prints a `TODO` for what is left.
+- the secretary's terminal in the centre: type your request there, in your own words, and name the repository it is about;
+- the workers as tiles on the left, under a "Back to the secretary" button. A tile shows the worker's status and last lines, and "Needs you" when it waits. Click a tile to look at its terminal; "Back to the secretary" returns to the centre;
+- below the tiles, the watcher strip;
+- the secretary's questions at the top right, and approval cards at the bottom right.
 
-If the screen says `hc unreachable` (at the top of the worker tiles) or `Can't reach hc.` (in the approval card's place, with the first line of the error under it), the mod's read of `org-state` failed. Each read runs `hc connect` through `sh` on the secretary's machine (through `pwsh` on a Windows core with no `secretary` prop) and shows the error text, so the line under the message tells which of these it is:
+### A request
 
-- `sh: hc: not found` (the wording depends on the shell): `hc` is not on the PATH of the shell that read runs in. On WSL this is the core's PATH, which every terminal it starts takes. Run `bash skills/org-start/scripts/org-start.sh --check`: its `core-path` line says whether `hc` is on the running core's PATH. If not, stop herdr-core and start herdr again from a login shell that has the folder of `hc` on PATH.
-- Windows herdr-app with no `secretary` prop in the installed layout: the read looks for `hc` on Windows (on `PATH`, else `%LOCALAPPDATA%\Programs\herdr-core\hc.exe`), not in WSL. Add the `wsl` machine (WSL steps 1 and 2) so that the prop is there, or put that `hc.exe` where it looks.
-- The prop names a machine the window does not know: the read goes through that machine. `hc machine ls` lists the machines added; set `PADDOCK_APP_MACHINE` to the right name and run org-start again.
-- The core is not running: start the secretary with org-start, which starts a core when none runs.
+The secretary starts a worker for each task. When work on a GitHub repository is done, it opens a pull request and, depending on your approval setting, waits for you or merges it. When a request needs no GitHub repository, the secretary may make a new local repository for it (under `~/paddock-local/`); that work gets no pull request: the secretary tells you the summary and the folder, and merges it into that repository's `main` only after you agree.
 
-The tiles recover on their own within a few seconds (the mod reads again every 5 s) once a read works.
+## Answering approval cards
 
-## Goal
+When the secretary cannot decide something, a card appears at the bottom right with the question, what Yes and No each do, and its recommendation.
 
-Portability. The predecessor carried its own terminal transports, pane launcher, screen-scraping monitor and dashboard. herdr already splits a headless terminal server (core) from a desktop client (app). paddock stands on that split so that the organization itself (roles, skills, messages, records) does not depend on any one terminal or window.
+- Press **Yes** or **No**.
+- To add something, type it in the field "Anything to add?" before you press Yes or No; it is sent with your answer.
+- To answer in words, click "Open the secretary to answer in words" and reply in the secretary's terminal.
 
-## Assumptions
+## Pause, resume and stop
 
-- **herdr-core** (`hc`, 0.1 series, Apache-2.0) runs every agent terminal. It draws nothing, keeps terminals alive when no window is open, and exposes an OpenRPC API.
-- **herdr-app** (0.1 series, Apache-2.0) is the default window. Its panels are JavaScript mods.
-- **Claude Code** is the agent. It reports its own status to herdr-core through OSC 7501 (the Program Status Protocol), so nothing reads the screen to guess what an agent is doing.
-- **Rules in English, conversation in your language.** Everything that governs agents (role instructions in `hc` template bodies, `AGENTS.md` (Claude Code reads it when there is no CLAUDE.md), skills, contract documents) is written in English. The language the secretary speaks with people is a setting, defaulting to the environment's; instructions enforce it. Today it is the line `Conversation language: auto` in the secretary template; the decided place, one line in `org-config.md` passed when the secretary starts ([Q9](docs/design/open-questions.md#q9-where-does-the-conversation-language-setting-live)), is not built yet.
-- **Tools on the host.** `claude` (Claude Code), `git`, `gh` (the GitHub CLI), `codex` (the second-model review), `sh`, `awk` and the usual coreutils. Python and Node are not needed.
-- **Nothing to install beyond herdr and those tools.** paddock is written for the environments herdr already brings: the JavaScript runtime that runs herdr-app mods, `hc` templates and its CLI, and the shell. It does not assume a language or runtime that needs a separate install, such as Python or Node. What each component is written in is [Q8](docs/design/open-questions.md#q8-what-is-each-component-written-in): the mailbox is shell commands and the records are core documents plus JSON lines, with no SQLite ([decision 0004](docs/decisions/0004-records-documents-and-jsonl.md)); there is no events bridge now, and one would be a shell pipeline in a kept terminal if ever needed.
-- **Windows through WSL2.** On Windows, herdr-core and the agents run only inside WSL2; herdr-app may stay native and reach the core there ([Q7](docs/design/open-questions.md#q7-windows)).
+From your own login shell:
 
-## What paddock is not
+| Command | What it does |
+| --- | --- |
+| `bash skills/org-suspend/scripts/org-suspend.sh` | Records the state of the work. Ends nothing. |
+| `bash skills/org-resume/scripts/org-resume.sh` | Prints a plan for bringing the workers back. Starts nothing. |
+| `bash skills/org-resume/scripts/org-resume.sh --apply` | Restarts each worker whose terminal is gone, where it left off. |
+| `bash skills/org-down/scripts/org-down.sh` | Records the state, then ends the workers and the watcher. The secretary keeps running. |
+| `bash skills/org-down/scripts/org-down.sh --secretary` | Also ends the secretary. |
+| `bash skills/org-down/scripts/org-down.sh --stop-core` | Also stops herdr-core, with every terminal on it, paddock's or not. Without this flag the core is never stopped. |
 
-- **Not a fork or a new version of claude-org-ja.** It lives in its own repository ([decision 0001](docs/decisions/0001-separate-repository.md)). claude-org-ja keeps running as it is.
-- **Not a terminal multiplexer or a terminal server.** herdr-core is the server. paddock does not run its own terminals or support other transports.
-- **Not built on the older Herdr TUI** (`herdrdev/herdr`). That product does not share agents with herdr-core or herdr-app.
-- **Not a management console.** No tables, no charts. The screen shows the conversation with the secretary and live views of the workers.
-- **Not a sandbox.** herdr-core runs commands with your account's access and is not a permission broker. Permissions, hooks and sandboxing stay with Claude Code's own settings.
-- **Not a general multi-stack framework.** Only herdr-core, herdr-app and Claude Code are in scope.
-- **Not an organization of resident area-lead agents.** No agent sits on an area waiting for work; the goal ledger and the clause-ordered triage take that role ([decision 0012](docs/decisions/0012-no-resident-area-lead-agents.md)).
+To come back after `org-down`: run `org-start.sh` (it starts the secretary and the watcher), then `org-resume.sh --apply`.
 
-## CI
+When the secretary has written its handover and asks you to renew it, run `bash skills/secretary-handover/scripts/secretary-handover.sh`.
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs, on every push and pull request:
+## Troubleshooting
 
-- `scripts/check-links.sh` on relative Markdown links, after its own test.
-- Every `tests/*.test.sh`, in one step (a new test file needs no change to the workflow). They test the skills, the `org` commands, the worker template and settings, and the shape of the screen's layout and mods, against a stubbed `hc` (and a stubbed GitHub CLI for `org-pull-request`).
-- `scripts/check-templates.sh` on every template header.
-- `sh -n` on the probe scripts in [`scripts/probes/`](scripts/probes/). The probes themselves are host runs against a real core; their results are recorded in the design documents. The mailbox probe [`org-mailbox-restart.sh`](scripts/probes/org-mailbox-restart.sh) (messages survive a window restart) has no recorded result yet.
-- For each mod, `mod.json` parses and `main.js` passes `node --check`. `herdr-app check` needs a display, so it and a screenshot are host-side checks.
+Start with `bash skills/org-start/scripts/org-start.sh --check`.
+
+**`hc unreachable`** at the top of the worker tiles, or **`Can't reach hc.`** in the card's place: the screen could not read the organization's state. The line under the message is the error:
+
+- `sh: hc: not found` (the wording depends on the shell): `hc` is not on the PATH of the running herdr-core. The `core-path` line of `--check` says so. Stop herdr-core and start herdr again from a login shell that has `hc` on its PATH.
+- herdr-app for Windows with no `wsl` machine: the screen looks for `hc` on Windows, not in WSL. Do steps 1 and 2 of [WSL with herdr-app for Windows](#wsl-with-herdr-app-for-windows).
+- The machine name is wrong: `hc machine ls` lists the machines; set `PADDOCK_APP_MACHINE` to the right name and run org-start again.
+- The core is not running: run org-start, which starts one.
+
+The tiles recover within a few seconds once a read works.
+
+**The secretary is not in the centre:** the mod brings the terminal named `secretary` there by labelling it `herdr.space=paddock` and `herdr.tab=secretary`. Check that org-start ended with `org-start: ready`.
+
+**The watcher strip says the watcher is not running:** run org-start again.
+
+## For developers
+
+How paddock is built (the secretary and worker templates such as [`templates/worker.md`](templates/worker.md), the mailbox, each skill, the review by a second model, CI) and its design documents: [docs/development.md](docs/development.md).
 
 ## License
 
