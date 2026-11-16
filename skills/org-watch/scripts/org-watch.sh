@@ -259,18 +259,19 @@ renew_pass() {
     tell "renew:$sec" "Secretary renewal failed (exit $frc)" "$fline Rerun it by hand: bash $hand"; return 1
   fi
   ready "$sec" renew-secretary || return 1
-  # one run across watchers (the kept one and a hand --once): mkdir claims it; a dead holder's claim is broken
-  local lk=$wdir/renew.lock o
-  if ! mkdir "$lk" 2>/dev/null; then
-    o=$(cat "$lk/pid" 2>/dev/null)
+  # one run across watchers (the kept one and a hand --once): the claim file holding our pid, created with
+  # noclobber (O_EXCL; not mkdir, which uutils reported to two racers). A dead holder's claim is broken.
+  local lk=$wdir/renew.claim me=${BASHPID:-$$} o
+  claim() { local r; set -C; { echo "$me" > "$lk"; } 2>/dev/null; r=$?; set +C; return "$r"; }
+  if ! claim; then
+    o=$(cat "$lk" 2>/dev/null)
     { [ -n "$o" ] && ! kill -0 "$o" 2>/dev/null; } || { wlog skip "$sec" renew-secretary "$rst" claimed -; return 1; }
-    rm -rf "$lk"; mkdir "$lk" 2>/dev/null || return 1
+    rm -f "$lk"; claim || return 1
   fi
-  echo "${BASHPID:-$$}" > "$lk/pid"
   # the claimant re-reads the request: another watcher may have run it meanwhile
-  if [ "$(cat "$renew" 2>/dev/null)" != "$id" ]; then rm -rf "$lk"; return 1; fi
+  if [ "$(cat "$renew" 2>/dev/null)" != "$id" ]; then rm -f "$lk"; return 1; fi
   out=$("$BASH" "$hand" 2>&1); rc=$?
-  rm -rf "$lk"
+  rm -f "$lk"
   printf '%s\n' "$out" >> "$wdir/renew.log"
   last=$(printf '%s\n' "$out" | tail -1)
   wlog renew "$sec" renew-secretary "$rst" no "$rc"
