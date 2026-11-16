@@ -290,9 +290,12 @@ tpl=$(cat "$root/templates/worker-settings.json") || fail_undone 6 "cannot read 
 gate=${PADDOCK_BIN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/paddock/bin}/second-model-review.sh
 case "$gate" in /*) ;; *) fail_undone 2 "PADDOCK_BIN_DIR must be an absolute path: $gate" ;; esac
 case "$gate" in *[\"\\]*|*[[:cntrl:]]*) fail_undone 2 "the gate path has a quote, backslash or control character: $gate" ;; esac
-ex= al=
+# the worker's own staging and commit are allowed (inside the sandbox, not excluded), so auto mode
+# does not refuse them after an unrelated hook refusal. Prefix rules: push, reset, rebase, checkout and `git -c ...`
+# do not start with these; --no-verify is denied in templates/worker-settings.json.
+ex= al='"Bash(git add:*)","Bash(git commit:*)"'
 for c in "bash \\\"$gate\\\"" "bash $gate" "bash \\\"$gate\\\" --design" "bash $gate --design"; do
-  ex="$ex${ex:+,}\"$c\""; al="$al${al:+,}\"Bash($c)\""
+  ex="$ex${ex:+,}\"$c\""; al="$al,\"Bash($c)\""
 done
 [ "$(grep -c '"excludedCommands": \[\]' <<<"$tpl")" = 1 ] && [ "$(grep -c '"allow": \[\]' <<<"$tpl")" = 1 ] \
   || fail_undone 6 "templates/worker-settings.json must hold exactly one empty \"excludedCommands\": [] and one empty \"allow\": [] to fill in"

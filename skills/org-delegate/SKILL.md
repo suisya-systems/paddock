@@ -52,7 +52,7 @@ A worker holds no GitHub credential: its `command` gives it an empty `GH_CONFIG_
 
 1. **Checks before it creates anything:** the arguments, `hc ls` (the core answers), and that no terminal `w-<id>` exists.
 2. **Worktree:** `git fetch origin` when the project has an `origin` and branches from `origin/<base>` when it exists, then `git worktree add` under the workers folder (`PADDOCK_WORKERS_DIR`, default `~/paddock-workers`, an absolute path). The base is recorded for the review gate.
-3. **Settings:** the worktree's `.claude/settings.local.json` (socket folder deny, cache env), a `.claude/.gitignore` for what paddock places, and the worker's own `--settings` file in the state folder (own files, `--allow-write` paths, the review gate's two exact calls).
+3. **Settings:** the worktree's `.claude/settings.local.json` (socket folder deny, cache env), a `.claude/.gitignore` for what paddock places, and the worker's own `--settings` file in the state folder (own files, `--allow-write` paths, the review gate's two exact calls, and `git add` / `git commit` allowed inside the sandbox).
 4. **Record:** `report start` before the launch, so the worker's later `done` or `blocked` is the latest record.
 5. **Launch:** `hc run --bg ...` with the task in the launch; `first_message.sent` must be `true`, else exit 10 with the first message (and the `--title` entry) saved for `org-escalation answer` or `bash "$PADDOCK_HOME/skills/org-delegate/scripts/resend.sh" <id>`.
 6. **Work entry** (with `--title`): added to `org-state.work` after the first message was sent.
