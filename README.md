@@ -11,7 +11,7 @@ paddock is a prototype: it has run full tasks, from a request to a pull request,
 - **herdr-core** (`hc`, 0.1 series): runs every agent terminal.
 - **herdr-app** (0.1 series): the window.
 - **Claude Code** (`claude`): the agents.
-- `git`, `gh` (the GitHub CLI, logged in), `codex` (a second model reviews each worker's diff before its pull request: [`scripts/second-model-review.sh`](scripts/second-model-review.sh)), `sh`, `awk` and the usual coreutils. Python and Node are not needed.
+- `git`, `gh` (the GitHub CLI, logged in), `codex` (a second model is asked to review each worker's diff before its pull request: [`scripts/second-model-review.sh`](scripts/second-model-review.sh); when the review could not run, the pull request says so), `sh`, `awk` and the usual coreutils. Python and Node are not needed.
 - On Windows: herdr-core and the agents run inside WSL2. The window can be herdr-app for Windows.
 
 ## Install and start
