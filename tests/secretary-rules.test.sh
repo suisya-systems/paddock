@@ -3,7 +3,7 @@
 # templates/secretary-rules.md, placed by org-start as <state>/secretary/AGENTS.md with a one-line
 # CLAUDE.md (@AGENTS.md); the secretary runs with --cwd <state>/secretary (org-start and the handover
 # script), its template command exports PADDOCK_HOME=<checkout> and loads the plugin from there, its
-# settings deny Edit/Write on the two files, the handover answers the new folder's trust dialog, every
+# settings deny Edit on the two files, the handover answers the new folder's trust dialog, every
 # script path the secretary is given carries $PADDOCK_HOME/ (or ${CLAUDE_SKILL_DIR}/), and the template
 # body is the opening task plus situations -> skills, inside the caps (body + rules < 12 KB, lines <= 400).
 # hc and claude are stubs on PATH; no core runs. Needs only bash, grep, sed, awk and coreutils.
@@ -41,9 +41,9 @@ for k in 'PADDOCK_HOME' 'hc server stop' 'org-state' 'hc send' 'person'; do
   grep -qF -- "$k" "$rules" 2>/dev/null; check "the rules file has its standing line about '$k'" $?
 done
 
-# 4. Settings: Edit and Write are denied on the two files in the secretary's working folder.
+# 4. Settings: Edit (which covers writing) is denied on the two files in the secretary's working folder.
 s=$here/templates/secretary-settings.json
-for r in 'Edit(./AGENTS.md)' 'Write(./AGENTS.md)' 'Edit(./CLAUDE.md)' 'Write(./CLAUDE.md)'; do
+for r in 'Edit(./AGENTS.md)' 'Edit(./CLAUDE.md)'; do
   awk '/"deny"/ { d = 1 } d' "$s" | grep -qF "\"$r\""; check "secretary-settings.json denies $r" $?
 done
 
