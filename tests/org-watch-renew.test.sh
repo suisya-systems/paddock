@@ -129,12 +129,28 @@ pass $T0
 pass $((T0 + 30)); [ "$(runs)" -eq 1 ] && [ ! -e "$M" ]; check "then run on the next pass" $?
 mv "$tools/hc.real" "$tools/hc"
 
-# one run across watchers: a claim held by a live watcher holds the run off; a dead holder's is broken
+# one run at a time (the claim is the script's own): a claim held by a live run holds this one off (13,
+# retried, nobody told); a dead holder's is broken
 reset idle; o bash "$org" --as secretary renew_secretary >/dev/null
-mkdir -p "$tmp/state/watcher"; echo $$ > "$tmp/state/watcher/renew.claim"; pass $T0
-[ "$(runs)" -eq 0 ] && [ -f "$M" ] && woke | grep -q '	skip	secretary	renew-secretary	idle	claimed	-$'; check "another watcher holds the claim: not run" $?
+echo $$ > "$tmp/state/watcher/renew.claim"; pass $T0
+[ "$(runs)" -eq 0 ] && [ -f "$M" ] && ! grep -q 'renewal failed' <<<"$out" && woke | grep -q '	renew	secretary	renew-secretary	idle	no	13$'
+check "another run holds the claim: exit 13, kept, nobody told" $?
 bash -c 'exit 0' & dead=$!; wait "$dead"; echo "$dead" > "$tmp/state/watcher/renew.claim"; pass $((T0 + 30))
 [ "$(runs)" -eq 1 ] && [ ! -e "$M" ] && [ ! -e "$tmp/state/watcher/renew.claim" ]; check "a dead holder's claim is broken; run once, the claim released" $?
+
+# input typed between the watcher's check and the script's own read: exit 8, kept, run once the prompt is clear
+reset idle; o bash "$org" --as secretary renew_secretary >/dev/null
+cat > "$tmp/hcwrap" <<EOF
+#!/bin/sh
+[ "\$1" = read ] && grep -q '^read secretary' "\$STUB/calls" && [ ! -e "\$STUB/typed-done" ] \
+  && { echo "\$*" >> "\$STUB/calls"; touch "\$STUB/typed-done"; printf '❯ a draft\n'; exit 0; }
+exec "$tmp/tools/hc.real" "\$@"
+EOF
+mv "$tools/hc" "$tools/hc.real"; cp "$tmp/hcwrap" "$tools/hc"; chmod +x "$tools/hc"
+pass $T0
+[ -f "$M" ] && [ "$(runs)" -eq 0 ] && ! grep -q '^kill' "$tmp/stub/calls" && ! grep -q 'renewal failed' <<<"$out"; check "typed after the watcher's check: the script refuses (8) before the kill, kept, nobody told" $?
+pass $((T0 + 30)); [ "$(runs)" -eq 1 ] && [ ! -e "$M" ]; check "then run on the next pass" $?
+mv "$tools/hc.real" "$tools/hc"
 
 # a hand run that succeeds clears the marker too
 reset idle; o bash "$org" --as secretary renew_secretary >/dev/null

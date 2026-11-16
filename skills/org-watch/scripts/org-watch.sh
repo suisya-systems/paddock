@@ -245,8 +245,8 @@ reload_pass() {
 # renew_secretary) after writing secretary-handover. When the secretary is ready (as for a wake), the
 # person's script secretary-handover.sh runs here, in the foreground, with this terminal's environment
 # (org-start started it from a login shell; nothing is unset, so the script's own exit-4 check holds).
-# 0: marker gone (a request written during the run is dropped with it). 8: a turn began after the read;
-# kept, tried again. 9: no document; cleared, the person and the secretary told. Other: the marker is
+# 0: marker gone (a request written during the run is dropped with it). 8 (a turn began, or input was
+# typed, after the read) or 13 (another run holds the claim): kept, tried again, nobody told. 9: no document; cleared, the person and the secretary told. Other: the marker is
 # kept, the id goes to watcher/renew-failed so it is not run again, the person is told (every N minutes
 # while it holds); a new id is a new request. 0 when it ran this pass and the secretary is not woken.
 renew_pass() {
@@ -259,25 +259,14 @@ renew_pass() {
     tell "renew:$sec" "Secretary renewal failed (exit $frc)" "$fline Rerun it by hand: bash $hand"; return 1
   fi
   ready "$sec" renew-secretary || return 1
-  # one run across watchers (the kept one and a hand --once): the claim file holding our pid, created with
-  # noclobber (O_EXCL; not mkdir, which uutils reported to two racers). A dead holder's claim is broken.
-  local lk=$wdir/renew.claim me=${BASHPID:-$$} o
-  claim() { local r; set -C; { echo "$me" > "$lk"; } 2>/dev/null; r=$?; set +C; return "$r"; }
-  if ! claim; then
-    o=$(cat "$lk" 2>/dev/null)
-    { [ -n "$o" ] && ! kill -0 "$o" 2>/dev/null; } || { wlog skip "$sec" renew-secretary "$rst" claimed -; return 1; }
-    rm -f "$lk"; claim || return 1
-  fi
-  # the claimant re-reads the request: another watcher may have run it meanwhile
-  if [ "$(cat "$renew" 2>/dev/null)" != "$id" ]; then rm -f "$lk"; return 1; fi
-  out=$("$BASH" "$hand" 2>&1); rc=$?
-  rm -f "$lk"
+  # the script claims the run itself (one at a time, hand runs included) and refuses (13) a request gone meanwhile
+  out=$(PADDOCK_RENEW_ID=$id "$BASH" "$hand" 2>&1); rc=$?
   printf '%s\n' "$out" >> "$wdir/renew.log"
   last=$(printf '%s\n' "$out" | tail -1)
   wlog renew "$sec" renew-secretary "$rst" no "$rc"
   case "$rc" in
     0) rm -f "$renew" "$renew-failed"; return 0 ;;
-    8) return 1 ;;
+    8|13) return 1 ;;
     9) rm -f "$renew" "$renew-failed"
        notify "Secretary renewal: no handover document" "$last"
        "$BASH" "$org" --as watcher send_message secretary "renewal not run: no secretary-handover document; write it, then renew_secretary again" >/dev/null 2>&1

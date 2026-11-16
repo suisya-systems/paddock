@@ -21,11 +21,14 @@ Environment overrides:
   PADDOCK_STATE_DIR       state folder; the secretary runs in its secretary/ (default
                           ${XDG_STATE_HOME:-~/.local/state}/paddock; same as org-start)
   PADDOCK_READY_TRIES     seconds to wait for a status after the trust dialog (default 15)
+  PADDOCK_RENEW_ID        (the watcher) the request id it runs for; refuses (13) when
+                          watcher/renew-secretary no longer holds it
 
 Exit codes: 0 relaunched, 2 bad argument, 3 hc not found, 4 run inside an agent,
 5 core unreachable or hc run/kill/rm failed, 8 a turn is in progress, 9 no handover
 document, 10 the new secretary did not get its first message, 11 its status could
-not be read (nothing was ended), 12 the secretary's rules are not placed (nothing was ended).
+not be read (nothing was ended), 12 the secretary's rules are not placed (nothing was ended),
+13 another renewal is running, or the request it was run for is gone (nothing was ended).
 USAGE
 }
 
@@ -58,6 +61,23 @@ ph=$(cat "$bd/paddock-home" 2>/dev/null)
 [ -n "$ph" ] && [ -f "$ph/scripts/org" ] \
   || die 12 "$bd/paddock-home does not name a paddock checkout ('$ph'). Run bash $root/skills/org-start/scripts/org-start.sh --place-only first, then this again; nothing was ended."
 
+# 0. One renewal at a time, whoever runs it (the watcher or the person): a claim file holding this pid,
+# created with noclobber (O_EXCL; mkdir was seen to succeed for two racers). A dead holder's claim is broken.
+# The watcher passes the request it runs for in PADDOCK_RENEW_ID: a request gone or replaced meanwhile
+# (another run fulfilled it) is not run again.
+wdir=${sdir%/secretary}/watcher; lk=$wdir/renew.claim; me=$$
+claim() { local r; set -C; { echo "$me" > "$lk"; } 2>/dev/null; r=$?; set +C; return "$r"; }
+mkdir -p "$wdir" 2>/dev/null
+if ! claim; then
+  o=$(cat "$lk" 2>/dev/null)
+  { [ -n "$o" ] && ! kill -0 "$o" 2>/dev/null && rm -f "$lk" && claim; } \
+    || die 13 "another renewal is running (pid ${o:-not recorded}, $lk); nothing was ended."
+fi
+trap '[ "$(cat "$lk" 2>/dev/null)" != "$me" ] || rm -f "$lk"' EXIT
+if [ -n "${PADDOCK_RENEW_ID:-}" ] && [ "$(cat "$wdir/renew-secretary" 2>/dev/null)" != "$PADDOCK_RENEW_ID" ]; then
+  die 13 "the renewal request $PADDOCK_RENEW_ID is gone or replaced (another run took it); nothing was ended."
+fi
+
 # 1. The handover document must exist before anything is ended. hc has no document verb,
 # so one doc.get line goes into hc connect, input held open 1 s (prototype 1).
 # ponytail: the answer shape {"result":{"value":{...}}} is read from the mod's code, not measured here.
@@ -72,8 +92,15 @@ if st=$(hc get --json "$name" 2>&1); then
   st=$(printf '%s' "$st" | tr -d '\n')
   printf '%s' "$st" | grep -Eq '"state": *"' \
     || die 11 "cannot read the status of $name (unexpected hc get output); nothing was ended."
-  if printf '%s' "$st" | grep -Eq '"status": *\{[^{}]*"state": *"(working|blocked)"'; then
-    die 8 "$name has a turn in progress (working or blocked). Wait until it is idle, then rerun; nothing was ended."
+  if ! printf '%s' "$st" | grep -Eq '"status": *\{[^{}]*"state": *"(idle|done)"'; then
+    die 8 "$name is not idle or done (a turn in progress, or no status). Wait until it is idle, then rerun; nothing was ended."
+  fi
+  # the screen, read last before the kill: the prompt line (the last line starting, after spaces and an
+  # optional box, with the marker ❯ or >) must hold no typed input, or the person's draft would be lost
+  scr=$(hc read "$name" 2>/dev/null) || die 11 "cannot read the screen of $name; nothing was ended."
+  pl=$(printf '%s\n' "$scr" | sed -E "s/$(printf '\302\240')/ /g; s/^([[:space:]]|│|\|)*//" | grep -E '^(❯|>)' | tail -1)
+  if [ -z "$pl" ] || printf '%s\n' "$pl" | grep -Eq '^(❯|>)[[:space:]]+[^[:space:]│|]'; then
+    die 8 "$name shows no empty prompt (typed input, or no prompt line). Wait until it is idle at an empty prompt, then rerun; nothing was ended."
   fi
   hc kill "$name" >/dev/null 2>&1 || die 5 "hc kill $name failed"
   hc rm "$name" >/dev/null 2>&1 || die 5 "hc rm $name failed"

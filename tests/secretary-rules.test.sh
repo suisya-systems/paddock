@@ -134,12 +134,12 @@ check "place-only: a changed rules file is placed again, with a line that it rea
 
 # 7. The handover relaunches in <state>/secretary, answers the new folder's trust dialog, and
 # refuses (ending nothing) when the rules were never placed.
-fresh; : > "$tmp/stub/secretary"; : > "$tmp/stub/status"
+fresh; : > "$tmp/stub/secretary"; : > "$tmp/stub/status"; printf '❯ \n' > "$tmp/stub/screen"
 out=$(go "$here/skills/secretary-handover/scripts/secretary-handover.sh"); rc=$?
 [ "$rc" -eq 0 ] && grep '^run ' "$calls" | grep -qF -- "--cwd $sdir "
 check "handover: relaunches with --cwd <state>/secretary (rc=$rc)" $?
 
-fresh; : > "$tmp/stub/secretary"; : > "$tmp/stub/status"; extra=(STUB_DIALOG=1)
+fresh; : > "$tmp/stub/secretary"; : > "$tmp/stub/status"; printf '❯ \n' > "$tmp/stub/screen"; extra=(STUB_DIALOG=1)
 out=$(go "$here/skills/secretary-handover/scripts/secretary-handover.sh"); rc=$?; extra=()
 d=$(grep -n -x 'keys secretary down' "$calls" | head -n 1 | cut -d: -f1)
 e=$(grep -n -x 'keys secretary enter' "$calls" | head -n 1 | cut -d: -f1)
