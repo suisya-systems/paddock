@@ -168,15 +168,19 @@ function ink(hex) {
 const ago = (s, L) => (s < 60 ? L.sec(Math.max(0, Math.floor(s))) : duration(s * 1000, L));
 const since = (iso, now, L) => (iso ? duration(now - Date.parse(iso), L) : "");
 
-// The last meaningful lines of a screen. Claude Code draws an input box and footer hints at the
-// bottom; they say nothing about the work, so lines of box drawing, the `>` prompt row and the
-// hints are dropped.
+// The last meaningful lines of a screen. Claude Code draws an input box with a `❯` (or `>`)
+// prompt row (right under a border line), then a status line and footer hints below it; they say
+// nothing about the work. So everything from the last such prompt row down is cut, and of what is
+// left, lines of box drawing, prompt rows and hints are dropped.
 // ponytail: a text heuristic for Claude Code's screen; other agents' chrome may slip through.
 const CHROME = /^[\s─━│┃╭╮╰╯┌┐└┘├┤┬┴┼═║╔╗╚╝▔▁]*$/;
+const PROMPT = /^\s*[│┃]?\s*[>❯]/;
 function lastLines(text, n = 2) {
-  return (text ?? "").split("\n")
-    .map((l) => l.replace(/\s+$/, ""))
-    .filter((l) => l.trim() && !CHROME.test(l) && !/^\s*[│┃]?\s*>\s?/.test(l) && !/\? for shortcuts|esc to interrupt|shift\+tab to cycle/i.test(l))
+  let lines = (text ?? "").split("\n").map((l) => l.replace(/\s+$/, ""));
+  const p = lines.findLastIndex((l, i) => PROMPT.test(l) && i > 0 && lines[i - 1].trim() && CHROME.test(lines[i - 1]));
+  if (p >= 0) lines = lines.slice(0, p);
+  return lines
+    .filter((l) => l.trim() && !CHROME.test(l) && !PROMPT.test(l) && !/\? for shortcuts|esc to interrupt|shift\+tab to cycle/i.test(l))
     .map((l) => l.replace(/^[│┃]\s?|\s?[│┃]$/g, "").trim())
     .filter(Boolean)
     .slice(-n);
