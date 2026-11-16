@@ -62,7 +62,8 @@ esac
 case $tool in
   Bash) ;;
   Agent) toks "$payload" | path_guard || exit 2; exit 0 ;;
-  *) printf '%s\n' "$payload" | grep -oE '"(file_path|path|pattern|notebook_path)" *: *"([^"\\]|\\.)*"' |
+  *) f='file_path|path|notebook_path'; [ "$tool" = Glob ] && f="$f|pattern"   # Grep's pattern is the text it seeks
+     printf '%s\n' "$payload" | grep -oE "\"($f)\" *: *\"([^\"\\\\]|\\\\.)*\"" |
        sed -E 's/^"[^"]*" *: *"//; s/"$//' | whole | path_guard || exit 2; exit 0 ;;
 esac
 

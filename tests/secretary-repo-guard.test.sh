@@ -62,6 +62,7 @@ allowed Read "{\"file_path\":\"$H/My Repo/a b.md\"}"
 refused Read "{\"file_path\":\"$H/My Other/a.md\"}"
 allowed Grep "{\"pattern\":\"x\",\"path\":\"$H/paddock-workers/t1\"}"
 allowed Glob "{\"pattern\":\"**/*.md\"}"
+allowed Grep "{\"pattern\":\"$H/work/x\",\"path\":\"$H/paddock-workers/t1\"}"
 allowed Agent '{"prompt":"Summarise the mailbox"}'
 # a call with no tool_name is a Bash call, as before
 run_hook '{"tool_input":{"command":"ls ~/work/x"}}'
