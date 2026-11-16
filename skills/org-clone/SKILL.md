@@ -1,12 +1,12 @@
 ---
 name: org-clone
-description: Clone the GitHub repository a request names (OWNER/NAME or a github.com URL) into the paddock projects folder with the secretary's own login and add it to projects.md, so org-delegate can run on it. Run it from the secretary, before org-delegate, when the named repository is not on the machine. A fresh clone's first folder-trust dialog is held for the person.
-when_to_use: A request names a repository (OWNER/NAME or a github.com URL) that is not in projects.md and not on the machine; or the first worker on a freshly cloned repository stopped at the folder-trust dialog (org-delegate exit 10, or org-escalation prompt printed PROMPT= and exited 3).
+description: Clone the GitHub repository a request names (OWNER/NAME or a github.com URL) into the paddock projects folder with the secretary's own login and add it to projects.md, so org-delegate can run on it. Run it from the secretary, before org-delegate, when the named repository is not in projects.md. A repository counts as present only through projects.md: any other folder on the machine is the person's own and is never read, searched or changed unless the person names that path. A fresh clone's first folder-trust dialog is held for the person.
+when_to_use: A request names a repository (OWNER/NAME or a github.com URL) to work on, read or discuss, and it is not in projects.md (a clone elsewhere on the machine does not count); or the first worker on a freshly cloned repository stopped at the folder-trust dialog (org-delegate exit 10, or org-escalation prompt printed PROMPT= and exited 3).
 ---
 
 # org-clone
 
-Clones the repository a request names, then prints the `projects.md` name to give `org-delegate --project`. Why it is built this way: [references/rationale.md](references/rationale.md). The secretary runs it from a shell in its own terminal, when [org-delegate](../org-delegate/SKILL.md) is given a repository that is not in `projects.md` and not on the machine. Usually you do not run it yourself: `org-delegate --repo OWNER/NAME` runs it, and passes its exit code and its `next:` line through. Run it alone to clone without delegating.
+Clones the repository a request names, then prints the `projects.md` name to give `org-delegate --project`. Why it is built this way: [references/rationale.md](references/rationale.md). The secretary runs it from a shell in its own terminal, when [org-delegate](../org-delegate/SKILL.md) is given a repository that is not in `projects.md`. A clone the person keeps elsewhere (say under `~/work`) does not count: it is the person's own, and the secretary never reads, searches, fetches or changes it unless the person names that path (then it is registered with `config project add`, not cloned). Usually you do not run it yourself: `org-delegate --repo OWNER/NAME` runs it, and passes its exit code and its `next:` line through. Run it alone to clone without delegating.
 
 ```sh
 bash "$PADDOCK_HOME/skills/org-clone/scripts/org-clone.sh" OWNER/NAME
