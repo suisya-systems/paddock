@@ -55,7 +55,7 @@ The core and the agents run in WSL; the window runs on Windows.
    Use the Windows `hc` 0.1.20 or later (`hc --version`). If you choose another name, set `PADDOCK_APP_MACHINE` to it in WSL before step 2.
 2. In WSL, run `bash skills/org-start/scripts/org-start.sh`. It places the layout and mod in the Windows user's `.config/herdr-app` and points the screen at the secretary on the `wsl` machine.
 3. If the screen did not switch, run the command printed after `org-start: to open the screen:`. It starts with the path of `herdr-app.exe`.
-4. If org-start warns that it could not find the Windows user folder, set `PADDOCK_APP_MODS_DIR` to the Windows herdr-app's mods folder and `PADDOCK_APP_MACHINE=wsl` (both), then run it again.
+4. If org-start warns that it could not find the Windows user folder, set `PADDOCK_APP_MODS_DIR` to the Windows herdr-app's mods folder and `PADDOCK_APP_MACHINE` to the machine name from step 1 (`wsl` unless you chose another), both of them, then run it again.
 
 ### Switching screens
 
@@ -77,7 +77,7 @@ The paddock screen has:
 
 ### A request
 
-The secretary starts a worker for each task. When work on a GitHub repository is done, it opens a pull request and, depending on your approval setting, waits for you or merges it. Work in a local repository with no GitHub remote gets no pull request: the secretary tells you the summary and the folder, and merges it into that repository's `main` only after you agree.
+The secretary starts a worker for each task. When work on a GitHub repository is done, it opens a pull request and, depending on your approval setting, waits for you or merges it. When a request needs no GitHub repository, the secretary may make a new local repository for it (under `~/paddock-local/`); that work gets no pull request: the secretary tells you the summary and the folder, and merges it into that repository's `main` only after you agree.
 
 ## Answering approval cards
 
