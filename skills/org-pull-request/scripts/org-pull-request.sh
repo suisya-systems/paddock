@@ -291,14 +291,14 @@ if [ "$mode" = human ]; then
       if [ "$lang" = ja ]; then
         q=$(cardq "$sha" ja)
         bg="$url / $ciline。第二モデルのレビュー(タスク履歴): $gate"
-        yes="秘書が PR #$pr を head $s7 のまま squash でマージし(head が変わらず必須チェックが緑のときだけ)、ワーカーを閉じます。"
+        yes="秘書が PR #$pr を head $s7 のまま squash でマージし(head が変わらず、必須チェックが緑のときだけ。必須チェックがないリポジトリでは、この head の CI 記録が緑のときだけ)、ワーカーを閉じます。"
         no="マージしません。メモはワーカーに送られ、ワーカーがブランチを直します。新しい head には新しいカードが出ます。"
         if [ -n "$gok" ]; then why="この head で CI が緑で、第二モデルのレビューも通っています。"
         else why="この head で CI が緑です。第二モデルのレビューは通っていません(背景を参照)。"; fi
       else
         q=$(cardq "$sha" en)
         bg="$url / $ciline. Second-model review (task history): $gate"
-        yes="The secretary merges PR #$pr at head $s7 (squash; only if the head is unchanged and the required checks are green), then closes the worker."
+        yes="The secretary merges PR #$pr at head $s7 (squash; only if the head is unchanged and the required checks are green, or, on a repository with no required checks, the CI record of this head is green), then closes the worker."
         no="Not merged. Your note goes to the worker, who changes the branch; the new head gets a new card."
         if [ -n "$gok" ]; then why="CI is green on this exact head and the second-model review passed."
         else why="CI is green on this exact head; the second-model review did not pass (see the background)."; fi
