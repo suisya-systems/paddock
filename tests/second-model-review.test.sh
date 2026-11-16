@@ -85,12 +85,12 @@ rm -f "$repo/untracked.txt"
 
 # --- no reviewing CLI ---
 nopath=$nocodex:/usr/bin:/bin
-if PATH="$nopath" command -v codex >/dev/null 2>&1; then
+if PATH="$nopath" command -v codex >/dev/null 2>&1 || PATH="$nopath" command -v claude >/dev/null 2>&1; then
   echo "skip no-CLI case: a real reviewer sits in /usr/bin or /bin"
 else
   out=$(cd "$repo" && PATH="$nopath" bash "$gate" 2>&1 </dev/null); rc=$?
   last=$(printf '%s\n' "$out" | tail -n 1)
-  [ "$rc" -eq 3 ] && grep -q '^CODEX_GATE: unavailable' <<<"$last"; check "no reviewing CLI is unavailable (exit 3)" $?
+  [ "$rc" -eq 3 ] && grep -q '^CODEX_GATE: unavailable' <<<"$last"; check "no reviewing CLI (neither codex nor claude) is unavailable (exit 3)" $?
 fi
 
 # --- design review: reads .worker-scratch/design.md, its own prompt, no diff needed ---
