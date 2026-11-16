@@ -38,7 +38,7 @@ Each item once, and again after N minutes (default 10, `PADDOCK_WATCH_N`) if it 
 | Incident | a worker is `blocked` and the secretary's status, `turn` count and screen (`hc read --lines 0`) have not changed for N minutes | "Secretary not moving" |
 | No status | a terminal with a `task_id` label, or the secretary, reports no status N minutes after it was created | "No status from <terminal>" |
 
-It polls every 30 seconds (`PADDOCK_WATCH_INTERVAL`) and reads `hc ls`, `hc get`, `hc read`, the org-state document and the mailbox history through `scripts/org`. What it writes and types is below (decision 0013, `docs/decisions/0013-watcher-wakes-the-secretary.md`). Since its stage 3 it is the only thing that wakes the secretary or a worker: the secretary holds no wait and has no `Stop` hook, and no write types into a terminal; if this terminal ends, nothing wakes them until `org-start` is rerun. The cockpit's workers rail shows this from the files below, read only: the last pass (the change time of `watcher/told`, rewritten each pass once it exists), the live `watcher/ci/*.pid` watches, the last `wake` lines of `watcher/woke` and the watcher's last mailbox lines, and a warning when this terminal is gone.
+It polls every 30 seconds (`PADDOCK_WATCH_INTERVAL`) and reads `hc ls`, `hc get`, `hc read`, the org-state document and the mailbox history through `scripts/org`. What it writes and types is below (decision 0013). Since its stage 3 it is the only thing that wakes the secretary or a worker: the secretary holds no wait and has no `Stop` hook, and no write types into a terminal; if this terminal ends, nothing wakes them until `org-start` is rerun. The cockpit's workers rail shows this from the files below, read only: the last pass (the change time of `watcher/told`, rewritten each pass once it exists), the live `watcher/ci/*.pid` watches, the last `wake` lines of `watcher/woke` and the watcher's last mailbox lines, and a warning when this terminal is gone.
 
 ## What it writes to the secretary's mailbox
 
@@ -64,6 +64,7 @@ The secretary and every `w-<task>` worker with a live terminal and unread mail (
 - Never over typed input: just before a send it reads the screen once (`hc read`) and checks the prompt line, the last line that starts (after spaces and an optional box) with the marker `❯` or `>`; text after the marker and a space or NBSP holds the wake off for that pass, and so does a screen that cannot be read or shows no prompt line (`noprompt` in `watcher/woke`).
 - One wake per unread batch (the highest unread `seq` per sender) per `PADDOCK_WATCH_WAKE` seconds (default 60); new mail is a new batch. A failed send is tried again on the next pass.
 - Every wake, every skip (status, typed input, rate limit) and every mailbox line is printed and appended to `watcher/woke` in the state folder, one tab-separated line: time (epoch), `wake`/`skip`/`mail`, target, batch or ledger key, status read, typed input (`yes`/`no`/`unreadable`/`noprompt`/`moved`/`-`), send exit code (`rate` for a rate-limit skip, `-` when nothing was sent).
+- `watcher/reload-plugins`: types `/reload-plugins` once ([why](references/rationale.md#plugin-reload)).
 
 ## CI watching
 
@@ -75,7 +76,7 @@ The secretary and every `w-<task>` worker with a live terminal and unread mail (
 
 The first that works, per message:
 
-1. Windows toast with the system sound, through `powershell.exe` (WSL). When Windows reports notifications disabled for it (`Setting` is not `Enabled`) the toast counts as failed and the next channel runs. The script goes in on stdin and the text in environment variables, so a question with quotes or shell syntax is never run. A kept terminal's PATH lacks `/mnt/c`, so the default path `/mnt/c/WINDOWS/System32/WindowsPowerShell/v1.0/powershell.exe` is tried when the name is not found (`PADDOCK_POWERSHELL` names another).
+1. Windows toast with the system sound, through `powershell.exe` (WSL). When Windows reports notifications disabled for it (`Setting` is not `Enabled`) the toast counts as failed and the next channel runs. The script goes in on stdin and the text in environment variables, so a question with quotes or shell syntax is never run. A kept terminal's PATH lacks `/mnt/c`, so the default `/mnt/c/WINDOWS/System32/WindowsPowerShell/v1.0/powershell.exe` is tried too (`PADDOCK_POWERSHELL` names another).
 2. `notify-send` (Linux desktop with a notification daemon).
 3. The terminal bell, plus the message on the watcher's terminal. Always printed, whatever channel worked.
 
