@@ -17,7 +17,8 @@ refuse() { echo "org: refused: $1" >&2; exit 2; }
 # Repository guard (Read, Grep, Glob, Agent and Bash): a folder under $HOME is the person's own unless it is
 # paddock's (state, checkout, projects, workers, local, bin, config, ~/.claude, $TMPDIR) or a path in projects.md.
 # ponytail: paths are matched as text: ~/x, $HOME/x, ${HOME}/x and the literal home path. A relative path, a cd
-# chain or a path built in a variable slips through. For Read and the others the whole tool_input is scanned.
+# chain or a path built in a variable slips through. Read, Grep and Glob: their path fields, whole; Agent: the
+# words of its prompt (a path with a space in a prompt is cut at the space); Bash: the words, and quoted arguments whole.
 H=${HOME%/}
 cfg=${XDG_CONFIG_HOME:-$H/.config}; [ -n "${APPDATA:-}" ] && cfg=$APPDATA
 roots="${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$H/.local/state}/paddock}
@@ -33,11 +34,15 @@ ${CLAUDE_TMPDIR:-}
 $(awk -F'|' 'function t(s) { gsub(/^[ \t\r]+|[ \t\r]+$/, "", s); return s }
   !h && /^[ \t]*\|/ { for (i = 2; i < NF; i++) if (tolower(t($i)) == "path") p = i; h = p; next }
   h && /^[ \t]*\|/ && t($p) ~ /^[\/~]/ { print t($p) }' "${PADDOCK_PROJECTS_FILE:-$cfg/paddock/projects.md}" 2>/dev/null)"
-path_guard() { # path_guard <text>: refuse when the text names a folder under $HOME outside the roots
+hp="(~|\\\$HOME|\\\$\{HOME\}|$H)"   # a home prefix, matched only when / or the end follows it
+exempt='s#scripts/org[^;&|]*[[:space:]]config[[:space:]]+project[^;&|]*##g'   # registering a path names it
+# toks <text>: the words that start with a home prefix (a=~/x and --dir=~/x too), one per line
+toks() { printf '%s\n' "$1" | tr -s "[:space:];&|<>()\`'\",\\\\" '\n' | grep -oE "(^|[^[:alnum:]_.\$/~-])$hp(/.*)?\$" | sed -E 's#^[^~$/]##'; }
+# whole: the input lines that are a path from their start (a quoted argument or a tool field: spaces kept)
+whole() { grep -E "^$hp(/|\$)"; }
+path_guard() { # path_guard < paths: refuse the first one under $HOME outside the roots
   [ -n "$H" ] || return 0
-  printf '%s\n' "$1" | sed -E 's#scripts/org[^;&|]*[[:space:]]config[[:space:]]+project[^;&|]*##g' |
-    grep -oE "(^|[^[:alnum:]_.\$/~-])(~|\\\$HOME|\\\$\{HOME\}|$H)(/[^][:space:];&|<>()\`'\"\\\\,]*)?" |
-    sed -E "s#^[^~\$/]##; s#^(~|\\\$HOME|\\\$\{HOME\})#$H#" |
+  sed -E "s#^(~|\\\$HOME|\\\$\{HOME\})#$H#" |
     { r=$(printf '%s\n' "$roots" | sed "s#^~#$H#; s#/*\$##" | grep .)
       IFS='
 '
@@ -54,7 +59,12 @@ case $payload in
   *'"tool_name"'*) tool=$(printf '%s\n' "$payload" | sed -n 's/.*"tool_name" *: *"\([^"]*\)".*/\1/p') ;;
   *) tool=Bash ;;
 esac
-[ "$tool" = Bash ] || { path_guard "$payload" || exit 2; exit 0; }
+case $tool in
+  Bash) ;;
+  Agent) toks "$payload" | path_guard || exit 2; exit 0 ;;
+  *) printf '%s\n' "$payload" | grep -oE '"(file_path|path|pattern|notebook_path)" *: *"([^"\\]|\\.)*"' |
+       sed -E 's/^"[^"]*" *: *"//; s/"$//' | whole | path_guard || exit 2; exit 0 ;;
+esac
 
 cmd=$(printf '%s\n' "$payload" | sed -n 's/.*"command" *: *"\(\([^"\\]\|\\.\)*\)".*/\1/p')
 [ -n "$cmd" ] || cmd=$payload   # not found: match the whole payload, as the old one-line hook did
@@ -79,6 +89,7 @@ text=$(printf '%s\n' "$cmd" | sed 's/\\n/\
   }' | tr '\n' ';' | sed "s/-c[[:space:]]*'\([^']*\)'/-c \1/g; s/-c[[:space:]]*\"\([^\"]*\)\"/-c \1/g")
 # a command substitution runs even inside double quotes (not single): keep it; a quoted single word (sleep "60") is
 # an argument, not prose: unquote it; a quoted string with a space in it is text: cut it out
+quoted=$(printf '%s\n' "$text" | sed -E "$exempt" | grep -oE "\"[^\"]*\"|'[^']*'" | sed -E 's/^.(.*).$/\1/')
 subs=$(printf '%s\n' "$text" | sed "s/'[^']*'//g" | grep -o '\$([^)]*)\|`[^`]*`' | tr '\n' ';')
 text="$(printf '%s\n' "$text" | sed -E "s/'([^'[:space:]]*)'/\\1/g; s/\"([^\"[:space:]]*)\"/\\1/g; s/'[^']*'/''/g; s/\"[^\"]*\"/\"\"/g");$subs"
 b='(^|[^[:alnum:]_.-])'   # a command word starts here
@@ -100,5 +111,5 @@ printf '%s\n' "$fg" | grep -Eo "${b}sleep[[:space:]]+[^;&|)\`]*" | sed 's/.*slee
            else if (v ~ /^[0-9.]+[smhd]?$/) { if (v ~ /m$/) u = 60; else if (v ~ /h$/) u = 3600; else if (v ~ /d$/) u = 86400; t += (v + 0) * u } }
          if (t > 5) bad = 1 } END { exit !bad }' &&
   refuse "a sleep over 5 seconds blocks you: $wait_hint"
-path_guard "$text" || exit 2
+{ printf '%s\n' "$quoted" | whole; toks "$(printf '%s\n' "$text" | sed -E "$exempt")"; } | path_guard || exit 2
 exit 0

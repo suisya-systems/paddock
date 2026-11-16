@@ -11,7 +11,7 @@ check() { if [ "$2" -eq 0 ]; then echo "ok   $1"; else echo "FAIL $1"; fail=1; f
 settings=$here/templates/secretary-settings.json
 H=$tmp/home
 mkdir -p "$H/.config/paddock"
-printf '| name | path | base |\n|---|---|---|\n| kura | %s/src/kura | main |\n| t | ~/tilde/repo | main |\n' "$H" > "$H/.config/paddock/projects.md"
+printf '| name | path | base |\n|---|---|---|\n| kura | %s/src/kura | main |\n| t | ~/tilde/repo | main |\n| sp | %s/My Repo | main |\n' "$H" "$H" > "$H/.config/paddock/projects.md"
 
 for t in Bash Read Grep Glob Agent; do
   node -e '
@@ -38,7 +38,8 @@ refused() { fire "$1" "$2"; local rc=$?; [ $rc -eq 2 ] && grep -q 'paddock:org-c
 allowed() { fire "$1" "$2"; local rc=$?; [ $rc -eq 0 ]; check "allowed ($rc): $1 $2 ${err:0:120}" $?; }
 
 for c in 'ls ~/work/x' 'git -C ~/work/x fetch' 'cat $HOME/work/x/f' 'cd ${HOME}/src && ls' "ls $H/work/x" 'find ~ -name kura' \
-         'ls "$HOME/work/x"' 'ls ~/paddock-workers/../work/x' 'git status; cat ~/.ssh/config'; do
+         'ls "$HOME/work/x"' 'ls ~/paddock-workers/../work/x' 'git status; cat ~/.ssh/config' 'cat "$HOME/Private Repo/f"' "cat '~/work/a b'" 'ls ~/.claude ~/work' \
+         'X=~/work/x; ls $X'; do
   refused Bash "$(bash_in "$c")"
 done
 refused Read "{\"file_path\":\"$H/work/x/f\"}"
@@ -51,11 +52,14 @@ for c in 'cat ~/.local/state/paddock/org-state.json' 'ls $HOME/paddock-workers/t
          'bash "$PADDOCK_HOME/scripts/org" --as secretary check_messages' "ls $H/work/paddock/skills" \
          'cat ~/.config/paddock/projects.md' 'ls $TMPDIR/x' 'git log HEAD~1' 'ls /tmp/x' \
          'bash "$PADDOCK_HOME/scripts/org" --as secretary config project add kd ~/work/kd' \
-         'bash x.sh --task t1 --task "Never touch ~/work/x, the person keeps it"'; do
+         'bash x.sh --task t1 --task "Never touch ~/work/x, the person keeps it"' 'echo $HOMEBREW_PREFIX' \
+         'ls ~other/repo' "ls ${H}2/repo" 'cat "$HOME/My Repo/README.md"'; do
   allowed Bash "$(bash_in "$c")"
 done
 allowed Read "{\"file_path\":\"$H/src/kura/f\"}"
 allowed Read "{\"file_path\":\"$H/tmpdir/task.md\"}"
+allowed Read "{\"file_path\":\"$H/My Repo/a b.md\"}"
+refused Read "{\"file_path\":\"$H/My Other/a.md\"}"
 allowed Grep "{\"pattern\":\"x\",\"path\":\"$H/paddock-workers/t1\"}"
 allowed Glob "{\"pattern\":\"**/*.md\"}"
 allowed Agent '{"prompt":"Summarise the mailbox"}'
