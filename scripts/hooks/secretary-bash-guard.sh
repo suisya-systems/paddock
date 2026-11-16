@@ -111,5 +111,5 @@ printf '%s\n' "$fg" | grep -Eo "${b}sleep[[:space:]]+[^;&|)\`]*" | sed 's/.*slee
            else if (v ~ /^[0-9.]+[smhd]?$/) { if (v ~ /m$/) u = 60; else if (v ~ /h$/) u = 3600; else if (v ~ /d$/) u = 86400; t += (v + 0) * u } }
          if (t > 5) bad = 1 } END { exit !bad }' &&
   refuse "a sleep over 5 seconds blocks you: $wait_hint"
-{ printf '%s\n' "$quoted" | whole; toks "$(printf '%s\n' "$text" | sed -E "$exempt")"; } | path_guard || exit 2
+{ printf '%s\n' "$quoted" | grep '[[:space:]]' | whole; toks "$(printf '%s\n' "$text" | sed -E "$exempt")"; } | path_guard || exit 2
 exit 0

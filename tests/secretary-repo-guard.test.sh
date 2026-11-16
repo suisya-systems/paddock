@@ -53,7 +53,7 @@ for c in 'cat ~/.local/state/paddock/org-state.json' 'ls $HOME/paddock-workers/t
          'cat ~/.config/paddock/projects.md' 'ls $TMPDIR/x' 'git log HEAD~1' 'ls /tmp/x' \
          'bash "$PADDOCK_HOME/scripts/org" --as secretary config project add kd ~/work/kd' \
          'bash x.sh --task t1 --task "Never touch ~/work/x, the person keeps it"' 'echo $HOMEBREW_PREFIX' \
-         'ls ~other/repo' "ls ${H}2/repo" 'cat "$HOME/My Repo/README.md"'; do
+         'ls ~other/repo' "ls ${H}2/repo" 'ls "$HOME"/paddock-workers/t1' 'cat "${HOME}"/paddock-projects/o/r/f' 'cat "$HOME/My Repo/README.md"'; do
   allowed Bash "$(bash_in "$c")"
 done
 allowed Read "{\"file_path\":\"$H/src/kura/f\"}"
