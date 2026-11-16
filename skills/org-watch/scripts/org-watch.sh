@@ -17,7 +17,7 @@ Polls the core and tells the person (a desktop toast with sound, else a terminal
     changed for N minutes (Q3),
   - when a terminal reported no status N minutes after it was created.
 Each item is told once, and again after N minutes if it is still waiting.
-Decision 0013: worker events (blocked, done with no report, gone, no status) become one line
+Decision 0013: worker events (blocked, done with no report for N minutes, gone, no status) become one line
 each in the secretary's mailbox, written as watcher; a background ci-watch.sh per open
 ci_requested record writes ci_completed or ci_watch_failed and a mailbox line. N minutes after
 a green ci_completed whose task has no card and is still in org-state.work, and N minutes after a
@@ -389,7 +389,14 @@ pass() {
   done <<< "$terms"
   wc_out=$("$BASH" "$org" --as watcher work_check 2>/dev/null) || wc_out='{"watch_error":""}'
   case "$wc_out" in *'"watch_error"'*|*'"unreadable"'*) prune= ;; esac
-  for tk in $(listed "$wc_out" unreported); do mail_once "mail:unreported:w-$tk" "w-$tk is done and sent no report"; done
+  # A turn ends (done) while a worker waits on a background shell, so done counts only
+  # once the same done (turn, status_ms) has held N minutes: status_ms is when that status began,
+  # and a new turn or status gives a new status_ms, which restarts the wait.
+  for tk in $(listed "$wc_out" unreported); do
+    j=$(term_json "w-$tk") || { prune=; continue; }   # a failed re-read keeps the ledger as it is
+    ms=$(num "$j" status_ms)
+    [ "$(jstate "$j")" = done ] && [ -n "$ms" ] && [ $((now - ms / 1000)) -ge "$limit" ] || continue
+    mail_once "mail:unreported:w-$tk" "w-$tk is done and sent no report"; done
   for tk in $(listed "$wc_out" gone); do mail_once "mail:gone:w-$tk" "w-$tk has no terminal and sent no done report"; done
 
   # 5. CI: one background ci-watch.sh per open ci_requested record

@@ -202,9 +202,20 @@ term w-t2 t2 done
 o secretary report start --task t2 "go" >/dev/null 2>&1   # the secretary's start record (as org-delegate writes)
 o w-t4 report done --task t4 "finished" >/dev/null   # t4 closed: no terminal, but its done record is in
 pass $T0; pass $((T0 + 30))
-[ "$(unread secretary | grep -c '^w-t2 is done and sent no report$')" -eq 1 ]; check "done with no report: one line" $?
+! unread secretary | grep -q '^w-t2 is done'; check "done with no report for less than N minutes: no line (Issue #442)" $?
+pass $((T0 + 600)); pass $((T0 + 630))
+[ "$(unread secretary | grep -c '^w-t2 is done and sent no report$')" -eq 1 ]; check "done unchanged for N minutes: exactly one line" $?
 [ "$(unread secretary | grep -c '^w-t3 has no terminal and sent no done report$')" -eq 1 ]; check "gone (no terminal, no done record): one line" $?
 ! unread secretary | grep -q '^w-t4 has no terminal'; check "a task with its done record is not reported gone" $?
+# done, then working, then done again (a new turn, a new status_ms): the N minutes start again
+reset; term secretary - working; doc '[{"task_id":"t6","title":"x"}]'; o secretary report start --task t6 "go" >/dev/null 2>&1
+term w-t6 t6 done; pass $((T0 + 300))
+term w-t6 t6 working; pass $((T0 + 360))
+term w-t6 t6 done; sed -i "s/\"status_ms\": [0-9]*/\"status_ms\": $(((T0 + 420) * 1000))/; s/\"turn\": 1/\"turn\": 2/" "$tmp/stub/t-w-t6"
+pass $((T0 + 600)); pass $((T0 + 1000))
+! unread secretary | grep -q '^w-t6 is done'; check "done, working, done again: the N minutes restart (no line before them)" $?
+pass $((T0 + 1020))
+[ "$(unread secretary | grep -c '^w-t6 is done and sent no report$')" -eq 1 ]; check "done again and held N minutes: one line" $?
 reset; term secretary - working; term w-t5 t5 none; pass $T0; pass $((T0 + 600)); pass $((T0 + 630))
 [ "$(unread secretary | grep -c '^w-t5 has reported no status for 10 minutes$')" -eq 1 ]; check "no status for N minutes: one line" $?
 
