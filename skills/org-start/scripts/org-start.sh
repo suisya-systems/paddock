@@ -38,7 +38,7 @@ secretary's rules (AGENTS.md) changed (they reach it at its next compaction), an
 fast-forward changed a SKILL.md) a 'skill changed' line per skill and one /reload-plugins line; it
 leaves the marker watcher/reload-plugins (a request id) in the state folder, and the watcher types /reload-plugins.
 
---check only checks the first-run steps (hc, agent shell, claude, notes = false, hc on the running core's PATH,
+--check only checks the first-run steps (hc, agent shell, claude, the reviewer (codex, else claude), notes = false, hc on the running core's PATH,
 the folder trust of each --project clone, and the herdr-app mods folder with whether its cockpit equals the
 checkout) and prints 'ok <step>: ...' or 'TODO <step>: <exact fix>' for
 every one. Read-only: it places nothing, calls no hc, starts no secretary. Exit 0 only when no TODO is left.
@@ -177,6 +177,10 @@ if [ -n "$check" ]; then # every step, read-only; the first TODO does not hide t
   else ok agent-shell "not inside an agent"; fi
   if command -v claude >/dev/null 2>&1; then ok claude "found at $(command -v claude)"
   else fix claude "put claude's folder on PATH (often ~/.local/bin) in this shell"; fi
+  # the review gate runs codex when org-start records one from this shell, else claude
+  if command -v codex >/dev/null 2>&1; then ok reviewer "codex at $(command -v codex) reviews each worker's diff"
+  elif command -v claude >/dev/null 2>&1; then ok reviewer "claude at $(command -v claude) reviews each worker's diff (codex not found; a same-family review is weaker than a different model's: install codex and run org-start again to use it)"
+  else fix reviewer "no reviewing CLI: install codex (or claude) and put its folder on PATH, then run org-start again"; fi
   if fr_notes_ok "$coreconf"; then ok notes "notes = false in $coreconf/config.toml"; else fix notes "$FR_NOTES_FIX"; fi
   if command -v hc >/dev/null 2>&1; then
     fr_core_path; case $? in
@@ -293,7 +297,8 @@ put "$src/templates/secretary-rules.md" "$sdir/AGENTS.md" || die 6 "cannot copy 
 if [ -z "$placeonly" ]; then # place-only keeps the paths an earlier org-start recorded from a login shell
 printf '%s\n' "$claudebin" > "$orgbin/claude-path" || die 6 "cannot write $orgbin/claude-path"
 # same for the review gate's CLI, which often lives in a Node version manager's folder. Optional:
-# without it the gate ends "unavailable" and prepare's codex-cli check says so. Drop a stale record.
+# without it the gate has Claude review, through claude-path above (a same-family review, weaker), and
+# prepare's codex-cli check says codex is missing. Drop a stale record.
 rm -f "$orgbin/codex-path" || die 6 "cannot remove the old $orgbin/codex-path"
 # Record a path that outlives this shell. fnm puts codex under a per-shell folder
 # (.../fnm_multishells/<pid>_<ms>, a link to the install) that goes away with the shell, so each PATH

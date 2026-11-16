@@ -60,10 +60,10 @@ repo=$tmp/repo; mkdir -p "$repo"
 export STUB_LOG=$tmp/calls
 gatedir=$tmp/gatedir; mkdir -p "$gatedir"; cp "$here/scripts/second-model-review.sh" "$gatedir/"
 run() { : > "$STUB_LOG"; out=$(cd "$repo" && TMPDIR="$tmp" PATH=/usr/bin:/bin bash "$gatedir/second-model-review.sh" 2>&1 </dev/null); rc=$?; last=$(printf '%s\n' "$out" | tail -n 1); }
-command -v codex >/dev/null 2>&1 && PATH=/usr/bin:/bin command -v codex >/dev/null 2>&1 && { echo "skip codex on the system PATH"; exit "$fail"; }
+{ PATH=/usr/bin:/bin command -v codex || PATH=/usr/bin:/bin command -v claude; } >/dev/null 2>&1 && { echo "skip codex or claude on the system PATH"; exit "$fail"; }
 
 run
-[ "$rc" -eq 3 ] && grep -q '^CODEX_GATE: unavailable' <<<"$last"; check "no codex on PATH and no codex-path: unavailable" $?
+[ "$rc" -eq 3 ] && grep -q '^CODEX_GATE: unavailable' <<<"$last"; check "no codex on PATH and no codex-path (and no claude): unavailable" $?
 printf '%s\n' "$tmp/nvm/bin/codex" > "$gatedir/codex-path"
 run
 [ "$rc" -eq 0 ] && grep -q '^CODEX_GATE: passed' <<<"$last" && grep -q -- '--base origin/main' "$STUB_LOG"
