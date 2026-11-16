@@ -10,3 +10,10 @@
 - **Toast text goes in the environment, not the command line.** Questions and task titles come from workers; nothing they wrote is quoted into a command.
 - **The bell is the floor.** It needs nothing, so a person is never told nothing. It is visible only where the terminal is on screen, hence the toast first.
 - **The absolute `powershell.exe` path.** Measured on the host: from a login shell the name resolves; from a kept terminal it did not (its PATH holds no `/mnt/c`), and the default absolute path raised the toast.
+
+## Plugin reload
+
+`org-start --place-only --from-origin` leaves an empty marker `watcher/reload-plugins` in the state folder when the fast-forward changed a `SKILL.md` (a running secretary serves the old skill text until `/reload-plugins`, decision 0014 H4). The watcher decides nothing about it; it only types the one command when the marker says so:
+
+- Marker empty: `/reload-plugins` is typed into the secretary under the same rules as a wake (exact `idle`/`done` status, never over typed input), once; the send time goes into the marker, the send into `watcher/woke` as `reload`. In that pass the secretary gets no wake line.
+- Marker holding a time: a `Reloaded:` line below the last `/reload-plugins` on the secretary's screen clears it (`reloaded` in `watcher/woke`). None N minutes after the send: the person is told outside the window, as for a waiting card (again every N minutes), to type `/reload-plugins`; nothing is typed again. A new landing empties the marker, so it is typed once more.

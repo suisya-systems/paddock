@@ -25,6 +25,8 @@ card's ANSWER reached the person's history while the card is still up, one line 
 The secretary and each worker with unread mail are woken with one constant line, only when idle or done,
 never over typed input, at most once per unread batch per PADDOCK_WATCH_WAKE seconds; each
 wake, skip and mailbox line is logged to watcher/woke.
+When watcher/reload-plugins exists (org-start leaves it after a SKILL.md landing), /reload-plugins
+is typed into the idle secretary once; a Reloaded: line clears it, none in N minutes tells the person.
   --once  one pass, then exit (0 done, 5 core unreachable); without it, loop until killed
 Environment: PADDOCK_WATCH_N (minutes, default 10), PADDOCK_WATCH_INTERVAL (seconds, default 30),
 PADDOCK_SECRETARY_NAME (default secretary), PADDOCK_POWERSHELL (powershell.exe path),
@@ -53,7 +55,7 @@ sec=${PADDOCK_SECRETARY_NAME:-secretary}
 N=${PADDOCK_WATCH_N:-10}; limit=$((N * 60))
 wdir=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/watcher
 mkdir -p "$wdir" || die 5 "cannot create $wdir"
-told=$wdir/told; seen=$wdir/secretary.seen; woke=$wdir/woke; wakes=$wdir/wake; cidir=$wdir/ci
+told=$wdir/told; seen=$wdir/secretary.seen; reload=$wdir/reload-plugins; woke=$wdir/woke; wakes=$wdir/wake; cidir=$wdir/ci
 WAKE=${PADDOCK_WATCH_WAKE:-60}
 mkdir -p "$cidir" || die 5 "cannot create $cidir"
 tab=$(printf '\t')
@@ -163,26 +165,18 @@ typed() { printf '%s\n' "$1" | bare | grep -Eq '^(â¯|>)[[:space:]]+[^[:space:]â
 # jstate <json>: term_status's state of a get already read (term_json answered from it in a subshell,
 # so the parse stays lib.sh's)
 jstate() { local J=$1; ( term_json() { printf '%s' "$J"; }; term_status - ); }
-# wake <terminal> <org id>: the one constant line when <org id> has unread mail and <terminal> is
-# idle or done, its screen shows a prompt line with no typed input, and this batch was not woken in WAKE s.
-# A batch is the highest unread seq per sender.
-wake() {
-  local t=$1 oid=$2 peek batch last st line rc msg j j2 st2
-  peek=$("$BASH" "$org" --as "$oid" check_messages --peek 2>/dev/null) || return 0
-  batch=$(printf '%s\n' "$peek" | sed -n 's/^\[\([a-z0-9_-]*\)#\([0-9]*\) .*/\1 \2/p' \
-    | awk '{ if ($2 + 0 > m[$1] + 0) m[$1] = $2 + 0 } END { for (s in m) print s "#" m[s] }' | sort | tr '\n' ',')
-  batch=${batch%,}; [ -n "$batch" ] || return 0
-  last=$(T=$t B=$batch awk -F'\t' '$1 == ENVIRON["T"] && $2 == ENVIRON["B"] { l = $3 } END { print l }' "$wakes" 2>/dev/null)
-  if [ -n "$last" ] && [ $((now - last)) -lt "$WAKE" ]; then wlog skip "$t" "$batch" - - rate; return 0; fi
+# sendline <terminal> <key> <kind> <text>: types <text> into <terminal> only when it is idle or done and
+# its screen shows a prompt line with no typed input; logs the send as <kind> (or the skip) with <key>.
+# 0 when the text was delivered.
+sendline() {
+  local t=$1 key=$2 kind=$3 msg=$4 st line rc j j2 st2
   j=$(term_json "$t") && st=$(jstate "$j") || st=not_found
-  case "$st" in idle|done) ;; *) wlog skip "$t" "$batch" "$st" - -; return 0 ;; esac
-  # a screen that cannot be read is not a screen without input: no wake this pass
-  line=$(hc read "$t" 2>/dev/null) || { wlog skip "$t" "$batch" "$st" unreadable -; return 0; }
+  case "$st" in idle|done) ;; *) wlog skip "$t" "$key" "$st" - -; return 1 ;; esac
+  # a screen that cannot be read is not a screen without input: no send this pass
+  line=$(hc read "$t" 2>/dev/null) || { wlog skip "$t" "$key" "$st" unreadable -; return 1; }
   # no prompt line found is not a prompt without input either
-  line=$(prompt_line "$line"); [ -n "$line" ] || { wlog skip "$t" "$batch" "$st" noprompt -; return 0; }
-  if typed "$line"; then wlog skip "$t" "$batch" "$st" yes -; return 0; fi
-  if [ "$oid" = secretary ]; then msg="You have mail: run bash \"\$PADDOCK_HOME/scripts/org\" --as secretary check_messages and act on it."
-  else msg="You have mail: run bash \"\$PADDOCK_ORG\" --as $oid check_messages and act on it."; fi
+  line=$(prompt_line "$line"); [ -n "$line" ] || { wlog skip "$t" "$key" "$st" noprompt -; return 1; }
+  if typed "$line"; then wlog skip "$t" "$key" "$st" yes -; return 1; fi
   # hc has no --if done, so done is a plain send, after a last get: still done, same turn and
   # status_ms as the first read, else skip (moved) and retry next pass.
   # ponytail: a turn that starts between this get and the send's paste is still typed into.
@@ -190,13 +184,49 @@ wake() {
   else
     j2=$(term_json "$t") && st2=$(jstate "$j2") || st2=not_found
     if [ "$st2" != done ] || [ "$(num "$j2" turn):$(num "$j2" status_ms)" != "$(num "$j" turn):$(num "$j" status_ms)" ]; then
-      wlog skip "$t" "$batch" "$st2" moved -; return 0
+      wlog skip "$t" "$key" "$st2" moved -; return 1
     fi
     hc send "$t" "$msg" >/dev/null 2>&1; rc=$?
   fi
-  wlog wake "$t" "$batch" "$st" no "$rc"
-  [ "$rc" -eq 0 ] || return 0
+  wlog "$kind" "$t" "$key" "$st" no "$rc"
+  return "$rc"
+}
+# wake <terminal> <org id>: the one constant line when <org id> has unread mail, by sendline, unless
+# this batch was woken in WAKE s. A batch is the highest unread seq per sender.
+wake() {
+  local t=$1 oid=$2 peek batch last msg
+  peek=$("$BASH" "$org" --as "$oid" check_messages --peek 2>/dev/null) || return 0
+  batch=$(printf '%s\n' "$peek" | sed -n 's/^\[\([a-z0-9_-]*\)#\([0-9]*\) .*/\1 \2/p' \
+    | awk '{ if ($2 + 0 > m[$1] + 0) m[$1] = $2 + 0 } END { for (s in m) print s "#" m[s] }' | sort | tr '\n' ',')
+  batch=${batch%,}; [ -n "$batch" ] || return 0
+  last=$(T=$t B=$batch awk -F'\t' '$1 == ENVIRON["T"] && $2 == ENVIRON["B"] { l = $3 } END { print l }' "$wakes" 2>/dev/null)
+  if [ -n "$last" ] && [ $((now - last)) -lt "$WAKE" ]; then wlog skip "$t" "$batch" - - rate; return 0; fi
+  if [ "$oid" = secretary ]; then msg="You have mail: run bash \"\$PADDOCK_HOME/scripts/org\" --as secretary check_messages and act on it."
+  else msg="You have mail: run bash \"\$PADDOCK_ORG\" --as $oid check_messages and act on it."; fi
+  sendline "$t" "$batch" wake "$msg" || return 0
   { T=$t awk -F'\t' '$1 != ENVIRON["T"]' "$wakes" 2>/dev/null; printf '%s\t%s\t%s\n' "$t" "$batch" "$now"; } > "$wakes.new" && mv "$wakes.new" "$wakes"
+}
+# reload_pass: org-start leaves watcher/reload-plugins when a landing changed a SKILL.md.
+# Empty: type /reload-plugins into the secretary once (sendline) and write the epoch into it.
+# Holding an epoch: a "Reloaded:" line below the last /reload-plugins on the screen clears it;
+# none N minutes after the send tells the person (as a stuck card), and keeps telling every N minutes.
+# 0 when it typed this pass (the secretary is then not woken in the same pass).
+reload_pass() {
+  local sent scr
+  [ -f "$reload" ] || return 1
+  sent=$(cat "$reload" 2>/dev/null)
+  if [ -z "$sent" ]; then
+    sendline "$sec" reload-plugins reload /reload-plugins || return 1
+    printf '%s\n' "$now" > "$reload"; return 0
+  fi
+  if scr=$(hc read "$sec" 2>/dev/null) && printf '%s\n' "$scr" \
+      | awk '/\/reload-plugins/ { r = NR; ok = 0 } r && NR > r && /Reloaded:/ { ok = 1 } END { exit !ok }'; then
+    rm -f "$reload"; wlog reloaded "$sec" reload-plugins - - -; return 1
+  fi
+  [ $((now - sent)) -lt "$limit" ] && { active="${active}reload:$sec
+"; return 1; }
+  tell "reload:$sec" "Plugin reload not confirmed" "/reload-plugins was typed into $sec $N minutes ago and no Reloaded: line shows; type /reload-plugins into it."
+  return 1
 }
 # ci_lines: "open|super<TAB>pr<TAB>sha<TAB>repo<TAB>task" per ci_requested of the secretary with no
 # ci_completed or ci_watch_failed of the watcher at or after it for the same repo, pr and sha (stage 1:
@@ -373,8 +403,9 @@ pass() {
     done <<< "$cards"
   fi
 
-  # 6. the wake: the secretary and each live worker with unread mail
-  wake "$sec" secretary
+  # 6. /reload-plugins into the secretary after a skill landing; then the wake: the secretary
+  # (not in the pass that typed the reload) and each live worker with unread mail
+  reload_pass || wake "$sec" secretary
   while IFS="$tab" read -r n tk; do
     [ -n "$n" ] || continue
     wake "$n" "w-$tk"

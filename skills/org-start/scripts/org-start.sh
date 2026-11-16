@@ -27,7 +27,8 @@ checkout; then it fast-forwards the paddock checkout to origin/BRANCH when it is
 behind (otherwise it leaves it alone and prints one line with why and what to run; still exit 0).
 It prints the placed files that changed, a renewal line when secretary.md changed, a line when the
 secretary's rules (AGENTS.md) changed (they reach it at its next compaction), and (when the
-fast-forward changed a SKILL.md) a 'skill changed' line per skill and one /reload-plugins line.
+fast-forward changed a SKILL.md) a 'skill changed' line per skill and one /reload-plugins line; it
+leaves the marker watcher/reload-plugins in the state folder, and the watcher types /reload-plugins.
 
 --check only checks the first-run steps (hc, agent shell, claude, notes = false, hc on the running core's PATH,
 the folder trust of each --project clone, and the herdr-app mods folder with whether its cockpit equals the
@@ -320,7 +321,14 @@ fi
 skill_lines() {
   local f n
   for f in $1; do n=${f#skills/}; echo "org-start: skill changed: paddock:${n%/SKILL.md} (invoke it again before you use it)"; done
-  [ -z "$1" ] || echo "org-start: secretary: run /reload-plugins in your session (ask the person to type it if you cannot), or the changed skills keep their old text"
+  [ -n "$1" ] || return 0
+  # the watcher types /reload-plugins into the secretary once it is idle, and clears this marker.
+  local w=${sdir%/secretary}/watcher
+  if mkdir -p "$w" && : > "$w/reload-plugins"; then
+    echo "org-start: the watcher types /reload-plugins into the secretary when it is idle (a toast tells the person if it cannot confirm it); until then the changed skills keep their old text"
+  else
+    echo "org-start: cannot write $w/reload-plugins; the person types /reload-plugins into the secretary, or the changed skills keep their old text"
+  fi
 }
 if [ -n "$placeonly" ]; then # what each change needs; Claude Code re-reads a changed settings file's hooks
   from=${fromorigin:+origin/}${fromorigin:-$root}

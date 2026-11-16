@@ -4,7 +4,8 @@
 # unread mail (one constant line, never into a working one, never over typed input, once per
 # unread batch per PADDOCK_WATCH_WAKE s, every send and skip logged to watcher/woke), and runs one
 # ci-watch.sh per open ci_requested record, which always writes ci_completed or ci_watch_failed and
-# a mailbox line. Stubbed hc and gh; no core, no GitHub.
+# a mailbox line. #439: types /reload-plugins once into an idle secretary when watcher/reload-plugins
+# exists, and clears it on a Reloaded: line. Stubbed hc and gh; no core, no GitHub.
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 script=$here/skills/org-watch/scripts/org-watch.sh
@@ -316,5 +317,41 @@ pass $T0; wait_for watching 778
 ! wev | grep -q '"kind":"ci_'; check "the first run red, the second still pending: not reported until both end" $?
 rm -f "$tmp/stub/hold-778"; settle
 wev | grep -q '"kind":"ci_completed".*"run_id":777,"exit_code":1,"conclusion":"failure"'; check "then failure, the red run named" $?
+
+
+# --- #439: /reload-plugins after a landing that changed a SKILL.md (org-start leaves watcher/reload-plugins) ---
+mark_reload() { mkdir -p "$tmp/state/watcher"; : > "$tmp/state/watcher/reload-plugins"; }
+reloads() { grep -c "^secretary	/reload-plugins$" "$tmp/stub/sent" 2>/dev/null || echo 0; }
+RLD=$tmp/state/watcher/reload-plugins
+reset; term secretary - idle; pass $T0
+[ "$(reloads)" -eq 0 ]; check "no marker: no /reload-plugins" $?
+reset; term secretary - idle; mark_reload; o person send_message secretary "hello" >/dev/null; pass $T0
+[ "$(reloads)" -eq 1 ] && [ "$(sent secretary)" -eq 1 ] && grep -q '^send --if idle secretary /reload-plugins$' "$tmp/stub/calls"
+check "marker and an idle secretary: exactly one /reload-plugins (--if idle), no wake in the same pass" $?
+[ "$(cat "$RLD")" = "$T0" ] && woke | grep -q "	reload	secretary	reload-plugins	idle	no	0$"; check "the marker holds the send time; the send is logged" $?
+pass $((T0 + 30))
+[ "$(reloads)" -eq 1 ] && [ -f "$RLD" ]; check "no Reloaded: line yet: not typed again, the marker stays" $?
+screen secretary "$(printf '❯ /reload-plugins\n  ⎿  Reloaded: 3 plugins\n❯ ')"; pass $((T0 + 60))
+[ ! -e "$RLD" ] && [ "$(reloads)" -eq 1 ] && woke | grep -q '	reloaded	secretary	reload-plugins	'; check "a Reloaded: line below /reload-plugins clears the marker" $?
+pass $((T0 + 90))
+[ "$(reloads)" -eq 1 ]; check "marker cleared: nothing more is typed" $?
+
+reset; term secretary - working; mark_reload; pass $T0
+[ "$(reloads)" -eq 0 ] && [ -f "$RLD" ] && [ ! -s "$RLD" ]; check "a busy secretary gets no /reload-plugins; the marker waits" $?
+pass $((T0 + 30))
+[ "$(reloads)" -eq 0 ]; check "still busy: still nothing" $?
+term secretary - idle; pass $((T0 + 60))
+[ "$(reloads)" -eq 1 ]; check "once idle: one /reload-plugins" $?
+reset; term secretary - idle; hostscreen secretary 'half a sentence'; mark_reload; pass $T0
+[ "$(reloads)" -eq 0 ]; check "typed input on the prompt: no /reload-plugins over it" $?
+
+# no confirmation: an old Reloaded: above the last /reload-plugins does not count; after N minutes the person is told
+reset; term secretary - idle; screen secretary "$(printf '❯ /reload-plugins\n  ⎿  Reloaded: 2 plugins\n❯ ')"; mark_reload; pass $T0
+screen secretary "$(printf '❯ /reload-plugins\n  ⎿  Reloaded: 2 plugins\n❯ /reload-plugins\n❯ ')"; pass $((T0 + 300))
+[ -f "$RLD" ] && ! grep -q 'reload not confirmed' <<<"$out"; check "an older Reloaded: line does not confirm; before N minutes nobody is told" $?
+pass $((T0 + 600))
+grep -q 'Plugin reload not confirmed' <<<"$out" && [ "$(reloads)" -eq 1 ] && [ -f "$RLD" ]; check "N minutes without Reloaded:: the person is told, nothing typed again" $?
+pass $((T0 + 630))
+! grep -q 'Plugin reload not confirmed' <<<"$out"; check "told once per N minutes" $?
 
 exit "$fail"

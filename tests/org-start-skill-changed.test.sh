@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Decision 0014 part 4: after a landing, org-start --place-only --from-origin prints what a changed
 # skill needs. A running secretary serves the SKILL.md text it loaded (probe H4), so each changed or
-# new skill gets one "skill changed: paddock:<name>" line, and one line tells the secretary to run
-# /reload-plugins. A landing that touches no SKILL.md prints neither. Needs only bash, coreutils, git, tar.
+# new skill gets one "skill changed: paddock:<name>" line, and one line says the watcher types
+# /reload-plugins (#439: org-start leaves the marker watcher/reload-plugins in the state folder). A landing that touches no SKILL.md prints neither. Needs only bash, coreutils, git, tar.
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
@@ -40,14 +40,17 @@ out=$(place); rc=$?
 grep -qx 'org-start: skill changed: paddock:org-delegate (invoke it again before you use it)' <<<"$out"; check "a changed skill gets its line" $?
 grep -qx 'org-start: skill changed: paddock:org-fresh (invoke it again before you use it)' <<<"$out"; check "a new skill gets its line" $?
 [ "$(grep -c '^org-start: skill changed:' <<<"$out")" -eq 2 ]; check "only the two changed skills are named" $?
-[ "$(grep -c '/reload-plugins' <<<"$out")" -eq 1 ] && grep '/reload-plugins' <<<"$out" | grep -q 'secretary'
-check "one line tells the secretary to run /reload-plugins" $?
+[ "$(grep -c '/reload-plugins' <<<"$out")" -eq 1 ] && grep '/reload-plugins' <<<"$out" | grep -q 'watcher types' \
+  && ! grep -qi 'ask the person' <<<"$out"
+check "one line says the watcher types /reload-plugins; nobody is asked to type it" $?
+[ -f "$tmp/state/watcher/reload-plugins" ] && [ ! -s "$tmp/state/watcher/reload-plugins" ]; check "the empty marker watcher/reload-plugins is left for the watcher" $?
+rm -f "$tmp/state/watcher/reload-plugins"
 out=$(place)
-! grep -q 'skill changed' <<<"$out"; check "a second run repeats nothing" $?
+! grep -q 'skill changed' <<<"$out" && [ ! -e "$tmp/state/watcher/reload-plugins" ]; check "a second run repeats nothing and leaves no marker" $?
 
 # a checkout that is left alone does not change what the running plugin serves: no skill line.
 echo dirty >> "$root/templates/worker.md"
 echo "again" >> "$land/skills/org-delegate/SKILL.md"; land_it "skill change 2"
 out=$(place)
-grep -q 'left alone' <<<"$out" && ! grep -q 'skill changed' <<<"$out"; check "a checkout left alone prints no skill line" $?
+grep -q 'left alone' <<<"$out" && ! grep -q 'skill changed' <<<"$out" && [ ! -e "$tmp/state/watcher/reload-plugins" ]; check "a checkout left alone prints no skill line" $?
 exit $fail
