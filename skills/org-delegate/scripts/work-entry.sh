@@ -1,10 +1,12 @@
 # Sourced by org-delegate.sh and resend.sh: the work entry of a delegated task in org-state.
-# work_entry_json <task_id> <title> <since> <worktree> <task>: the entry, one line of JSON (strings escaped).
+# work_entry_json <task_id> <title> <since> <worktree> <task> [<model>]: the entry, one line of JSON (strings escaped);
+# a model (validated by org-delegate) adds a "model" field.
 work_entry_json() {
   esc() { printf '%s\n' "$1" | tr -d '\000-\010\013\014\016-\037' \
     | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e "s/$(printf '\t')/\\\\t/g" -e "s/$(printf '\r')/\\\\r/g" \
     | awk 'NR>1{printf "%s","\\n"} {printf "%s",$0}'; }
-  printf '{"task_id":"%s","title":"%s","since":"%s","worktree":"%s","task":"%s"}' "$1" "$(esc "$2")" "$3" "$(esc "$4")" "$(esc "$5")"
+  printf '{"task_id":"%s","title":"%s","since":"%s","worktree":"%s","task":"%s"%s}' "$1" "$(esc "$2")" "$3" "$(esc "$4")" "$(esc "$5")" \
+    "${6:+,\"model\":\"$6\"}"
 }
 # work_entry_add <scripts/org path> <task_id> <entry>: add the entry at the end of "work" by a scan that skips string
 # contents, so braces and brackets in the task do not matter. Status 0 when written.

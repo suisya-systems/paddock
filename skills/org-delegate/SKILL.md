@@ -11,11 +11,13 @@ Starts one worker for one task. Why it is built this way, and the measurements b
 ```sh
 bash "$PADDOCK_HOME/skills/org-delegate/scripts/org-delegate.sh" \
   --project <git repository or projects.md name> --task-id <id> --title "<a few words>" --task "<task text>" \
-  [--task-file <file>] [--base main] [--branch work/<id>] [--allow-write <path>]...
+  [--task-file <file>] [--base main] [--branch work/<id>] [--allow-write <path>]... [--model <id>]
 bash "$PADDOCK_HOME/skills/org-delegate/scripts/org-delegate.sh" --repo OWNER/NAME --task-id <id> --title "..." --task "..."
 ```
 
 Give the task one worker with an exact scope (what to change, what not to touch, how to report). `--title` adds the `work` entry to `org-state` after the launch, with its `worktree` and `task`; `--task-file <file>` (or `-` for stdin) is for a long text. `--project` may be a name from `projects.md` (the row gives the path and the base; `--base` overrides it), a path, or, with `--repo`, nothing. `--repo OWNER/NAME` (or a github.com URL) clones the repository with the secretary's own login when it is not on the machine, records it in `projects.md`, then delegates into it; a recorded one is reused. A bare name is never guessed: ask the person for `OWNER/NAME`.
+
+`--model <id>` runs the worker on that model, an alias or id such as `fable`, `opus`, `sonnet`, `haiku` or `claude-fable-5-2` (letters, digits and `. _ : [ ] -` only, else exit 2): it goes to the `model` key of the worker's own `--settings` file, and the start record and the `work` entry name it. Without it the worker runs on the default model. Use it when the person asks for a model for a task; never type `/model` into a running worker. A host on which `ANTHROPIC_MODEL` is exported overrides it (rationale).
 
 Do not make the worktree or run `hc run` by hand. The script creates the worktree under the trusted workers folder, writes the task's settings file, starts the worker with the task in the launch (`hc run --bg --outlive-parent --name w-<task_id> --label task_id=<task_id> worker ...`, so workers survive your renewal and a new secretary finds them by that label), and records the start. It puts "Your org id is w-<task_id>." in the task for you. A `task_id` is short, lowercase letters, digits, `_` and `-`, at most 30 characters, unique among the tasks in progress.
 
@@ -79,3 +81,5 @@ bash "$PADDOCK_HOME/skills/org-delegate/scripts/org-delegate.sh" --project <repo
 hc get w-probe-1          # status reaches working, then done
 bash "$PADDOCK_HOME/scripts/org" --as secretary check_messages
 ```
+
+`--model`, once: add `--model haiku` to the probe above, then `hc read w-probe-1` and read the model in the startup banner (or, as the person, type `/status` in that worker); it should name Haiku.
