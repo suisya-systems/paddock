@@ -212,7 +212,13 @@ if [ -n "$restartcore" ]; then
        fi
        hc server stop >/dev/null 2>&1 || { echo "next: run 'hc server stop' yourself, then org-start again" >&2; die 5 "hc server stop failed"; }
        hc server start >/dev/null 2>&1 || { echo "next: no core runs now; run 'hc server start' from this shell, then org-start" >&2; die 5 "hc server start failed after the stop"; }
-       echo "org-start: the core was restarted from this shell" ;;
+       echo "org-start: the core was restarted from this shell"
+       # kept terminals come back as plain shells after a full stop (architecture.md): remove the
+       # secretary's and the watcher's so the ordinary start below launches them again. Workers are not
+       # touched here; org-resume brings them back.
+       for t in "${PADDOCK_SECRETARY_NAME:-secretary}" "${PADDOCK_WATCHER_NAME:-watcher}"; do
+         ! hc get "$t" >/dev/null 2>&1 || hc rm "$t" >/dev/null 2>&1 || { echo "next: run 'hc rm $t', then org-start" >&2; die 5 "hc rm $t failed after the restart"; }
+       done ;;
     0) echo "org-start: --restart-core: hc is already on the running core's PATH; the core is left alone" ;;
     *) echo "org-start: --restart-core: $FR_PATH_WHY; the core is left alone" ;;
   esac

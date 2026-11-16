@@ -85,6 +85,6 @@ What this means in practice:
 - Acts only when the running core's PATH lacks hc (the `/proc` read of `--check`). A core that is fine, or that is not running or not readable, is left alone and org-start goes on.
 - Lists the terminals with `hc ls` and asks y/N; `--yes` skips only the question, the list is still printed. No answer is No (exit 11, nothing ended).
 - hc must already be on the PATH of the calling login shell (the exit 3 check, before anything is ended), since the new core takes that environment.
-- `hc server stop`, then `hc server start`, then the ordinary org-start to its end; a failure of either exits 5 with a `next:` line.
+- `hc server stop`, then `hc server start`, then removes the secretary's and the watcher's terminals (kept terminals come back as plain shells, [architecture](../design/architecture.md)) so the ordinary org-start, to its end, launches them again (workers are left to `org-resume`); a failure of either exits 5 with a `next:` line.
 
 **Costs accepted.** Every terminal ends, including a live secretary and workers; the confirmation and the list are the only guard, and `--yes` removes the question for a person who has decided. Work in a worker's terminal that is not committed is not saved by this; `org-suspend` first is the person's choice.
