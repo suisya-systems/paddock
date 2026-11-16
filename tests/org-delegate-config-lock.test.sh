@@ -24,7 +24,7 @@ case $1 in
 esac
 exit 0
 EOF2
-printf '#!/bin/sh\necho "$*" >> "$STUB_LOG"; echo " succeeded in 1ms:"\n' > "$tmp/bin/codex"
+printf '#!/bin/sh\necho "$*" >> "$STUB_LOG"; echo " succeeded in 1ms:" >&2; echo Review\n' > "$tmp/bin/codex"
 chmod +x "$tmp/bin/hc" "$tmp/bin/codex"
 export STUB_LOG=$tmp/calls
 

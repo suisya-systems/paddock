@@ -28,7 +28,7 @@ printf '#!/bin/sh\nexit 0\n' > "$tmp/home/.local/bin/claude"; chmod +x "$tmp/hom
 printf 'notes = false\n' > "$tmp/core/config.toml"
 mkcodex() { # mkcodex <folder> <version>: a stub codex that logs its folder and prints its version
   mkdir -p "$1"
-  printf '#!/bin/sh\ncase "$1" in --version) echo "codex-cli %s"; exit 0;; esac\necho "%s $*" >> "$STUB_LOG"\necho " succeeded in 12ms:"; exit 0\n' "$2" "$1" > "$1/codex"
+  printf '#!/bin/sh\ncase "$1" in --version) echo "codex-cli %s"; exit 0;; esac\necho "%s $*" >> "$STUB_LOG"\necho " succeeded in 12ms:" >&2; echo Review; exit 0\n' "$2" "$1" > "$1/codex"
   chmod +x "$1/codex"
 }
 start() { # start <PATH for org-start>
