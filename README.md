@@ -49,9 +49,40 @@ Start with:
 
 The window is the herdr-app layout [`layouts/paddock.json`](layouts/paddock.json) with its mod [`mods/org-cockpit/`](mods/org-cockpit/) ([architecture §7](docs/design/architecture.md#7-the-screen)): worker tiles on the left (status colour, last lines, "Needs you" when blocked; click one to peek at its terminal) under a "Back to the secretary" button and above the watcher strip (alive and its last pass, open CI watches, its last wakes and mailbox lines; a warning when its terminal is gone), the secretary's terminal in the centre, the secretary's questions floating at the top right while its terminal is blocked, and the oldest unanswered approval from `org-state` as one card at the bottom right, with Yes and No buttons (a worker's own prompt too: the secretary relays the answer to it after reading its screen, Issue #260) and an optional note field ("anything to add", Issue #386) that send the answer to the secretary through the mailbox (`ANSWER <approval id> yes|no`, or `ANSWER <approval id> yes|no; note: <note>`, from `person`; the card reaches `org` where `org-start` places it) and a link to the secretary's pane to answer in words. Workers are the terminals labelled `task_id`; the secretary is the terminal named `secretary`.
 
-To open it, run `org-start`: it places `layouts/paddock.json` and `mods/org-cockpit/` under `~/.config/herdr-app` (on WSL with herdr-app for Windows, the Windows user's `.config/herdr-app`), keeps a `secretary` prop already in the installed layout, and runs `herdr-app check` when it finds herdr-app. Then run the `layout.switch` command it prints (`herdr-app do layout.switch '{"name":"paddock"}'`, with herdr-app by its Windows path on WSL). `ctrl-shift-l` switches back.
+To open it, run `org-start`: it places `layouts/paddock.json` and `mods/org-cockpit/` under `~/.config/herdr-app` (on WSL with herdr-app for Windows, the Windows user's `.config/herdr-app`), keeps a `secretary` prop already in the installed layout, and runs `herdr-app check` when it finds herdr-app. The numbered steps are in [Opening the screen](#opening-the-screen).
 
 The centre is the layout's active tab. The mod labels the secretary's terminal `herdr.space=paddock` and `herdr.tab=secretary` when it lacks them, so herdr-app adopts it as the only pane of a `paddock` space, and it brings that pane to the front whenever the secretary's address changes (a renewed secretary is adopted the same way). A worker peeked from its tile and kept (herdr's "keep as tab") takes the centre; "Back to the secretary", always at the top of the worker tiles, sends every kept worker back to its tile (herdr's `terminal.park`, the pane menu's "Send back"; the worker keeps running) and focuses the secretary's pane. The centre does not use a layout terminal block: in herdr-app 0.1.13 such a block is removed when its terminal ends, and the next save rewrites the layout file without it. When the secretary runs on another machine (for example a `wsl` machine added with `hc machine add`), add a `"secretary": "<machine>/secretary"` prop to each `org-cockpit` block in your copy of the layout (org-start writes it on WSL with herdr-app for Windows, machine `wsl` or `PADDOCK_APP_MACHINE`). The mod then also reads `org-state` from that machine's core, where the secretary writes it.
+
+### Opening the screen
+
+On Linux, macOS or WSL with a Linux herdr-app:
+
+1. Open a terminal of your own (a login shell, not an agent's) and run `bash skills/org-start/scripts/org-start.sh` from this folder. It places the layout and the mod, starts the secretary unless one runs, and ends with `org-start: ready`. It also tries to switch the window itself: it prints `org-start: switched the screen to the paddock layout with <herdr-app>` or, on failure, `org-start: warning: layout.switch failed: <reason>`.
+2. If the screen did not switch, run the command org-start printed on the line `org-start: to open the screen:` (`herdr-app do layout.switch '{"name":"paddock"}'`). `herdr-app` must be running with its window open.
+3. The secretary's terminal is in the centre. Type your request there.
+
+Back to a normal herdr screen, and to the paddock screen again (the same command and key in either direction):
+
+1. With the window focused, press `ctrl-shift-l`. In herdr-app's `keys.json` it is bound to `layout.switch` with no name, which shows the next layout in `layouts/`, so with more than two layouts you may need to press it again.
+2. Or name the layout: `herdr-app do layout.switch '{"name":"<layout>"}'`, with `<layout>` the file name in `layouts/` without `.json` (`main` is one herdr-app ships; `paddock` is this one).
+
+The secretary and the workers keep running while you look at another layout: the window only shows them.
+
+On WSL with herdr-app for Windows (the core and agents in WSL, the window on Windows):
+
+1. Once, on Windows (PowerShell, with `hc.exe`), add the WSL distribution as a machine named `wsl`: `hc machine add --via 'wsl.exe -d Ubuntu -e sh -c' --name wsl` (replace `Ubuntu` with your distribution; this is the form `hc machine add --help` shows for WSL). The name `wsl` is the one org-start assumes; another name goes in `PADDOCK_APP_MACHINE`.
+2. In WSL, run `bash skills/org-start/scripts/org-start.sh` as above. On WSL it places the layout and mod under the Windows user's `.config/herdr-app` and writes `"secretary": "wsl/secretary"` into each `org-cockpit` block of the installed layout, so the cockpit reads `org-state` from the WSL core. A later run keeps the prop.
+3. org-start runs herdr-app by its Windows path, which it finds through `cmd.exe` and `wslpath`: `herdr-app.exe` on `PATH`, else `<Windows user folder>/AppData/Local/Programs/herdr-app/herdr-app.exe` (for example `/mnt/c/Users/<you>/AppData/Local/Programs/herdr-app/herdr-app.exe`). If the switch failed, run the printed command, which starts with that path. A Linux `herdr-app` in WSL cannot reach a window open on Windows (its socket is `~/.config/herdr-app/herdr-app.sock`, the Windows window's is in the Windows user's folder).
+4. If org-start warns that it could not find the Windows user folder, set `PADDOCK_APP_MODS_DIR` to the Windows herdr-app's mods folder and run it again. `bash skills/org-start/scripts/org-start.sh --check` lists every step and prints a `TODO` for what is left.
+
+If the screen says `hc unreachable` (at the top of the worker tiles) or `Can't reach hc.` (in the approval card's place, with the first line of the error under it), the mod's read of `org-state` failed. Each read runs `hc connect` through `sh` on the secretary's machine (through `pwsh` on a Windows core with no `secretary` prop) and shows the error text, so the line under the message tells which of these it is:
+
+- `sh: hc: not found` (the wording depends on the shell): `hc` is not on the PATH of the shell that read runs in. On WSL this is the core's PATH, which every terminal it starts takes. Run `bash skills/org-start/scripts/org-start.sh --check`: its `core-path` line says whether `hc` is on the running core's PATH. If not, stop herdr-core and start herdr again from a login shell that has the folder of `hc` on PATH.
+- Windows herdr-app with no `secretary` prop in the installed layout: the read looks for `hc` on Windows (on `PATH`, else `%LOCALAPPDATA%\Programs\herdr-core\hc.exe`), not in WSL. Add the `wsl` machine (WSL steps 1 and 2) so that the prop is there, or put that `hc.exe` where it looks.
+- The prop names a machine the window does not know: the read goes through that machine. `hc machine ls` lists the machines added; set `PADDOCK_APP_MACHINE` to the right name and run org-start again.
+- The core is not running: start the secretary with org-start, which starts a core when none runs.
+
+The tiles recover on their own within a few seconds (the mod reads again every 5 s) once a read works.
 
 ## Goal
 
