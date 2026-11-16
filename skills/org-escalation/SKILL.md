@@ -1,7 +1,7 @@
 ---
 name: org-escalation
-description: Record a worker's question or blocked status for the person, forward the person's answer to the worker, and answer a worker's prompt after a fresh read of its screen. Run from the secretary.
-when_to_use: A worker reports a question you cannot decide, a `blocked` report arrives, a worker's terminal is `blocked` or shows no status after launch, or a message `ANSWER <approval_id> <text>` arrives from `person`. Also on each wake, to sweep answered prompts.
+description: Record a worker's question or blocked status for the person, forward the person's answer to the worker, answer a worker's prompt after a fresh read of its screen, and hold a yes/no proposal of your own for a card when the person goes quiet. Run from the secretary.
+when_to_use: A worker reports a question you cannot decide, a `blocked` report arrives, a worker's terminal is `blocked` or shows no status after launch, a message `ANSWER <approval_id> <text>` arrives from `person`, or you ask the person a yes/no proposal of your own in chat. Also on each wake, to sweep answered prompts and your own proposals.
 allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/scripts/org-escalation.sh *) Bash(bash "$PADDOCK_HOME/skills/org-escalation/scripts/org-escalation.sh" *)
 ---
 
@@ -14,6 +14,7 @@ bash "$PADDOCK_HOME/skills/org-escalation/scripts/org-escalation.sh" prompt --ta
 bash "$PADDOCK_HOME/skills/org-escalation/scripts/org-escalation.sh" ask    --task <task_id> --question "<one sentence>" [--prompt "<PROMPT= text>"] \
          --background "<why it is asked>" --if-yes "<what Yes does>" --if-no "<what No does>" \
          --recommend yes|no --why "<reason>" --lang <code>
+bash "$PADDOCK_HOME/skills/org-escalation/scripts/org-escalation.sh" ask    --self --question "<one sentence>" --background ... --if-yes ... --if-no ... --recommend yes|no --why ... --lang <code>
 bash "$PADDOCK_HOME/skills/org-escalation/scripts/org-escalation.sh" answer --id <approval_id> --text "<answer>" [--note "<the person's note>"] [--from-conversation "<the person's typed line>"]
 bash "$PADDOCK_HOME/skills/org-escalation/scripts/org-escalation.sh" remove --id <approval_id> [--text yes|no [--note "<note>"] | --from-conversation "<the person's typed line>"]
 bash "$PADDOCK_HOME/skills/org-escalation/scripts/org-escalation.sh" list
@@ -37,6 +38,14 @@ When the person answered in words in your terminal, add `--from-conversation "<t
 
 `remove --id <approval_id> --text yes|no [--note "<note>"]` makes the same check (or takes `--from-conversation`): use it for a card answer to a decision that is yours to carry out (a merge, the queue order), and act only on exit 0. A plain `remove --id <approval_id>` is unchecked: removing a card grants nothing; it is how an entry that was withdrawn, dropped or answered in the worker's terminal goes.
 
+## A yes/no proposal of your own
+
+A proposal you make yourself (not a worker's question) stays in chat while the person is in the conversation; it goes on a card only when they have not written for N minutes (decision 0015).
+
+1. When you ask the person a yes/no proposal of your own in chat, record it in the same turn: `ask --self` with the same fields as a worker's question (no `--task`, no `--prompt`). It prints `APPROVAL_ID=secretary-<UTC time>`. The entry is hidden: no card, no toast.
+2. `sweep` (on each wake) decides it: the person wrote a line in chat since you asked → `WITHDRAWN <id>`, the entry is gone and the proposal stays in chat; no line by its show time (asked + `PADDOCK_SELF_CARD_N` minutes, default 10) → `SHOWN <id>`, it is an ordinary card now. The watcher mails you `proposal <id> reached its show time` when that time comes; run `sweep`.
+3. The person answers in chat: `answer --id <id> --text yes|no --from-conversation "<their line>"`. On the card: `ANSWER <id> ...` from `person`, then `answer --id <id> --text ...` as for any card. Either way the script checks whose word it is as below, removes the entry and prints `ANSWERED <id> -> secretary: <text>`: nothing goes to any worker. Act on exit 0 only.
+
 ## A worker's prompt
 
 A prompt or dialog is answered only after a fresh read of its screen matched it. Workers run in auto mode, so few appear. When a worker's terminal is `blocked` (or shows no status after its launch), run `prompt --task <task_id>`.
@@ -45,7 +54,7 @@ A prompt or dialog is answered only after a fresh read of its screen matched it.
 - Any other prompt: it prints `PROMPT=<text>` and exits 3, nothing pressed. Record it with `ask --task <task_id> --question "<one sentence>" --prompt "<that text>"` and the context, as for a question.
 - On the person's answer, `answer --id <approval_id> --text yes|no` presses one key, only while the same prompt is on a blocked terminal: Yes is the one-time "Yes", never "don't ask again"; No is esc. With a card note add `--note "<note>"`: the key is the same, the script prints `NOTE <id> <note>`, and the note never reaches the worker; act on it yourself (for example, message the worker once its prompt is answered). Exit 10 means the screen changed and nothing was pressed: run `prompt` again.
 - Never `hc keys` and never `hc send --force` by hand: a hook refuses them. `--curator` does the same for the curator's terminal; `--then-send "<text>"` sends the first message once the dialog is answered.
-- Run `sweep` on each wake: it removes a prompt entry once the terminal shows `working`, `idle` or `done` (someone answered it, or it moved on). No status, a missing terminal or a failed lookup keeps it. An old entry with `answer_in: worker` is an ordinary question.
+- Run `sweep` on each wake: it shows or withdraws your own hidden proposals (above), and removes a prompt entry once the terminal shows `working`, `idle` or `done` (someone answered it, or it moved on). No status, a missing terminal or a failed lookup keeps it. An old entry with `answer_in: worker` is an ordinary question.
 
 ## What to check afterwards
 
