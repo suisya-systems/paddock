@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # secretary-handover: end the secretary's terminal and launch a fresh one that resumes
 # from the handover document (Q16 decision c). Needs only bash, coreutils and hc.
-# See ../SKILL.md. Run it from the person's login shell or a service, never from an agent.
+# See ../SKILL.md. The watcher (org-watch) runs it on the marker watcher/renew-secretary; the person
+# can run it from their login shell or a service. Never from an agent.
 set -u
 
 usage() {
@@ -105,4 +106,6 @@ if ! printf '%s' "$out" | grep -Eq '"sent": *true'; then
 $task" >/dev/null 2>&1 \
     || die 10 "answered the folder-trust dialog but could not send the first message to $name; send the template body and the task by hand with hc send $name"
 fi
+# the request the secretary left for the watcher (scripts/org renew_secretary) is fulfilled, whoever ran this
+rm -f "${sdir%/secretary}/watcher/renew-secretary"
 echo "secretary-handover: relaunched $name from the handover; it clears the document once it has resumed"

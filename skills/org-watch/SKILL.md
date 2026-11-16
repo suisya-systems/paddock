@@ -26,7 +26,7 @@ A shell loop that tells the person what the window cannot, because the window is
 bash <paddock folder>/skills/org-watch/scripts/org-watch.sh [--once]   # the folder: echo "$PADDOCK_HOME"
 ```
 
-org-start runs it as `hc run --bg --keep --name watcher`; the person runs it by hand with `--once` to see one pass (give them the path written out).
+org-start runs it as `hc run --bg --keep --name watcher`; the person runs it by hand with `--once` to see one pass.
 
 ## What it tells
 
@@ -54,7 +54,7 @@ Each item is one line, written with `scripts/org --as watcher send_message secre
 | Green PR, no card | N minutes after a green `ci_completed` of a PR's newest head, its task has no card in `org-state.approvals` and is still in `org-state.work` (not landed); once per head | `PR #<n> is green and no card asks about it` |
 | Answered card still up | a card in `org-state.approvals` whose `ANSWER <id>` has been in the person's history for N minutes | `answer for <id> arrived; the card is still up` |
 
-`org work_check` is the worker check of `org wait` (moved out of it, not copied), run as `watcher`.
+`org work_check` is the worker check of `org wait`, run as `watcher`.
 
 ## The wake
 
@@ -64,7 +64,7 @@ The secretary and every `w-<task>` worker with a live terminal and unread mail (
 - Never over typed input: just before a send it reads the screen once (`hc read`) and checks the prompt line, the last line that starts (after spaces and an optional box) with the marker `❯` or `>`; text after the marker and a space or NBSP holds the wake off for that pass, and so does a screen that cannot be read or shows no prompt line (`noprompt` in `watcher/woke`).
 - One wake per unread batch (the highest unread `seq` per sender) per `PADDOCK_WATCH_WAKE` seconds (default 60); new mail is a new batch. A failed send is tried again on the next pass.
 - Every wake, every skip (status, typed input, rate limit) and every mailbox line is printed and appended to `watcher/woke` in the state folder, one tab-separated line: time (epoch), `wake`/`skip`/`mail`, target, batch or ledger key, status read, typed input (`yes`/`no`/`unreadable`/`noprompt`/`moved`/`-`), send exit code (`rate` for a rate-limit skip, `-` when nothing was sent).
-- `watcher/reload-plugins`: types `/reload-plugins` once ([why](references/rationale.md#plugin-reload)).
+- `watcher/reload-plugins` types `/reload-plugins` once ([why](references/rationale.md#plugin-reload)); `watcher/renew-secretary` runs `secretary-handover.sh` (same page).
 
 ## CI watching
 

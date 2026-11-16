@@ -102,7 +102,7 @@ From your own login shell:
 
 To come back after `org-down`: run `org-start.sh` (it starts the secretary and the watcher), then `org-resume.sh --apply`.
 
-When the secretary has written its handover and asks you to renew it, run `bash skills/secretary-handover/scripts/secretary-handover.sh`.
+The secretary renews itself: it writes its handover and leaves a request (`scripts/org --as secretary renew_secretary`), and the watcher runs `skills/secretary-handover/scripts/secretary-handover.sh` once it is idle. Run that script yourself only when the watcher tells you a renewal failed, or no watcher runs.
 
 ## Troubleshooting
 
