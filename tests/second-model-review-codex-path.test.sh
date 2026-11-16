@@ -28,7 +28,7 @@ printf '#!/bin/sh\nexit 0\n' > "$tmp/home/.local/bin/claude"; chmod +x "$tmp/hom
 cat > "$tmp/nvm/bin/codex" <<'EOF2'
 #!/bin/sh
 echo "$*" >> "$STUB_LOG"
-echo " succeeded in 12ms:"; echo "Findings: none"; exit 0
+echo " succeeded in 12ms:" >&2; echo Review; echo "Findings: none"; exit 0
 EOF2
 chmod +x "$tmp/nvm/bin/codex"
 printf 'notes = false\n' > "$tmp/core/config.toml"

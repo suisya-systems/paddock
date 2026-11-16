@@ -28,7 +28,7 @@ stubdir=$tmp/bin; mkdir -p "$stubdir"
 cat > "$stubdir/codex" <<'EOF2'
 #!/bin/sh
 case "${STUB_MODE:-ran}" in
-  ran)   echo " succeeded in 12ms:"; echo "Findings: none"; exit 0 ;;
+  ran)   echo " succeeded in 12ms:" >&2; echo Review; echo "Findings: none"; exit 0 ;;
   empty) echo "Findings: none"; exit 0 ;;
 esac
 EOF2

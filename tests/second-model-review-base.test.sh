@@ -16,7 +16,7 @@ repo=$tmp/repo; mkdir -p "$repo" "$tmp/bin"
     && git update-ref refs/remotes/origin/dev HEAD && git checkout -q -b work \
     && echo two >> a.txt && git commit -q -am two
 ) >/dev/null 2>&1
-printf '#!/bin/sh\necho "$*" >> "$STUB_LOG"; echo " succeeded in 1ms:"\n' > "$tmp/bin/codex"; chmod +x "$tmp/bin/codex"
+printf '#!/bin/sh\necho "$*" >> "$STUB_LOG"; echo " succeeded in 1ms:" >&2; echo Review\n' > "$tmp/bin/codex"; chmod +x "$tmp/bin/codex"
 export STUB_LOG=$tmp/calls
 run() { : > "$STUB_LOG"; out=$(cd "$repo" && TMPDIR="$tmp" PATH="$tmp/bin:$PATH" bash "$gate" 2>&1 </dev/null); rc=$?; }
 
@@ -39,14 +39,14 @@ rm "$tmp/state/bases/repo"
 (cd "$repo" && git revert --no-edit HEAD >/dev/null 2>&1)
 run
 [ "$rc" -eq 1 ] && ! grep -q . "$STUB_LOG"; check "a change and its revert: commits ahead but no diff, reviewer not called" $?
-# a command that exits non-zero is reported as "exited <n> in <time>" by the reviewer's text output
+# a command that exits non-zero is reported as "exited <n> in <time>"; it is counted (failed=N) but does not decide
 git -C "$repo" reset -q --hard HEAD~1 2>/dev/null
-printf '#!/bin/sh\necho " succeeded in 1ms:"; echo " exited 1 in 4ms:"\n' > "$tmp/bin/codex"
+printf '#!/bin/sh\necho " succeeded in 1ms:" >&2; echo Review; echo " exited 1 in 4ms:" >&2\n' > "$tmp/bin/codex"
 run
-[ "$rc" -eq 1 ] && grep -q 'not-established' <<<"$out"; check "a command that exited non-zero is not established" $?
+[ "$rc" -eq 0 ] && grep -q "passed (.*failed=1 " <<<"$out"; check "a command that exited non-zero is counted, the finished review passes" $?
 # The gate runs outside the worker sandbox: the log is a fresh mktemp file, never a path a worker can pre-create,
 # and a CODEX_HOME that is a symlink is refused before anything is written through it.
-printf '#!/bin/sh\necho " succeeded in 1ms:"\n' > "$tmp/bin/codex"
+printf '#!/bin/sh\necho " succeeded in 1ms:" >&2; echo Review\n' > "$tmp/bin/codex"
 mkdir -p "$tmp/victim"; : > "$tmp/victim/keep"; mkdir -p "$tmp/tmpd"
 for n in 1 2 3; do ln -sf "$tmp/victim/keep" "$tmp/tmpd/second-review-diff.$n" 2>/dev/null; done
 ln -sf "$tmp/victim/keep" "$tmp/tmpd/second-review-diff.log"

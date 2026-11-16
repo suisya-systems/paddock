@@ -33,11 +33,15 @@ stubdir=$tmp/bin; mkdir -p "$stubdir"
 cat > "$stubdir/codex" <<'EOF2'
 #!/bin/sh
 echo "$*" >> "$STUB_LOG"
+# progress on stderr, the final message alone on stdout, as the real CLI does
 case "${STUB_MODE:-ran}" in
-  ran)    echo "exec"; echo "git diff in /w"; echo " succeeded in 12ms:"; echo "Findings: none"; exit 0 ;;
+  ran)    printf '%s\n' "exec" "git diff in /w" " succeeded in 12ms:" >&2; echo "Findings: none"; exit 0 ;;
   empty)  echo "Findings: none"; exit 0 ;;
-  failed) echo " succeeded in 3ms:"; echo " failed in 4ms:"; exit 0 ;;
-  bad)    echo " succeeded in 3ms:"; exit 5 ;;
+  failed) printf '%s\n' " succeeded in 3ms:" " exited 1 in 4ms:" " failed in 4ms:" >&2; echo "Findings: one Minor"; exit 0 ;;
+  notext) echo " succeeded in 3ms:" >&2; exit 0 ;;
+  prose)  printf '%s\n' "Findings: none" " succeeded in 1ms:"; exit 0 ;;
+  allbad) echo " exited 1 in 4ms:" >&2; echo "Findings: none"; exit 0 ;;
+  bad)    echo " succeeded in 3ms:" >&2; echo "Findings: none"; exit 5 ;;
 esac
 EOF2
 chmod +x "$stubdir/codex"
@@ -59,8 +63,19 @@ grep -q -- '--base origin/main' "$STUB_LOG"; check "diff: the review is of HEAD 
 grep -q 'read-only' "$STUB_LOG"; check "diff: the reviewer's own sandbox stays read-only" $?
 STUB_MODE=empty run
 [ "$rc" -eq 1 ] && grep -q '^CODEX_GATE: not-established' <<<"$last"; check "diff: an empty pass (no command ran) is not established (exit 1)" $?
+STUB_MODE=ran run
+! grep -q 'git diff in /w' <<<"$out"; check "diff: the reviewer's progress log is not on stdout" $?
+lf=$(sed -n 's/.* log=\([^ )]*\).*/\1/p' <<<"$last")
+grep -q 'git diff in /w' "$lf" && grep -q 'Findings: none' "$lf"; check "diff: the log file named on the last line holds the progress and the review" $?
 STUB_MODE=failed run
-[ "$rc" -eq 1 ] && grep -q '^CODEX_GATE: not-established' <<<"$last"; check "diff: a failed command is not established" $?
+[ "$rc" -eq 0 ] && grep -q '^CODEX_GATE: passed (.*succeeded=1 failed=2 ' <<<"$last" && grep -q 'one Minor' <<<"$out"
+check "diff: a finished review with some failed commands passes, failed=N shown" $?
+STUB_MODE=notext run
+[ "$rc" -eq 1 ] && grep -q '^CODEX_GATE: not-established (.*no final review text' <<<"$last"; check "diff: no final review text is not established" $?
+STUB_MODE=prose run
+[ "$rc" -eq 1 ] && grep -q 'succeeded=0 failed=0 ' <<<"$last"; check "diff: a command line quoted in the review text is not a command run" $?
+STUB_MODE=allbad run
+[ "$rc" -eq 0 ] && grep -q 'succeeded=0 failed=1 ' <<<"$last"; check "diff: a command that ran and failed still counts as a command run" $?
 STUB_MODE=bad run
 [ "$rc" -eq 1 ] && grep -q '^CODEX_GATE: not-established' <<<"$last"; check "diff: a reviewer exit status other than 0 is not established" $?
 
