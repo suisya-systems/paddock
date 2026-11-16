@@ -8,6 +8,9 @@
 # Stub knobs (environment of the script under test):
 #   STUB_HEAD=sha       `gh pr view` reports this head (default: the pushed head)
 #   STUB_CHECKS_RC=N    `gh pr checks` exits N (default 0)
+#   STUB_CHECKS_ERR=s   `gh pr checks` prints s on stderr
+#   STUB_NO_REQUIRED=1  `gh pr checks` answers as gh does for a branch with no required checks
+#   STUB_MERGE_STATE=s  `gh pr view --json mergeStateStatus` answers s (default CLEAN)
 #   STUB_MERGE_FAIL=1   `gh pr merge` fails
 #   STUB_PR_FAIL=1      `gh pr create` fails
 set -u
@@ -27,8 +30,11 @@ echo "gh $*" >> "$STUB/calls"
 case "$1 $2" in
   "pr create") [ -z "${STUB_PR_FAIL:-}" ] || { echo 'gh: create failed' >&2; exit 1; }
     echo "https://github.com/o/r/pull/42"; exit 0 ;;
-  "pr view") echo "${STUB_HEAD:-$(cat "$STUB/head")}"; exit 0 ;;
-  "pr checks") exit "${STUB_CHECKS_RC:-0}" ;;
+  "pr view") case "$*" in *mergeStateStatus*) echo "${STUB_MERGE_STATE:-CLEAN}"; exit 0 ;; esac
+    echo "${STUB_HEAD:-$(cat "$STUB/head")}"; exit 0 ;;
+  # gh's own text for a branch with no required checks (gh pr checks --required, exit 1)
+  "pr checks") [ -z "${STUB_NO_REQUIRED:-}" ] || { echo "no required checks reported on the 'feat/x' branch" >&2; exit 1; }
+    [ -z "${STUB_CHECKS_ERR:-}" ] || echo "$STUB_CHECKS_ERR" >&2; exit "${STUB_CHECKS_RC:-0}" ;;
   "pr merge") [ -z "${STUB_MERGE_FAIL:-}" ] || { echo 'gh: merge failed' >&2; exit 1; }
     exit 0 ;;
 esac
@@ -181,6 +187,24 @@ ok_head; ENVX=STUB_HEAD=0000000000000000000000000000000000000000 run_script --pr
 [ "$rc" -eq 10 ] && ! merged; check "head moved after the watched run: refuse, exit 10, no merge" $?
 ok_head; ENVX=STUB_CHECKS_RC=1 run_script --pr 42 --mode acceptance >/dev/null; rc=$?
 [ "$rc" -eq 10 ] && ! merged; check "required checks not green: refuse, exit 10, no merge" $?
+ok_head; out=$(run_script --pr 42 --mode acceptance); rc=$?
+grep -q '^Merge check: the required checks are green' <<<"$out"; check "required checks green: one line names that check" $?
+ok_head; out=$(ENVX=STUB_NO_REQUIRED=1 run_script --pr 42 --mode acceptance); rc=$?
+[ "$rc" -eq 0 ] && merged && has "^gh pr merge 42 .*--match-head-commit $head( |\$)" \
+  && grep -q "^Merge check: the branch has no required checks (merge state CLEAN); used the watcher's ci_completed record for $head (success, run 777)" <<<"$out"
+check "no required checks + the watcher's success for the head: merged on that head, the line says so ($out)" $?
+reset; run_script "${args[@]}" >/dev/null; CODE=1 watcher ci_completed; : > "$calls"
+ENVX=STUB_NO_REQUIRED=1 run_script --pr 42 --mode acceptance >/dev/null; rc=$?
+[ "$rc" -eq 9 ] && ! merged; check "no required checks + the watcher's failure for the head: refused (exit 9)" $?
+reset; run_script "${args[@]}" >/dev/null; : > "$calls"
+ENVX=STUB_NO_REQUIRED=1 run_script --pr 42 --mode acceptance >/dev/null; rc=$?
+[ "$rc" -eq 4 ] && ! merged; check "no required checks + no record for the head: refused (exit 4)" $?
+ok_head; ENVX="STUB_NO_REQUIRED=1 STUB_MERGE_STATE=BLOCKED" run_script --pr 42 --mode acceptance >/dev/null; rc=$?
+[ "$rc" -eq 10 ] && ! merged; check "no required checks reported but the merge state is BLOCKED (a required check never reported): refused (exit 10)" $?
+ok_head; ENVX="STUB_CHECKS_RC=1 STUB_CHECKS_ERR=boom" run_script --pr 42 --mode acceptance >/dev/null; rc=$?
+[ "$rc" -eq 10 ] && ! merged; check "another error of gh pr checks --required: refused (exit 10)" $?
+ok_head; ENVX="STUB_CHECKS_RC=8" run_script --pr 42 --mode acceptance >/dev/null; rc=$?
+[ "$rc" -eq 10 ] && ! merged; check "an empty error of gh pr checks --required: refused (exit 10)" $?
 reset; run_script "${args[@]}" >/dev/null; CODE=1 watcher ci_completed
 run_script --pr 42 --mode acceptance >/dev/null; rc=$?
 [ "$rc" -eq 9 ] && ! merged && ! has '^gh pr (view .*headRefOid|checks)'; check "CI failed in acceptance mode: exit 9, no merge" $?
