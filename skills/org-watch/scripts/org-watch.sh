@@ -221,6 +221,8 @@ reload_pass() {
     sendline "$sec" reload-plugins reload /reload-plugins || return 1
     printf '%s %s\n' "$now" "$id" > "$reload-sent"; return 0
   fi
+  # ponytail: the anchor is the last /reload-plugins on screen; if this send's echo has not shown by the
+  # next pass, an older pair still visible confirms it. A per-send screen baseline if that is seen.
   if scr=$(hc read "$sec" 2>/dev/null) && printf '%s\n' "$scr" \
       | awk '/\/reload-plugins/ { r = NR; ok = 0 } r && NR > r && /Reloaded:/ { ok = 1 } END { exit !ok }'; then
     # ponytail: a landing between this read and the rm is lost; a lock shared with org-start if it bites
