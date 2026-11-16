@@ -169,15 +169,15 @@ const ago = (s, L) => (s < 60 ? L.sec(Math.max(0, Math.floor(s))) : duration(s *
 const since = (iso, now, L) => (iso ? duration(now - Date.parse(iso), L) : "");
 
 // The last meaningful lines of a screen. Claude Code draws an input box with a `❯` (or `>`)
-// prompt row, then a status line and footer hints below it; they say nothing about the work. So
-// everything from the last prompt row down is cut, and of what is left, lines of box drawing,
-// prompt rows and hints are dropped.
+// prompt row (right under a border line), then a status line and footer hints below it; they say
+// nothing about the work. So everything from the last such prompt row down is cut, and of what is
+// left, lines of box drawing, prompt rows and hints are dropped.
 // ponytail: a text heuristic for Claude Code's screen; other agents' chrome may slip through.
 const CHROME = /^[\s─━│┃╭╮╰╯┌┐└┘├┤┬┴┼═║╔╗╚╝▔▁]*$/;
 const PROMPT = /^\s*[│┃]?\s*[>❯]/;
 function lastLines(text, n = 2) {
   let lines = (text ?? "").split("\n").map((l) => l.replace(/\s+$/, ""));
-  const p = lines.findLastIndex((l) => PROMPT.test(l));
+  const p = lines.findLastIndex((l, i) => PROMPT.test(l) && i > 0 && lines[i - 1].trim() && CHROME.test(lines[i - 1]));
   if (p >= 0) lines = lines.slice(0, p);
   return lines
     .filter((l) => l.trim() && !CHROME.test(l) && !PROMPT.test(l) && !/\? for shortcuts|esc to interrupt|shift\+tab to cycle/i.test(l))

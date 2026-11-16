@@ -41,4 +41,10 @@ got=$(printf '%s\n' "$noprompt" | run 2)
 got=$(printf '%s\n' "$noprompt" | run 1)
 [ "$got" = '["org-watch: cannot reach the core (hc ls failed)"]' ]; check "one line, as the watcher strip asks ($got)" $?
 
+build='> npm test
+FAIL src/a.test.js
+  expected 1, got 2'
+got=$(printf '%s\n' "$build" | run 2)
+[ "$got" = '["FAIL src/a.test.js","expected 1, got 2"]' ]; check "a > line in plain output is not a prompt row ($got)" $?
+
 exit $fail
