@@ -51,6 +51,8 @@ Each item is one line, written with `scripts/org --as watcher send_message secre
 | Worker gone | `org work_check`'s `gone`: an `org-state.work` task whose terminal is not found or `finished`, with no done record | `w-<task> has no terminal and sent no done report` |
 | No status | a `task_id` terminal with no status N minutes after it was created | `w-<task> has reported no status for N minutes` |
 | CI result | its own CI watch ended (below) | `CI <success\|failure> on PR <n>, head <sha7>, run <id>. Runs read: <id> <event> <conclusion>, ...` or `CI watch failed on PR <n>, head <sha7>: <reason> (log <path>).` |
+| Green PR, no card | N minutes after a green `ci_completed` of a PR's newest head, its task has no card in `org-state.approvals` and is still in `org-state.work` (not landed); once per head | `PR #<n> is green and no card asks about it` |
+| Answered card still up | a card in `org-state.approvals` whose `ANSWER <id>` has been in the person's history for N minutes | `answer for <id> arrived; the card is still up` |
 
 `org work_check` is the worker check of `org wait` (moved out of it, not copied), run as `watcher`.
 

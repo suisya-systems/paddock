@@ -19,8 +19,10 @@ Polls the core and tells the person (a desktop toast with sound, else a terminal
 Each item is told once, and again after N minutes if it is still waiting.
 Decision 0013: worker events (blocked, done with no report, gone, no status) become one line
 each in the secretary's mailbox, written as watcher; a background ci-watch.sh per open
-ci_requested record writes ci_completed or ci_watch_failed and a mailbox line. The secretary
-and each worker with unread mail are woken with one constant line, only when idle or done,
+ci_requested record writes ci_completed or ci_watch_failed and a mailbox line. N minutes after
+a green ci_completed whose task has no card and is still in org-state.work, and N minutes after a
+card's ANSWER reached the person's history while the card is still up, one line each.
+The secretary and each worker with unread mail are woken with one constant line, only when idle or done,
 never over typed input, at most once per unread batch per PADDOCK_WATCH_WAKE seconds; each
 wake, skip and mailbox line is logged to watcher/woke.
   --once  one pass, then exit (0 done, 5 core unreachable); without it, loop until killed
@@ -106,11 +108,11 @@ tell() { # tell <key> <title> <body>: only if due; the key is kept active either
   notify "$2" "$3"; mark "$1"
 }
 
-# approval_lines <org-state doc>: "id<TAB>task_id<TAB>question" per entry of the top-level
-# approvals array. A scanner that knows strings, escapes and nesting: a word like "approvals"
-# or a brace inside a question or a task is data.
+# approval_lines <org-state doc> [array]: "id<TAB>task_id<TAB>question" per entry of the top-level
+# approvals array (or of [array], such as work). A scanner that knows strings, escapes and nesting:
+# a word like "approvals" or a brace inside a question or a task is data.
 approval_lines() {
-  printf '%s' "$1" | tr -d '\n' | awk '{
+  printf '%s' "$1" | tr -d '\n' | A=${2:-approvals} awk '{
     n = 0; s = $0; L = length(s)
     for (i = 1; i <= L; i++) { c = substr(s, i, 1)
       if (c == "\"") { v = ""; for (i++; i <= L; i++) { c = substr(s, i, 1)
@@ -125,7 +127,7 @@ approval_lines() {
         if (inapp && t == "}" && d == 3) printf "%s\t%s\t%s\n", id, tk, qu
         if (inapp && t == "]" && d == 2) inapp = 0
         d-- }
-      else if (t == "S" && !inapp && d == 1 && tv[i] == "approvals" && tt[i+1] == ":" && tt[i+2] == "[") inapp = 1
+      else if (t == "S" && !inapp && d == 1 && tv[i] == ENVIRON["A"] && tt[i+1] == ":" && tt[i+2] == "[") inapp = 1
       else if (t == "S" && inapp && d == 3 && tt[i+1] == ":" && tt[i+2] == "S") {
         if (tv[i] == "id") id = tv[i+2]; else if (tv[i] == "task_id") tk = tv[i+2]; else if (tv[i] == "question") qu = tv[i+2] } }
   }'
@@ -200,17 +202,27 @@ wake() {
 # ci_completed or ci_watch_failed of the watcher at or after it for the same repo, pr and sha (stage 1:
 # the skill's own ci_completed does not count). open: the newest request of its repo and PR; super:
 # an older one with another head. This and the last calendar month of the history.
-ci_lines() {
+# hist <org id> <ERE>: the lines of <org id>'s history that match, this calendar month and the
+# last, as scripts/org's window (own_files makes next month's folder early)
+hist() {
   local ev=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/events d cur y m
-  # this calendar month and the last, as scripts/org's window (own_files makes next month's folder early)
   cur=$(date -u -d "@$now" +%Y-%m 2>/dev/null) || cur=$(date -u +%Y-%m)
   y=${cur%-*}; m=$((10#${cur#*-} - 1)); [ "$m" -gt 0 ] || { m=12; y=$((10#$y - 1)); }
   for d in "$ev/$(printf '%04d-%02d' "$((10#$y))" "$m")" "$ev/$cur"; do
-    [ ! -f "$d/secretary.jsonl" ] || grep -h '"kind":"ci_requested"' "$d/secretary.jsonl" | sed 's/^/R /'
-    [ ! -f "$d/watcher.jsonl" ] || grep -hE '"kind":"(ci_completed|ci_watch_failed)"' "$d/watcher.jsonl" | sed 's/^/D /'
-  done | awk '
-    function v(k) { if (match($0, "\"" k "\":\"[^\"]*\"")) return substr($0, RSTART + length(k) + 4, RLENGTH - length(k) - 5)
-                    if (match($0, "\"" k "\":[0-9]+")) return substr($0, RSTART + length(k) + 3, RLENGTH - length(k) - 3); return "" }
+    [ ! -f "$d/$1.jsonl" ] || grep -hE "$2" "$d/$1.jsonl"
+  done
+}
+# AWK_V: v(k), the string or number value of key k on the line
+AWK_V='function v(k) { if (match($0, "\"" k "\":\"[^\"]*\"")) return substr($0, RSTART + length(k) + 4, RLENGTH - length(k) - 5)
+                    if (match($0, "\"" k "\":[0-9]+")) return substr($0, RSTART + length(k) + 3, RLENGTH - length(k) - 3); return "" }'
+# ci_hist: the secretary's ci_requested lines as "R <line>", the watcher's ci_completed and
+# ci_watch_failed as "D <line>"
+ci_hist() {
+  hist secretary '"kind":"ci_requested"' | sed 's/^/R /'
+  hist watcher '"kind":"(ci_completed|ci_watch_failed)"' | sed 's/^/D /'
+}
+ci_lines() {
+  ci_hist | awk "$AWK_V"'
     $1 == "R" { n++; ts[n] = v("ts"); pr[n] = v("pr"); sh[n] = v("sha"); rp[n] = v("repo"); tk[n] = v("task_id")
                 p = rp[n] " " pr[n]; if (ts[n] >= nt[p]) { nt[p] = ts[n]; ns[p] = sh[n] } next }
     $1 == "D" { k = v("repo") " " v("pr") " " v("sha"); t = v("ts"); if (t > dt[k]) dt[k] = t }
@@ -218,6 +230,23 @@ ci_lines() {
             if (k in seen) continue; seen[k] = 1
             printf "%s\t%s\t%s\t%s\t%s\n", (ns[p] == sh[i] ? "open" : "super"), pr[i], sh[i], rp[i], tk[i] } }'
 }
+# green_lines: "pr<TAB>sha<TAB>repo<TAB>task<TAB>ts" per PR whose newest requested head's latest
+# watcher result at or after that request is a ci_completed success (ts is that line's)
+green_lines() {
+  ci_hist | awk "$AWK_V"'
+    $1 == "R" { p = v("repo") " " v("pr"); if (v("ts") >= nt[p]) { nt[p] = v("ts"); ns[p] = v("sha"); nk[p] = v("task_id") } next }
+    $1 == "D" { k = v("repo") " " v("pr") " " v("sha"); if (v("ts") >= dt[k]) { dt[k] = v("ts"); ok[k] = /"conclusion":"success"/ } }
+    END { for (p in nt) { k = p " " ns[p]; if (!ok[k] || dt[k] < nt[p]) continue; split(p, a, " ")
+            printf "%s\t%s\t%s\t%s\t%s\n", a[2], ns[p], a[1], nk[p], dt[k] } }'
+}
+# answer_lines: "approval id<TAB>ts of its first answer" per ANSWER line in the person's history
+answer_lines() {
+  hist person '"text":"ANSWER ' | awk "$AWK_V"'
+    match($0, /"text":"ANSWER [^ ";\\]+/) { i = substr($0, RSTART + 15, RLENGTH - 15); t = v("ts"); if (!(i in f) || t < f[i]) f[i] = t }
+    END { for (i in f) printf "%s\t%s\n", i, f[i] }'
+}
+# older <iso ts>: that time is N minutes ago or more
+older() { local t; t=$(date -u -d "$1" +%s 2>/dev/null) && [ $((now - t)) -ge "$limit" ]; }
 # ci_alive <pid>: that pid runs ci-watch.sh (after a restart a recorded pid may be another process)
 ci_alive() { kill -0 "$1" 2>/dev/null && tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null | grep -q 'ci-watch\.sh'; }
 # ckey <repo> <pr>: the file key of one PR's watch, <owner>_<name>-<pr>
@@ -267,7 +296,7 @@ listed() { printf '%s' "$1" | sed -n "s/.*\"$2\":\[\([^]]*\)\].*/\1/p" | tr -d '
 
 pass() {
   now=${PADDOCK_WATCH_NOW:-$(date +%s)}; active=; local prune=1
-  local terms n j doc cards id tk qu ms cr fp since wc_out
+  local terms n j doc= cards= id tk qu ms cr fp since wc_out pr sha repo ts works ans
   terms=$(paddock_terminals) || { echo "org-watch: cannot reach the core (hc ls failed)" >&2; return 5; }
 
   # 1. approval cards (org-state.approvals), once per card
@@ -278,7 +307,7 @@ pass() {
       tell "approval:$id" "Approval waiting: ${tk:-?}" "${qu:0:200}"
     done <<< "$cards"
   else
-    prune=
+    prune=; doc=
   fi
 
   # 2. Q3's incident: a worker blocked, and the secretary's status, turn and screen unchanged for N minutes
@@ -322,6 +351,27 @@ pass() {
 
   # 5. CI: one background ci-watch.sh per open ci_requested record
   ci_pass
+
+  # 5b. after N minutes: a green PR head with no card for its task and no landing (its
+  # task still in org-state.work), and a card whose answer is in the person's history
+  if [ -n "$doc" ]; then
+    works=$(approval_lines "$doc" work | cut -f2)
+    while IFS="$tab" read -r pr sha repo tk ts; do
+      # ponytail: a request with no task cannot be matched to a card or a landing, so it is left out
+      [ -n "$tk" ] && grep -qxF -- "$tk" <<< "$works" && older "$ts" || continue
+      # a card for the task keeps the key, so the head is not told again once the card is gone
+      if printf '%s\n' "$cards" | cut -f2 | grep -qxF -- "$tk"; then active="${active}mail:green:$repo#$pr@$sha
+"; continue; fi
+      mail_once "mail:green:$repo#$pr@$sha" "PR #$pr is green and no card asks about it"
+    done <<< "$(green_lines)"
+    ans=$(answer_lines)
+    while IFS="$tab" read -r id tk qu; do
+      [ -n "$id" ] || continue
+      ts=$(printf '%s\n' "$ans" | awk -F'\t' -v i="$id" '$1 == i { print $2 }')
+      [ -n "$ts" ] && older "$ts" || continue
+      mail_once "mail:answered:$id" "answer for $id arrived; the card is still up"
+    done <<< "$cards"
+  fi
 
   # 6. the wake: the secretary and each live worker with unread mail
   wake "$sec" secretary
