@@ -19,7 +19,7 @@
 ## Assumptions (open points left open)
 
 - The base branch is `--base`, else the base in the `--project <name>` row of `projects.md` (same file and columns as org-delegate; only the base is read, since `--worktree` is the worker's), else `main`. An unknown name or a missing file exits 2 before the branch is sent anywhere. The title and body are written by the secretary in English.
-- `--task-id` may hold only letters, digits, `.`, `_` and `-` (it goes into a JSON line); anything else exits 2 before the push.
+- `--task-id` may hold only lowercase letters, digits, `_` and `-`, not first (the id org-delegate makes; it goes into a JSON line and is the merge card's task, which `org-escalation ask` takes in that form only); anything else exits 2 before the push.
 - `ci-watch.sh` waits for every run of the head (push and pull_request) and records `success` only when all are green; a run that starts after all the others ended is not waited for, and in `acceptance` mode the required checks cover it.
 - Known limit: the final line "Merged" means the merge call succeeded. On a branch with a merge queue that only enqueues the PR; the script does not query the merge state afterwards. This repository has no merge queue.
 - The required-checks query exits non-zero when a required check fails, is pending, or none is configured; all of those refuse the merge.

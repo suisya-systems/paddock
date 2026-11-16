@@ -101,7 +101,8 @@ case $approved in -*|*[!A-Za-z0-9_-]*) die 2 "--approved takes the approval id (
 [ -n "$pr" ] || [ -n "$title" ] || die 2 "--title is required unless --pr is given" "$fixcall"
 [ -n "$pr" ] || [ -n "$body$bodyfile" ] || die 2 "--body-file or --body is required unless --pr is given" "$fixcall"
 [ -z "$bodyfile" ] || [ -f "$bodyfile" ] || die 2 "body file not found: $bodyfile" "$fixcall"
-case $task in *[!A-Za-z0-9._-]*) die 2 "--task-id may hold only letters, digits, . _ -" "$fixcall" ;; esac
+# a task id as org-delegate makes it, which the merge card (org-escalation ask) also takes
+case $task in -*|*[!a-z0-9_-]*) die 2 "--task-id may hold only lowercase letters, digits, _ and - (not first)" "$fixcall" ;; esac
 
 if [ -z "$repo" ]; then # owner/name from a GitHub origin URL only
   url=$(git -C "$wt" remote get-url origin 2>/dev/null)

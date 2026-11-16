@@ -128,5 +128,7 @@ reset; out=$(run --pr 42 --mode acceptance --approved x-1); rc=$?
 [ "$rc" -eq 2 ] && ! merged; check "--approved in acceptance mode exits 2" $?
 out=$(run --title t --body-file "$body" --approved x-1); rc=$?
 [ "$rc" -eq 2 ]; check "--approved without --pr exits 2" $?
+reset; out=$(run --title t --body-file "$body" --task-id T.1); rc=$?
+[ "$rc" -eq 2 ] && ! grep -q '^gh pr create' "$calls"; check "a task id the merge card cannot take exits 2 before the PR is opened" $?
 
 exit "$fail"
