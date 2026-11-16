@@ -169,10 +169,23 @@ if command -v node >/dev/null 2>&1; then
     const g = (process.env.PADDOCK_BIN_DIR || (process.env.XDG_DATA_HOME || process.env.HOME + "/.local/share") + "/paddock/bin") + "/second-model-review.sh";
     const want = [`bash "${g}"`, `bash ${g}`, `bash "${g}" --design`, `bash ${g} --design`];
     const same = (a, b) => a.length === b.length && b.every(x => a.includes(x));
+    const git = ["git add:*", "git commit:*"];
     const ex = s.sandbox.excludedCommands, al = s.permissions.allow.map(x => x.replace(/^Bash\((.*)\)$/, "$1"));
-    process.exit(same(ex, want) && same(al, want) && !ex.concat(al).some(x => x.includes("*")) && s.sandbox.allowUnsandboxedCommands === false ? 0 : 1);' \
+    process.exit(same(ex, want) && same(al, want.concat(git)) && !ex.concat(want).some(x => x.includes("*")) && s.sandbox.allowUnsandboxedCommands === false ? 0 : 1);' \
     "$tmp/state/settings/t1.json"
   check "the review gate's exact calls are in excludedCommands and permissions.allow of the per-task file" $?
+fi
+# Issue #449: the worker's own git add / git commit are allowed, inside the sandbox; no push, -c or --no-verify form.
+if command -v node >/dev/null 2>&1; then
+  node -e '
+    const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+    const al = s.permissions.allow, ex = s.sandbox.excludedCommands, deny = s.permissions.deny;
+    const ok = al.includes("Bash(git add:*)") && al.includes("Bash(git commit:*)")
+      && !ex.some(x => /^git /.test(x))
+      && !al.some(x => /^Bash\(git (push|reset|rebase|checkout|branch|-c)/.test(x) || x.includes("--no-verify"))
+      && deny.includes("Bash(git push:*)") && ["git push:*", "git commit *--no-veri*", "git commit -n*", "git commit * -n*"].every(d => deny.includes(`Bash(${d})`));
+    process.exit(ok ? 0 : 1);' "$tmp/state/settings/t1.json"
+  check "git add and git commit are allowed in the sandbox; push, -c and --no-verify are not" $?
 fi
 if command -v node >/dev/null 2>&1; then
   node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$workers/t1/.claude/settings.local.json"
