@@ -110,7 +110,7 @@ Start with `bash skills/org-start/scripts/org-start.sh --check`.
 
 **`hc unreachable`** at the top of the worker tiles, or **`Can't reach hc.`** in the card's place: the screen could not read the organization's state. The line under the message is the error:
 
-- `sh: hc: not found` (the wording depends on the shell): `hc` is not on the PATH of the running herdr-core. The `core-path` line of `--check` says so. Stop herdr-core and start herdr again from a login shell that has `hc` on its PATH.
+- `sh: hc: not found` (the wording depends on the shell): `hc` is not on the PATH of the running herdr-core. The `core-path` line of `--check` says so. From a login shell that has `hc` on its PATH (outside herdr), run `bash skills/org-start/scripts/org-start.sh --restart-core`: it lists the terminals it will end (all of them, the secretary and workers too), asks y/N (`--yes` skips the question), runs `hc server stop` and `hc server start`, and then starts the organization as usual.
 - herdr-app for Windows with no `wsl` machine: the screen looks for `hc` on Windows, not in WSL. Do steps 1 and 2 of [WSL with herdr-app for Windows](#wsl-with-herdr-app-for-windows).
 - The machine name is wrong: `hc machine ls` lists the machines; set `PADDOCK_APP_MACHINE` to the right name and run org-start again.
 - The core is not running: run org-start, which starts one.

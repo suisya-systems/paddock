@@ -35,6 +35,7 @@ esac
 exit 0
 EOF2
 chmod +x "$stubdir/gh"
+. "$here/tests/hc-doc-stub.sh"; hc_doc_stub "$stubdir"   # org-state for the merge card (human mode)
 
 # origin is a bare repo; the worker's worktree is a clone on branch feat/x.
 origin=$tmp/origin.git; wt=$tmp/wt
@@ -54,8 +55,9 @@ reset() { # fresh stub state, empty events folder, empty origin refs
   printf '%s\n' "$head" > "$tmp/stub/head"
   git -C "$origin" for-each-ref --format='%(refname)' | while read -r r; do git -C "$origin" update-ref -d "$r"; done
 }
-run_script() { # run_script [args...]; extra env via ENVX (space separated)
-  env -u PADDOCK_NOW STUB="$tmp/stub" PADDOCK_STATE_DIR="$tmp/state" PADDOCK_ORG_CONFIG_FILE="$tmp/no-org-config.md" \
+run_script() { # run_script [args...]; extra env via ENVX (space separated). A --pr run names task t1 (the merge card's task).
+  case " $* " in *" --pr "*) set -- "$@" --task-id t1 ;; esac
+  env -u PADDOCK_NOW STUB="$tmp/stub" PADDOCK_STATE_DIR="$tmp/state" PADDOCK_ORG_CONFIG_FILE="$tmp/no-org-config.md" PADDOCK_HC_HOLD=0 \
       PATH="$stubdir:$PATH" ${ENVX:-} bash "$script" --worktree "$wt" --repo o/r "$@" 2>&1
 }
 # watcher <ci_completed|ci_watch_failed> [args]: the watcher's record of this head, as ci-watch.sh writes it

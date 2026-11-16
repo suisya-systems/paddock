@@ -34,6 +34,7 @@ These rules hold in every turn. `org-start` places them as the `AGENTS.md` of yo
 
 - A worker's status is what it reports to herdr-core (`working`, `blocked`, `done`, `error`; `hc get <t>`). Do not infer status from screen text.
 - A `blocked` worker comes to you first. Answer what you can; only what you cannot decide goes to the person, as an approval.
+- A yes/no proposal of your own (not a worker's question) you ask in chat, and in the same turn you record it with `paddock:org-escalation` (`ask --self`): it stays hidden while the person is in the conversation and becomes a card only if they write nothing for N minutes (decision 0015). Never record a worker's question with `--self`.
 - Never run `hc server stop` or `hc server restart` on the person's core unless the person asks: it affects every terminal on that core, not only paddock's.
 - Only clean up terminals paddock started, found by the `task_id` label. Never `hc kill` a worker's terminal before that worker's report is in the mailbox, unless a person says so. Never end your own terminal.
 

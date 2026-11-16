@@ -110,7 +110,7 @@ tell() { # tell <key> <title> <body>: only if due; the key is kept active either
   notify "$2" "$3"; mark "$1"
 }
 
-# approval_lines <org-state doc> [array]: "id<TAB>task_id<TAB>question" per entry of the top-level
+# approval_lines <org-state doc> [array]: "id<TAB>task_id<TAB>question<TAB>show_at" per entry of the top-level
 # approvals array (or of [array], such as work). A scanner that knows strings, escapes and nesting:
 # a word like "approvals" or a brace inside a question or a task is data.
 approval_lines() {
@@ -124,14 +124,14 @@ approval_lines() {
       else if (c ~ /[{}:\[\]]/) { n++; tt[n] = c; tv[n] = c } }
     d = 0; inapp = 0
     for (i = 1; i <= n; i++) { t = tt[i]
-      if (t == "{" || t == "[") { d++; if (inapp && t == "{" && d == 3) { id = ""; tk = ""; qu = "" } }
+      if (t == "{" || t == "[") { d++; if (inapp && t == "{" && d == 3) { id = ""; tk = ""; qu = ""; sa = "" } }
       else if (t == "}" || t == "]") {
-        if (inapp && t == "}" && d == 3) printf "%s\t%s\t%s\n", id, tk, qu
+        if (inapp && t == "}" && d == 3) printf "%s\t%s\t%s\t%s\n", id, tk, qu, sa
         if (inapp && t == "]" && d == 2) inapp = 0
         d-- }
       else if (t == "S" && !inapp && d == 1 && tv[i] == ENVIRON["A"] && tt[i+1] == ":" && tt[i+2] == "[") inapp = 1
       else if (t == "S" && inapp && d == 3 && tt[i+1] == ":" && tt[i+2] == "S") {
-        if (tv[i] == "id") id = tv[i+2]; else if (tv[i] == "task_id") tk = tv[i+2]; else if (tv[i] == "question") qu = tv[i+2] } }
+        if (tv[i] == "id") id = tv[i+2]; else if (tv[i] == "task_id") tk = tv[i+2]; else if (tv[i] == "question") qu = tv[i+2]; else if (tv[i] == "show_at") sa = tv[i+2] } }
   }'
 }
 num() { printf '%s' "$1" | grep -o "\"$2\": *[0-9][0-9]*" | head -1 | sed 's/.*: *//'; }
@@ -338,8 +338,15 @@ pass() {
   # 1. approval cards (org-state.approvals), once per card
   if doc=$("$BASH" "$org" --as watcher doc get org-state 2>/dev/null); then
     cards=$(approval_lines "$doc")
-    while IFS="$tab" read -r id tk qu; do
+    while IFS="$tab" read -r id tk qu sa; do
       [ -n "$id" ] || continue
+      # A proposal of the secretary's own is hidden until its show_at; then the secretary's
+      # sweep decides (show or withdraw), so the watcher only mails it once that time is reached
+      if [ -n "$sa" ]; then
+        [ "$(date -u -d "$sa" +%s 2>/dev/null || echo "$now")" -gt "$now" ] \
+          || mail_once "mail:show:$id" "proposal $id reached its show time: run org-escalation sweep"
+        continue
+      fi
       tell "approval:$id" "Approval waiting: ${tk:-?}" "${qu:0:200}"
     done <<< "$cards"
   else
@@ -408,7 +415,7 @@ pass() {
       mail_once "mail:green:$repo#$pr@$sha" "PR #$pr is green and no card asks about it"
     done <<< "$(green_lines)"
     ans=$(answer_lines)
-    while IFS="$tab" read -r id tk qu; do
+    while IFS="$tab" read -r id tk qu _; do
       [ -n "$id" ] || continue
       ts=$(printf '%s\n' "$ans" | awk -F'\t' -v i="$id" '$1 == i { print $2 }')
       [ -n "$ts" ] && older "$ts" || continue

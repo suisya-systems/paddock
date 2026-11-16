@@ -14,8 +14,9 @@ export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER
 
 # The paddock folder: only what the script reads, plus a stub org-start.sh that records its call.
 root=$tmp/paddock
-mkdir -p "$root/skills/org-pull-request" "$root/skills/org-delegate" "$root/skills/org-start/scripts" "$root/scripts"
+mkdir -p "$root/skills/org-pull-request" "$root/skills/org-delegate" "$root/skills/org-escalation" "$root/skills/org-start/scripts" "$root/scripts"
 cp -R "$here/skills/org-pull-request/." "$root/skills/org-pull-request/"
+cp -R "$here/skills/org-escalation/scripts" "$root/skills/org-escalation/"   # the merge card (human mode)
 cp -R "$here/skills/org-delegate/scripts" "$root/skills/org-delegate/"
 cp "$here/scripts/org" "$root/scripts/org"
 cat > "$root/skills/org-start/scripts/org-start.sh" <<'EOF2'
@@ -44,6 +45,7 @@ esac
 exit 0
 EOF2
 chmod +x "$stubdir/gh"
+. "$here/tests/hc-doc-stub.sh"; hc_doc_stub "$stubdir"   # org-state for the merge card
 
 origin=$tmp/origin.git; git init -q --bare "$origin"
 wt=$tmp/wt; git -C "$root" worktree add -q -b feat/x "$wt"       # shares the paddock folder's git store
@@ -56,8 +58,9 @@ git -C "$alien" push -q origin feat/y 2>/dev/null
 
 calls=$tmp/stub/calls; ev=$tmp/state/events
 reset() { rm -rf "$tmp/stub" "$ev"; mkdir -p "$tmp/stub" "$ev"; : > "$calls"; printf '%s\n' "$head" > "$tmp/stub/head"; }
-run() { # run [args]; ENVX = extra env; W = worktree (default wt)
-  env -u PADDOCK_NOW STUB="$tmp/stub" PADDOCK_STATE_DIR="$tmp/state" PADDOCK_ORG_CONFIG_FILE="$tmp/none.md" \
+run() { # run [args]; ENVX = extra env; W = worktree (default wt). A --pr run names task t1 (the merge card's task).
+  case " $* " in *" --pr "*) set -- "$@" --task-id t1 ;; esac
+  env -u PADDOCK_NOW STUB="$tmp/stub" PADDOCK_STATE_DIR="$tmp/state" PADDOCK_ORG_CONFIG_FILE="$tmp/none.md" PADDOCK_HC_HOLD=0 \
       PATH="$stubdir:$PATH" ${ENVX:-} bash "$script" --worktree "${W:-$wt}" --repo o/r "$@" 2>&1; }
 watcher() { env -u PADDOCK_NOW -u PADDOCK_ORG_ID PADDOCK_STATE_DIR="$tmp/state" PATH="/usr/bin:/bin" bash "$root/scripts/org" --as watcher \
   ci_completed --run-id 777 --exit-code "${CODE:-0}" --pr 42 --sha "$head" --repo o/r >/dev/null; }

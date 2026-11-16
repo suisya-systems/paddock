@@ -108,7 +108,8 @@ export default class OrgState extends View {
 
     const now = Date.now();
     // Oldest first: the one that has waited longest is answered first.
-    const approvals = [...(v.approvals ?? [])].sort((x, y) => Date.parse(x.asked_at) - Date.parse(y.asked_at));
+    // A proposal of the secretary's own waits hidden until its show_at (the secretary's sweep shows it).
+    const approvals = [...(v.approvals ?? [])].filter((a) => !a.show_at).sort((x, y) => Date.parse(x.asked_at) - Date.parse(y.asked_at));
     const cards = approvals.slice(0, MAX_CARDS);
 
     // A task's live status comes from the terminal labelled with its task_id, as core reports it.
