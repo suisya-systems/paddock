@@ -4,7 +4,7 @@
 # unread mail (one constant line, never into a working one, never over typed input, once per
 # unread batch per PADDOCK_WATCH_WAKE s, every send and skip logged to watcher/woke), and runs one
 # ci-watch.sh per open ci_requested record, which always writes ci_completed or ci_watch_failed and
-# a mailbox line. #439: types /reload-plugins once into an idle secretary when watcher/reload-plugins
+# a mailbox line. It types /reload-plugins once into an idle secretary when watcher/reload-plugins
 # exists, and clears it on a Reloaded: line. Stubbed hc and gh; no core, no GitHub.
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -319,7 +319,7 @@ rm -f "$tmp/stub/hold-778"; settle
 wev | grep -q '"kind":"ci_completed".*"run_id":777,"exit_code":1,"conclusion":"failure"'; check "then failure, the red run named" $?
 
 
-# --- #439: /reload-plugins after a landing that changed a SKILL.md (org-start leaves watcher/reload-plugins) ---
+# --- /reload-plugins after a landing that changed a SKILL.md (org-start leaves watcher/reload-plugins) ---
 mark_reload() { mkdir -p "$tmp/state/watcher"; : > "$tmp/state/watcher/reload-plugins"; }
 reloads() { grep -c "^secretary	/reload-plugins$" "$tmp/stub/sent" 2>/dev/null || echo 0; }
 RLD=$tmp/state/watcher/reload-plugins
@@ -335,6 +335,7 @@ screen secretary "$(printf '❯ /reload-plugins\n  ⎿  Reloaded: 3 plugins\n❯
 [ ! -e "$RLD" ] && [ "$(reloads)" -eq 1 ] && woke | grep -q '	reloaded	secretary	reload-plugins	'; check "a Reloaded: line below /reload-plugins clears the marker" $?
 pass $((T0 + 90))
 [ "$(reloads)" -eq 1 ]; check "marker cleared: nothing more is typed" $?
+[ -f "$tmp/state/watcher/reload-ready" ]; check "each pass touches watcher/reload-ready (org-start reads it)" $?
 
 reset; term secretary - working; mark_reload; pass $T0
 [ "$(reloads)" -eq 0 ] && [ -f "$RLD" ] && [ ! -s "$RLD" ]; check "a busy secretary gets no /reload-plugins; the marker waits" $?

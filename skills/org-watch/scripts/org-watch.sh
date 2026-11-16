@@ -405,6 +405,7 @@ pass() {
 
   # 6. /reload-plugins into the secretary after a skill landing; then the wake: the secretary
   # (not in the pass that typed the reload) and each live worker with unread mail
+  : > "$wdir/reload-ready"   # tells org-start this watcher acts on watcher/reload-plugins
   reload_pass || wake "$sec" secretary
   while IFS="$tab" read -r n tk; do
     [ -n "$n" ] || continue

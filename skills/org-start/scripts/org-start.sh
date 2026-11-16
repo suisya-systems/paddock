@@ -324,10 +324,14 @@ skill_lines() {
   [ -n "$1" ] || return 0
   # the watcher types /reload-plugins into the secretary once it is idle, and clears this marker.
   local w=${sdir%/secretary}/watcher
-  if mkdir -p "$w" && : > "$w/reload-plugins"; then
+  # A watcher started from an older org-watch.sh keeps its old code and never touches reload-ready:
+  # then the person types it (rerunning org-start renews the watcher).
+  if ! { mkdir -p "$w" && : > "$w/reload-plugins"; }; then
+    echo "org-start: cannot write $w/reload-plugins; secretary: ask the person to type /reload-plugins into your session, or the changed skills keep their old text"
+  elif [ -n "$(find "$w/reload-ready" -mmin -5 2>/dev/null)" ]; then
     echo "org-start: the watcher types /reload-plugins into the secretary when it is idle (a toast tells the person if it cannot confirm it); until then the changed skills keep their old text"
   else
-    echo "org-start: cannot write $w/reload-plugins; the person types /reload-plugins into the secretary, or the changed skills keep their old text"
+    echo "org-start: no watcher that types /reload-plugins ran in the last 5 minutes; secretary: ask the person to type /reload-plugins into your session (and to rerun org-start to renew the watcher), or the changed skills keep their old text"
   fi
 }
 if [ -n "$placeonly" ]; then # what each change needs; Claude Code re-reads a changed settings file's hooks

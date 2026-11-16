@@ -2,7 +2,8 @@
 # Decision 0014 part 4: after a landing, org-start --place-only --from-origin prints what a changed
 # skill needs. A running secretary serves the SKILL.md text it loaded (probe H4), so each changed or
 # new skill gets one "skill changed: paddock:<name>" line, and one line says the watcher types
-# /reload-plugins (#439: org-start leaves the marker watcher/reload-plugins in the state folder). A landing that touches no SKILL.md prints neither. Needs only bash, coreutils, git, tar.
+# /reload-plugins (org-start leaves the marker
+# watcher/reload-plugins in the state folder; with no recent watcher/reload-ready the person is asked). A landing that touches no SKILL.md prints neither. Needs only bash, coreutils, git, tar.
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
@@ -35,6 +36,7 @@ out=$(place)
 echo "more" >> "$land/skills/org-delegate/SKILL.md"
 mkdir -p "$land/skills/org-fresh"; printf -- '---\nname: org-fresh\ndescription: d\n---\n# org-fresh\n' > "$land/skills/org-fresh/SKILL.md"
 land_it "skill change"
+mkdir -p "$tmp/state/watcher"; touch "$tmp/state/watcher/reload-ready"   # a watcher that acts on the marker ran
 out=$(place); rc=$?
 [ "$rc" -eq 0 ]; check "place-only exits 0 (rc $rc)" $?
 grep -qx 'org-start: skill changed: paddock:org-delegate (invoke it again before you use it)' <<<"$out"; check "a changed skill gets its line" $?
@@ -44,6 +46,12 @@ grep -qx 'org-start: skill changed: paddock:org-fresh (invoke it again before yo
   && ! grep -qi 'ask the person' <<<"$out"
 check "one line says the watcher types /reload-plugins; nobody is asked to type it" $?
 [ -f "$tmp/state/watcher/reload-plugins" ] && [ ! -s "$tmp/state/watcher/reload-plugins" ]; check "the empty marker watcher/reload-plugins is left for the watcher" $?
+rm -f "$tmp/state/watcher/reload-plugins"
+# no recent reload-ready (a watcher from before the marker, or none): the person is asked instead
+touch -d '-10 minutes' "$tmp/state/watcher/reload-ready"
+echo "more2" >> "$land/skills/org-delegate/SKILL.md"; land_it "skill change old watcher"
+out=$(place)
+grep '/reload-plugins' <<<"$out" | grep -q 'ask the person' && [ -f "$tmp/state/watcher/reload-plugins" ]; check "no watcher seen in 5 minutes: the person is asked, the marker is still left" $?
 rm -f "$tmp/state/watcher/reload-plugins"
 out=$(place)
 ! grep -q 'skill changed' <<<"$out" && [ ! -e "$tmp/state/watcher/reload-plugins" ]; check "a second run repeats nothing and leaves no marker" $?

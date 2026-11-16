@@ -17,3 +17,4 @@
 
 - Marker empty: `/reload-plugins` is typed into the secretary under the same rules as a wake (exact `idle`/`done` status, never over typed input), once; the send time goes into the marker, the send into `watcher/woke` as `reload`. In that pass the secretary gets no wake line.
 - Marker holding a time: a `Reloaded:` line below the last `/reload-plugins` on the secretary's screen clears it (`reloaded` in `watcher/woke`). None N minutes after the send: the person is told outside the window, as for a waiting card (again every N minutes), to type `/reload-plugins`; nothing is typed again. A new landing empties the marker, so it is typed once more.
+- Each pass touches `watcher/reload-ready`. A watcher started from an older script keeps its old code and never does, so `org-start` says the watcher types it only when that file is under 5 minutes old; otherwise it asks the secretary to ask the person (and to rerun `org-start`, which renews the watcher).
