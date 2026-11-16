@@ -278,4 +278,33 @@ if [ "$(id -u)" -eq 0 ]; then echo "skip record failure (running as root)"; else
   [ "$rc" -eq 12 ] && ! grep -q '^run ' "$calls" && gone; check "the record fails: exit 12, nothing started, worktree and branch removed" $?
 fi
 
+# --model: the "model" key of the worker's own --settings file, named in the start record and the work entry.
+reset; out=$(run -- "${good[@]}" --model sonnet); rc=$?
+sj=$(tr -d '\n' < "$tmp/state/settings/t1.json")
+[ "$rc" -eq 0 ] && grep -q '^{"model": "sonnet",' <<<"$sj" && ! grep -q '"model"' "$workers/t1/.claude/settings.local.json"
+check "--model sonnet: the per-task settings file holds \"model\": \"sonnet\" ($rc)" $?
+if command -v node >/dev/null 2>&1; then
+  node -e 'process.exit(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model === "sonnet" ? 0 : 1)' "$tmp/state/settings/t1.json"
+  check "--model: the per-task settings file is valid JSON with model sonnet" $?
+fi
+PADDOCK_STATE_DIR="$tmp/state" bash "$org" --as secretary check_messages --peek | grep -q 'model sonnet'
+check "--model: the start record names the model" $?
+( . "$here/skills/org-delegate/scripts/work-entry.sh"
+  [ "$(work_entry_json t1 T s w x sonnet)" = '{"task_id":"t1","title":"T","since":"s","worktree":"w","task":"x","model":"sonnet"}' ] \
+  && [ "$(work_entry_json t1 T s w x)" = '{"task_id":"t1","title":"T","since":"s","worktree":"w","task":"x"}' ] )
+check "the work entry names the model, and only when one is given" $?
+reset; out=$(run -- "${good[@]}"); rc=$?
+[ "$rc" -eq 0 ] && ! grep -q '"model"' "$tmp/state/settings/t1.json" \
+  && cmp -s <(tr -d '\n' < "$tmp/state/settings/t1.json" | sed 's/"allowWrite": \[[^]]*\]/A/; s/"excludedCommands": \[[^]]*\]/E/; s/"allow": \[[^]]*\]/L/') \
+            <(tr -d '\n' < "$here/templates/worker-settings.json" | sed 's/"allowWrite": \[\]/A/; s/"excludedCommands": \[\]/E/; s/"allow": \[\]/L/')
+check "no --model: the per-task settings file has no model key and is otherwise the template" $?
+for bad in '' 'son net' 'sonnet;rm' '$(id)' '"x"' '-opus' 'a&b' "$(printf 'x%.0s' {1..101})"; do
+  reset; out=$(run -- "${good[@]}" --model "$bad"); rc=$?
+  [ "$rc" -eq 2 ] && ! grep -Eq '^(run|file) ' "$calls" && [ ! -d "$workers" ] && [ ! -e "$tmp/state/settings/t1.json" ] \
+    && [ "$(tail -1 <<<"$out" | cut -c1-6)" = 'next: ' ]
+  check "bad --model exits 2 with a next: line, nothing started: [$bad]" $?
+done
+reset; out=$(run -- "${good[@]}" --model 'claude-opus-4-5[1m]'); rc=$?
+[ "$rc" -eq 0 ] && grep -qF '"model": "claude-opus-4-5[1m]"' "$tmp/state/settings/t1.json"; check "--model accepts a full id with [1m]" $?
+
 exit $fail

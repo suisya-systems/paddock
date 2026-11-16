@@ -7,6 +7,7 @@ usage() {
   cat <<'USAGE'
 Usage: org-delegate.sh (--project <git repo | project name> | --repo OWNER/NAME) --task-id <id> (--task <text> | --task-file <file|->)
                        [--title <text>] [--base <ref>] [--no-fetch] [--branch <name>] [--allow-write <path>]... [--secret-block <on|off|patterns>]
+                       [--model <id>]
 
 Creates a git worktree for the task under the workers folder, writes
 .claude/settings.local.json into it (hc file write), starts the worker with
@@ -37,6 +38,10 @@ brief file into the worktree (rules: --append-system-prompt-file in the template
                  on (.env, .env.*, credentials*, *.pem), off, or comma-separated patterns that replace those.
                  Default: the secret-block column of the project's row in projects.md. Programs in the worker
                  lose these files too; see SKILL.md.
+  --model        the model the worker's Claude Code runs on: an alias or id (fable, opus, sonnet, haiku,
+                 claude-fable-5-2, ...); letters, digits and . _ : [ ] - only, at most 100 characters.
+                 Goes to the "model" key of the worker's own --settings file. Without it the worker runs on
+                 the default model. The start record and the --title work entry name it.
 
 Environment overrides:
   PADDOCK_WORKERS_DIR  the one workers folder, trusted once; an absolute path (default $HOME/paddock-workers)
@@ -73,7 +78,7 @@ die() {
 }
 needs() { [ $# -ge 2 ] || die 2 "$1 needs a value"; }
 
-repo= project= id= task= taskfile= title= base= branch= allow=() fetch=1
+repo= project= id= task= taskfile= title= base= branch= allow=() fetch=1 model=
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
@@ -88,6 +93,7 @@ while [ $# -gt 0 ]; do
     --no-fetch) fetch=; shift ;;
     --allow-write) needs "$@"; allow+=("$2"); shift 2 ;;
     --secret-block) needs "$@"; secret=$2; havesecret=1; shift 2 ;;
+    --model) needs "$@"; model=$2; havemodel=1; shift 2 ;;
     *) echo "org-delegate: unknown argument: $1" >&2; usage >&2; echo "next: fix the argument and run org-delegate again (nothing was created)" >&2; exit 2 ;;
   esac
 done
@@ -104,6 +110,10 @@ fi
 [ -n "$task" ] || die 2 "the task text is empty: give --task or --task-file"
 [ -z "${havetitle:-}" ] || [ -n "${title//[[:space:]]/}" ] || die 2 "--title is empty"
 [ -n "$branch" ] || branch=work/$id
+# an allowlist, so the value is safe in JSON, in a record text and in a shell word.
+[ -z "${havemodel:-}" ] || [[ $model =~ ^[A-Za-z0-9][]A-Za-z0-9._:[-]{0,99}$ ]] \
+  || die 2 "--model must be a model alias or id: letters, digits and . _ : [ ] - only, at most 100 characters" \
+       "run org-delegate again with --model fable, opus, sonnet, haiku or a full id such as claude-fable-5-2 (nothing was created)"
 for p in ${allow[@]+"${allow[@]}"}; do
   case "$p" in /*|"~/"*) ;; *) die 2 "--allow-write needs an absolute path or ~/...: $p" ;; esac
   case "$p" in *[\"\\]*) die 2 "--allow-write path has a quote or backslash: $p" ;; esac
@@ -304,6 +314,8 @@ ws=$state/settings/$id.json
 old='"allowWrite": []' new="\"allowWrite\": [$list]"
 xr="\"excludedCommands\": [$ex]" ar="\"allow\": [$al]"
 tpl=${tpl/'"excludedCommands": []'/"$xr"}; tpl=${tpl/'"allow": []'/"$ar"}
+# --model: the "model" key of this --settings file (flag settings win over the user's and the project's).
+[ -z "$model" ] || tpl=${tpl/'{'/"{\"model\": \"$model\","}
 { mkdir -p "$state/settings" && printf '%s\n' "${tpl/"$old"/"$new"}" > "$ws.tmp" && mv -f "$ws.tmp" "$ws"; } 2>/dev/null \
   || fail_undone 6 "cannot write the worker's settings file $ws"
 # caches go to the sandbox temporary folder of the worker. Claude Code does not expand $TMPDIR in a
@@ -326,7 +338,7 @@ fi
 # 4. Record before the launch, so a later report from the worker (done, blocked) is the latest
 # record in list_runs and is not overwritten by this one. A failure that leaves no worker is recorded as blocked.
 bash "$org" --as secretary report start --task "$id" --to secretary \
-  "Delegating to $name in $wt on branch $branch (base $base)." >/dev/null 2>&1 \
+  "Delegating to $name in $wt on branch $branch (base $base${model:+, model $model})." >/dev/null 2>&1 \
   || fail_undone 12 "the start record could not be written (bash \"\$PADDOCK_HOME/scripts/org\" --as secretary report start); nothing was started"
 mark_blocked() { bash "$org" --as secretary report blocked --task "$id" --to secretary "$1" >/dev/null 2>&1; }
 
@@ -359,7 +371,7 @@ if ! printf '%s' "$out" | tr -d '\n' | grep -Eq '"sent": *true' \
   [ -z "${po:-}" ] || echo "$po" >&2
   # Saved for org-escalation answer yes (and resend.sh): the first message, and the work entry --title asks for.
   { mkdir -p "$rs" && printf '%s' "$first" > "$rs/message" \
-    && { [ -z "${havetitle:-}" ] || work_entry_json "$id" "$title" "$since" "$wt" "$task" > "$rs/entry"; }; } 2>/dev/null \
+    && { [ -z "${havetitle:-}" ] || work_entry_json "$id" "$title" "$since" "$wt" "$task" "$model" > "$rs/entry"; }; } 2>/dev/null \
     || echo "org-delegate: could not save the first message in $rs; the secretary resends it by hand" >&2
   mark_blocked "Delegation stalled: $name did not get its first message. Terminal, worktree $wt and branch $branch were left."
   echo "$out" >&2
@@ -372,6 +384,6 @@ echo "org-delegate: worker=$name worktree=$wt branch=$branch"
 # 6. with --title, the work entry goes into org-state after the launch (a failed
 # launch leaves no entry; see work-entry.sh).
 if [ -n "${havetitle:-}" ]; then
-  work_entry_add "$org" "$id" "$(work_entry_json "$id" "$title" "$since" "$wt" "$task")" \
+  work_entry_add "$org" "$id" "$(work_entry_json "$id" "$title" "$since" "$wt" "$task" "$model")" \
     || die 13 "$name runs, but the org-state entry could not be written (bash \"\$PADDOCK_HOME/scripts/org\" --as secretary doc update org-state); add the work entry by hand"
 fi
