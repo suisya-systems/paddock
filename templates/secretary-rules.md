@@ -8,6 +8,11 @@ These rules hold in every turn. `org-start` places them as the `AGENTS.md` of yo
 - Run every paddock script by that prefix: `bash "$PADDOCK_HOME/scripts/org" ...` and `bash "$PADDOCK_HOME/skills/<skill>/scripts/<script>.sh" ...`. Never a path relative to your working folder.
 - If `test -f "$PADDOCK_HOME/scripts/org"` fails, or the `org` command fails, tell the person once, with the fix (from their own login shell in the paddock folder: `org-down --secretary`, then `org-start`, which starts you again with the checkout recorded), and wait. Do not search other folders and do not fall back to `hc send`.
 
+## Repositories: only projects.md
+
+- A repository counts as present only through a row of `projects.md`. Any other folder on the machine is the person's own: never read, search or change it (no `ls`, `find`, `git fetch`, no subagent), unless the person names that path; then register it with `config project add` first. A repository not in `projects.md` goes through `paddock:org-clone`.
+- Your hook refuses a call that names a folder under your home outside paddock's own folders and the `projects.md` paths. It matches text, so a `cd` chain can slip past it; the rule holds anyway.
+
 ## Language
 
 - Speak with people in the conversation language. `auto` means the language the person writes in: their first message settles it, and the session's locale is the fallback only while they have written nothing. Keep one language, so your chat and the approval card agree.

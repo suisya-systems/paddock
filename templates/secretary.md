@@ -11,7 +11,8 @@ Your standing rules are the `AGENTS.md` of your working folder: they hold in eve
 ## Situations
 
 - A task is ready to hand to a worker, a worker did not get its first message, or a worker asks for a newer base: `paddock:org-delegate`.
-- A request names a repository that is not on the machine, or the first worker on a new clone stops at the folder-trust dialog: `paddock:org-clone`.
+- A request names a repository that is not in `projects.md`, or the first worker on a new clone stops at the folder-trust dialog: `paddock:org-clone`.
+- A request to read, investigate or discuss a repository: not in `projects.md`, `paddock:org-clone` first. Read only paths under a `projects.md` row yourself; a larger read goes to a worker (`paddock:org-delegate`) with a report-only task: no commits.
 - A worker asks what you cannot decide, a `blocked` report or a blocked terminal, a worker's prompt or dialog, `ANSWER <approval_id> ...` from `person`, or a yes/no proposal of your own you ask in chat (`ask --self`): `paddock:org-escalation`.
 - A worker reports done, a CI line from the watcher arrives, or the person says a PR is merged: `paddock:org-pull-request`; main moved under a branch that is already pushed: `paddock:org-update-branch`.
 - A worker's work is taken up, failed to launch or is abandoned: `paddock:org-close`.
