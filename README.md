@@ -16,7 +16,7 @@ paddock is a prototype: it has run full tasks, from a request to a pull request,
 
 ## Install and start
 
-Run every command in this README from your own login shell in this folder, never from inside an agent.
+Clone this repository and go to its top folder: the script paths in this README are relative to it. Run every command from your own login shell there, never from inside an agent, unless a step names another shell.
 
 First check your machine:
 
@@ -24,7 +24,7 @@ First check your machine:
 bash skills/org-start/scripts/org-start.sh --check
 ```
 
-It prints `ok <step>` or `TODO <step>: <fix>` for each step (`hc`, `claude`, `notes = false` in the herdr-core config, `hc` on the running core's PATH, the herdr-app mods folder). Do each `TODO` and run it again until none is left.
+It changes nothing. It prints one line for each step (`hc`, not inside an agent, `claude`, the reviewer, `notes = false` in the herdr-core config, `hc` on the running core's PATH, the herdr-app mods folder): `ok <step>: ...` or `TODO <step>: <fix>`. Do what each `TODO` line says and run it again until no `TODO` is left. A `skip` line needs nothing from you.
 
 ### Linux, macOS, or WSL with a Linux herdr-app
 
@@ -35,12 +35,14 @@ It prints `ok <step>` or `TODO <step>: <fix>` for each step (`hc`, `claude`, `no
    bash skills/org-start/scripts/org-start.sh
    ```
 
-   It places the paddock layout ([`layouts/paddock.json`](layouts/paddock.json)) and its mod under `~/.config/herdr-app`, starts the secretary (and a `watcher` terminal that tells you when something waits for you), and ends with `org-start: ready`. Running it again starts no second secretary.
-3. It also switches the window to the paddock screen. If it printed `org-start: warning: layout.switch failed`, run the command it printed after `org-start: to open the screen:`, for example:
+   It places the paddock layout ([`layouts/paddock.json`](layouts/paddock.json)) and its mod under `~/.config/herdr-app`, switches the window to the paddock screen, and starts the secretary (and a `watcher` terminal that tells you when something waits for you). Its last line starts with `org-start: ready`; if it ends with another `org-start:` line, that line says what went wrong. Running it again starts no second secretary.
+3. Normally there is nothing to do here: org-start switched the window to the paddock screen itself and printed `org-start: switched the screen to the paddock layout`. Only if it printed `org-start: warning: layout.switch failed`, or the window still shows another layout, open the screen yourself. Either run the command org-start printed on the line that starts with `org-start: to open the screen:` (everything after that colon), for example:
 
    ```sh
    herdr-app do layout.switch '{"name":"paddock"}'
    ```
+
+   or click the herdr-app window and press `ctrl-shift-l`, again if needed, until the paddock screen shows. (No `to open the screen:` line means org-start found no `herdr-app` on its PATH: use the key.)
 
 ### WSL with herdr-app for Windows
 
@@ -53,9 +55,12 @@ The core and the agents run in WSL; the window runs on Windows.
    ```
 
    Use the Windows `hc` 0.1.20 or later (`hc --version`). If you choose another name, set `PADDOCK_APP_MACHINE` to it in WSL before step 2.
-2. In WSL, run `bash skills/org-start/scripts/org-start.sh`. It places the layout and mod in the Windows user's `.config/herdr-app` and points the screen at the secretary on the `wsl` machine.
-3. If the screen did not switch, run the command printed after `org-start: to open the screen:`. It starts with the path of `herdr-app.exe`.
-4. If org-start warns that it could not find the Windows user folder, set `PADDOCK_APP_MODS_DIR` to the Windows herdr-app's mods folder and `PADDOCK_APP_MACHINE` to the machine name from step 1 (`wsl` unless you chose another), both of them, then run it again.
+2. Open herdr-app on Windows. Then, in WSL, run `bash skills/org-start/scripts/org-start.sh`. It places the layout and mod in the Windows user's `.config/herdr-app`, points the screen at the secretary on the `wsl` machine, switches the window to the paddock screen and starts the secretary and the watcher. Its last line starts with `org-start: ready`.
+
+Normally that is all. Two cases need one more action:
+
+- **The window still shows another layout** (org-start printed `org-start: warning: layout.switch failed`, or no `org-start: switched the screen to the paddock layout` line): in WSL, run the command org-start printed on the line that starts with `org-start: to open the screen:` (everything after that colon; it starts with the path of `herdr-app.exe`). Or click the herdr-app window and press `ctrl-shift-l`, again if needed, until the paddock screen shows.
+- **org-start printed `org-start: warning: WSL, but the Windows user folder was not found`** (or `WSL, but several Windows users have a herdr-app folder`): it could not tell which Windows folder herdr-app reads. In WSL, set both `PADDOCK_APP_MODS_DIR` to the Windows herdr-app's mods folder (as a WSL path, for example `/mnt/c/Users/<you>/.config/herdr-app/mods`) and `PADDOCK_APP_MACHINE` to the machine name from step 1 (`wsl` unless you chose another), then run org-start again.
 
 ### Switching screens
 
@@ -77,7 +82,7 @@ The paddock screen has:
 
 ### A request
 
-The secretary starts a worker for each task. When work on a GitHub repository is done, it opens a pull request and, depending on your approval setting, waits for you or merges it. When a request needs no GitHub repository, the secretary may make a new local repository for it (under `~/paddock-local/`); that work gets no pull request: the secretary tells you the summary and the folder, and merges it into that repository's `main` only after you agree.
+The secretary starts a worker for each task. When work on a GitHub repository is done, it opens a pull request and, by default, asks you on an approval card before it merges; with the setting `merge_approval_mode` set to `acceptance` instead of `human`, it raises no card and merges once the pull request's checks pass ([docs/development.md](docs/development.md)). When a request needs no GitHub repository, the secretary may make a new local repository for it (under `~/paddock-local/`); that work gets no pull request: the secretary tells you the summary and the folder, and merges it into that repository's `main` only after you agree.
 
 ## Answering approval cards
 
@@ -100,7 +105,7 @@ From your own login shell:
 | `bash skills/org-down/scripts/org-down.sh --secretary` | Also ends the secretary. |
 | `bash skills/org-down/scripts/org-down.sh --stop-core` | Also stops herdr-core, with every terminal on it, paddock's or not. Without this flag the core is never stopped. |
 
-To come back after `org-down`: run `org-start.sh` (it starts the secretary and the watcher), then `org-resume.sh --apply`.
+To come back after `org-down`: run `bash skills/org-start/scripts/org-start.sh` (it starts the secretary, if it was ended, and the watcher), then `bash skills/org-resume/scripts/org-resume.sh --apply`.
 
 The secretary renews itself: it writes its handover and leaves a request (`scripts/org --as secretary renew_secretary`), and the watcher runs `skills/secretary-handover/scripts/secretary-handover.sh` once it is idle. Run that script yourself only when the watcher tells you a renewal failed, or no watcher runs.
 
