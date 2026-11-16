@@ -328,7 +328,7 @@ reset; term secretary - idle; pass $T0
 reset; term secretary - idle; mark_reload; o person send_message secretary "hello" >/dev/null; pass $T0
 [ "$(reloads)" -eq 1 ] && [ "$(sent secretary)" -eq 1 ] && grep -q '^send --if idle secretary /reload-plugins$' "$tmp/stub/calls"
 check "marker and an idle secretary: exactly one /reload-plugins (--if idle), no wake in the same pass" $?
-[ "$(cat "$RLD")" = "$T0" ] && woke | grep -q "	reload	secretary	reload-plugins	idle	no	0$"; check "the marker holds the send time; the send is logged" $?
+[ "$(cat "$RLD-sent")" = "$T0 " ] && woke | grep -q "	reload	secretary	reload-plugins	idle	no	0$"; check "the marker holds the send time; the send is logged" $?
 pass $((T0 + 30))
 [ "$(reloads)" -eq 1 ] && [ -f "$RLD" ]; check "no Reloaded: line yet: not typed again, the marker stays" $?
 screen secretary "$(printf '❯ /reload-plugins\n  ⎿  Reloaded: 3 plugins\n❯ ')"; pass $((T0 + 60))
@@ -338,11 +338,17 @@ pass $((T0 + 90))
 [ -f "$tmp/state/watcher/reload-ready" ]; check "each pass touches watcher/reload-ready (org-start reads it)" $?
 
 reset; term secretary - working; mark_reload; pass $T0
-[ "$(reloads)" -eq 0 ] && [ -f "$RLD" ] && [ ! -s "$RLD" ]; check "a busy secretary gets no /reload-plugins; the marker waits" $?
+[ "$(reloads)" -eq 0 ] && [ -f "$RLD" ] && [ ! -e "$RLD-sent" ]; check "a busy secretary gets no /reload-plugins; the marker waits" $?
 pass $((T0 + 30))
 [ "$(reloads)" -eq 0 ]; check "still busy: still nothing" $?
 term secretary - idle; pass $((T0 + 60))
 [ "$(reloads)" -eq 1 ]; check "once idle: one /reload-plugins" $?
+echo second > "$RLD"; pass $((T0 + 90))
+[ "$(reloads)" -eq 2 ]; check "a new request id (another landing) after the send: typed once more" $?
+screen secretary "$(printf '❯ /reload-plugins\n  ⎿  Reloaded: 3 plugins\n❯ ')"; echo third > "$RLD"; pass $((T0 + 120))
+[ "$(cat "$RLD")" = third ] && [ "$(reloads)" -eq 3 ]; check "a Reloaded: line does not remove a newer request; it is typed" $?
+pass $((T0 + 150))
+[ ! -e "$RLD" ] && [ "$(reloads)" -eq 3 ]; check "then its Reloaded: line removes it" $?
 reset; term secretary - idle; hostscreen secretary 'half a sentence'; mark_reload; pass $T0
 [ "$(reloads)" -eq 0 ]; check "typed input on the prompt: no /reload-plugins over it" $?
 

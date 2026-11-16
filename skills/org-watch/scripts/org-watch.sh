@@ -206,22 +206,26 @@ wake() {
   sendline "$t" "$batch" wake "$msg" || return 0
   { T=$t awk -F'\t' '$1 != ENVIRON["T"]' "$wakes" 2>/dev/null; printf '%s\t%s\t%s\n' "$t" "$batch" "$now"; } > "$wakes.new" && mv "$wakes.new" "$wakes"
 }
-# reload_pass: org-start leaves watcher/reload-plugins when a landing changed a SKILL.md.
-# Empty: type /reload-plugins into the secretary once (sendline) and write the epoch into it.
-# Holding an epoch: a "Reloaded:" line below the last /reload-plugins on the screen clears it;
-# none N minutes after the send tells the person (as a stuck card), and keeps telling every N minutes.
+# reload_pass: org-start writes a request id into watcher/reload-plugins when a landing changed a
+# SKILL.md. A request not yet in watcher/reload-sent ("<epoch> <id>"): type /reload-plugins into the
+# secretary once (sendline) and record it there. A sent request: a "Reloaded:" line below the last
+# /reload-plugins on the screen removes the marker (only if it still holds that id: a newer landing
+# is a new request); none N minutes after the send tells the person (as a stuck card), every N minutes.
 # 0 when it typed this pass (the secretary is then not woken in the same pass).
 reload_pass() {
-  local sent scr
-  [ -f "$reload" ] || return 1
-  sent=$(cat "$reload" 2>/dev/null)
-  if [ -z "$sent" ]; then
+  local id sid sent scr
+  [ -f "$reload" ] || { rm -f "$reload-sent"; return 1; }
+  id=$(cat "$reload" 2>/dev/null)
+  read -r sent sid < "$reload-sent" 2>/dev/null || sent= sid=
+  if [ "$sid" != "$id" ] || [ -z "$sent" ]; then
     sendline "$sec" reload-plugins reload /reload-plugins || return 1
-    printf '%s\n' "$now" > "$reload"; return 0
+    printf '%s %s\n' "$now" "$id" > "$reload-sent"; return 0
   fi
   if scr=$(hc read "$sec" 2>/dev/null) && printf '%s\n' "$scr" \
       | awk '/\/reload-plugins/ { r = NR; ok = 0 } r && NR > r && /Reloaded:/ { ok = 1 } END { exit !ok }'; then
-    rm -f "$reload"; wlog reloaded "$sec" reload-plugins - - -; return 1
+    # ponytail: a landing between this read and the rm is lost; a lock shared with org-start if it bites
+    [ "$(cat "$reload" 2>/dev/null)" != "$id" ] || rm -f "$reload" "$reload-sent"
+    wlog reloaded "$sec" reload-plugins - - -; return 1
   fi
   [ $((now - sent)) -lt "$limit" ] && { active="${active}reload:$sec
 "; return 1; }

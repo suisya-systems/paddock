@@ -45,13 +45,13 @@ grep -qx 'org-start: skill changed: paddock:org-fresh (invoke it again before yo
 [ "$(grep -c '/reload-plugins' <<<"$out")" -eq 1 ] && grep '/reload-plugins' <<<"$out" | grep -q 'watcher types' \
   && ! grep -qi 'ask the person' <<<"$out"
 check "one line says the watcher types /reload-plugins; nobody is asked to type it" $?
-[ -f "$tmp/state/watcher/reload-plugins" ] && [ ! -s "$tmp/state/watcher/reload-plugins" ]; check "the empty marker watcher/reload-plugins is left for the watcher" $?
+[ -s "$tmp/state/watcher/reload-plugins" ]; check "the marker watcher/reload-plugins (a request id) is left for the watcher" $?
 rm -f "$tmp/state/watcher/reload-plugins"
 # no recent reload-ready (a watcher from before the marker, or none): the person is asked instead
 touch -d '-10 minutes' "$tmp/state/watcher/reload-ready"
 echo "more2" >> "$land/skills/org-delegate/SKILL.md"; land_it "skill change old watcher"
 out=$(place)
-grep '/reload-plugins' <<<"$out" | grep -q 'ask the person' && [ -f "$tmp/state/watcher/reload-plugins" ]; check "no watcher seen in 5 minutes: the person is asked, the marker is still left" $?
+grep '/reload-plugins' <<<"$out" | grep -q 'ask the person' && grep -q 'hc kill watcher' <<<"$out" && [ -f "$tmp/state/watcher/reload-plugins" ]; check "no watcher seen in 5 minutes: the person is asked, the marker is still left" $?
 rm -f "$tmp/state/watcher/reload-plugins"
 out=$(place)
 ! grep -q 'skill changed' <<<"$out" && [ ! -e "$tmp/state/watcher/reload-plugins" ]; check "a second run repeats nothing and leaves no marker" $?
