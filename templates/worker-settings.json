@@ -3,7 +3,7 @@
     "allow": [],
     "deny": [
       "Bash(git push:*)",
-      "Bash(git commit *--no-verify*)",
+      "Bash(git commit *--no-veri*)",
       "Bash(git commit -n*)",
       "Bash(git commit * -n*)",
       "Bash(hc:*)",
