@@ -382,7 +382,7 @@ pass() {
   done <<< "$terms"
   wc_out=$("$BASH" "$org" --as watcher work_check 2>/dev/null) || wc_out='{"watch_error":""}'
   case "$wc_out" in *'"watch_error"'*|*'"unreadable"'*) prune= ;; esac
-  # Issue #442: a turn ends (done) while a worker waits on a background shell, so done counts only
+  # A turn ends (done) while a worker waits on a background shell, so done counts only
   # once the same done (turn, status_ms) has held N minutes: status_ms is when that status began,
   # and a new turn or status gives a new status_ms, which restarts the wait.
   for tk in $(listed "$wc_out" unreported); do
