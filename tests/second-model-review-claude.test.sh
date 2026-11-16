@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The review gate (scripts/second-model-review.sh) without codex: Claude reviews, headless, in a fresh
-# session with read-only tools, judged by the same rules (a tool call ran, none failed, exit 0), and
+# session with read-only tools, judged by the same rules (a tool call ran, a final review text, exit 0; failed calls only counted), and
 # the last line keeps its CODEX_GATE: prefix and names the reviewer. Codex stays first when present;
 # neither is unavailable. org-start --check says which reviewer is in use. Stubs only; no model runs.
 set -u
@@ -43,10 +43,11 @@ case "${STUB_MODE:-ran}" in
   failed) printf '%s\n' "$init" "$use" "$badres" "$fin"; exit 0 ;;
   bad)    printf '%s\n' "$init" "$use" "$okres"; exit 1 ;;
   noresult) printf '%s\n' "$init" "$use" "$okres"; exit 0 ;;
+  notext) printf '%s\n' "$init" "$use" "$okres" '{"type":"result","subtype":"success","is_error":false,"result":"","num_turns":2}'; exit 0 ;;
 esac
 EOF2
 chmod +x "$tmp/claude/bin/claude"
-printf '#!/bin/sh\ncase "$1" in --version) echo "cx-cli 1.0"; exit 0;; esac\necho "cx $*" >> "$STUB_LOG"\necho " succeeded in 12ms:"; exit 0\n' > "$tmp/cx/bin/codex"
+printf '#!/bin/sh\ncase "$1" in --version) echo "cx-cli 1.0"; exit 0;; esac\necho "cx $*" >> "$STUB_LOG"\necho " succeeded in 12ms:" >&2; echo Review; exit 0\n' > "$tmp/cx/bin/codex"
 chmod +x "$tmp/cx/bin/codex"
 export STUB_LOG=$tmp/calls STUB_ENV=$tmp/env STUB_DIFF=$tmp/diff
 state=$tmp/state; cdir=$tmp/rounds
@@ -100,7 +101,10 @@ round; STUB_MODE=empty run "$sys"
 check "claude: no tool call (an empty pass, even with tool_use quoted in its text) is not established" $?
 grep -q 'diff round 2' <<<"$(hist | line_of codex_round_failed)"; check "claude: the empty pass is recorded as codex_round_failed" $?
 STUB_MODE=failed run "$sys"
-[ "$rc" -eq 1 ] && grep -q '^CODEX_GATE: not-established (reviewer=claude succeeded=1 failed=1 ' <<<"$last"; check "claude: a failed tool call is not established" $?
+[ "$rc" -eq 0 ] && grep -q '^CODEX_GATE: passed (reviewer=claude succeeded=1 failed=1 ' <<<"$last"; check "claude: a finished review with a failed tool call passes, failed=1 shown" $?
+! grep -q '"type":"tool_use"' <<<"$out"; check "claude: the stream-json log is not on stdout" $?
+STUB_MODE=notext run "$sys"
+[ "$rc" -eq 1 ] && grep -q '^CODEX_GATE: not-established (.*no final review text' <<<"$last"; check "claude: a final result with no text is not established" $?
 STUB_MODE=bad run "$sys"
 [ "$rc" -eq 1 ] && grep -q '^CODEX_GATE: not-established' <<<"$last"; check "claude: a non-zero exit is not established" $?
 STUB_MODE=noresult run "$sys"

@@ -11,7 +11,7 @@ paddock is a prototype: it has run full tasks, from a request to a pull request,
 - **herdr-core** (`hc`, 0.1 series): runs every agent terminal.
 - **herdr-app** (0.1 series): the window.
 - **Claude Code** (`claude`): the agents.
-- `git`, `gh` (the GitHub CLI, logged in), `codex` (a second model is asked to review each worker's diff before its pull request: [`scripts/second-model-review.sh`](scripts/second-model-review.sh); without codex, Claude reviews instead, in a fresh headless session with read-only tools, which is weaker than a different model's review; when no review could run, the pull request says so), `sh`, `awk` and the usual coreutils. Python and Node are not needed.
+- `git`, `gh` (the GitHub CLI, logged in), `codex` (a second model is asked to review each worker's diff before its pull request: [`scripts/second-model-review.sh`](scripts/second-model-review.sh); without codex, Claude reviews instead, in a fresh headless session with read-only tools, which is weaker than a different model's review; a review counts when the reviewer ran at least one command, exited 0 and gave its final review text, even if some of the commands it ran while exploring failed; when no review could run, the pull request says so), `sh`, `awk` and the usual coreutils. Python and Node are not needed.
 - On Windows: herdr-core and the agents run inside WSL2. The window can be herdr-app for Windows.
 
 ## Install and start
@@ -102,7 +102,7 @@ From your own login shell:
 
 To come back after `org-down`: run `org-start.sh` (it starts the secretary and the watcher), then `org-resume.sh --apply`.
 
-When the secretary has written its handover and asks you to renew it, run `bash skills/secretary-handover/scripts/secretary-handover.sh`.
+The secretary renews itself: it writes its handover and leaves a request (`scripts/org --as secretary renew_secretary`), and the watcher runs `skills/secretary-handover/scripts/secretary-handover.sh` once it is idle. Run that script yourself only when the watcher tells you a renewal failed, or no watcher runs.
 
 ## Troubleshooting
 

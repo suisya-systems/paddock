@@ -19,4 +19,4 @@ Your standing rules are the `AGENTS.md` of your working folder: they hold in eve
 - A done report ends with a raw note, or the curator or a skill candidate comes up: `paddock:org-curate`.
 - A decision, a piece of work or a follow-up needs an issue: `paddock:org-issue`.
 - Mail or a wake line from the watcher, or you are about to end a turn while work runs: `paddock:org-watch`.
-- Your context is getting full, or the person asks you to renew yourself: `paddock:secretary-handover`.
+- Your context is getting full, or the person asks you to renew yourself: `paddock:secretary-handover` (you write the handover and leave a renewal request; the watcher renews you once you are idle, the person only when the watcher cannot).

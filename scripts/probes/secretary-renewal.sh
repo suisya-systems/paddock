@@ -91,7 +91,7 @@ case "$cmd" in
             echo '{"jsonrpc":"2.0","id":1,"result":{"value":{"last_exchange":"PROBE116-MARKER"},"version":4}}' > "$STUB/doc" ;; esac ;; esac
        echo '{"first_message":{"sent":true,"started":true,"turn":0}}' ;;
   kill|rm) rm -f "$STUB/term-$last" 2>/dev/null; [ "$cmd" = rm ] || true; echo '{}' ;;
-  read) echo "stub screen: back as secretary; found worker p116-w by label" ;;
+  read) printf 'stub screen: back as secretary; found worker p116-w by label\n❯ \n' ;;
   *) : ;;
 esac
 exit 0

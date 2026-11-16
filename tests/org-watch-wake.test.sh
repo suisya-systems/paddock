@@ -346,7 +346,9 @@ screen secretary "$(printf '❯ /reload-plugins\n  ⎿  Reloaded: 3 plugins\n❯
 [ ! -e "$RLD" ] && [ "$(reloads)" -eq 1 ] && woke | grep -q '	reloaded	secretary	reload-plugins	'; check "a Reloaded: line below /reload-plugins clears the marker" $?
 pass $((T0 + 90))
 [ "$(reloads)" -eq 1 ]; check "marker cleared: nothing more is typed" $?
-[ -f "$tmp/state/watcher/reload-ready" ]; check "each pass touches watcher/reload-ready (org-start reads it)" $?
+[ ! -e "$tmp/state/watcher/reload-ready" ]; check "a --once pass does not touch watcher/reload-ready (it does not keep running)" $?
+env -i "${E[@]}" PADDOCK_WATCH_INTERVAL=60 timeout 5 bash "$script" >/dev/null 2>&1 9>&-
+[ -f "$tmp/state/watcher/reload-ready" ]; check "each pass of the running loop touches watcher/reload-ready (org-start reads it)" $?
 
 reset; term secretary - working; mark_reload; pass $T0
 [ "$(reloads)" -eq 0 ] && [ -f "$RLD" ] && [ ! -e "$RLD-sent" ]; check "a busy secretary gets no /reload-plugins; the marker waits" $?

@@ -43,6 +43,10 @@ Usage: org [--as <id>] <command> [args]
                                                 ended, no done record), "waiting" (blocked),
                                                 "unreported" (done in the core, no done record),
                                                 "unreadable", "watch_error" or "flush_error"; nothing when quiet
+  renew_secretary                               (secretary only) after doc set secretary-handover, at the
+                                                end of a turn: leave watcher/renew-secretary (a request
+                                                id); the watcher runs secretary-handover.sh once you
+                                                are idle. Types into nothing.
   brief                                         read-only: print secretary-handover, org-state and
                                                 each terminal labelled task_id with its status
   doc get <name>                                print a core document's value
@@ -121,7 +125,7 @@ cmd=${1:-}; [ $# -eq 0 ] || shift
 
 valid_id() { case "$1" in ''|-*|*[!a-z0-9_-]*) return 1 ;; esac; }
 case "$cmd" in
-  send_message|check_messages|set_summary|report|ci_completed|ci_requested|ci_watch_failed|work_check|list_runs|doc|wait|brief|rebuild|config|codex_round|own_files) ;;
+  send_message|check_messages|set_summary|report|ci_completed|ci_requested|ci_watch_failed|work_check|list_runs|doc|wait|brief|rebuild|config|codex_round|own_files|renew_secretary) ;;
   *) echo "org: unknown command: $cmd" >&2; usage >&2; exit 2 ;;
 esac
 valid_id "$id" || die 2 "no valid id: give --as <id> or set PADDOCK_ORG_ID (lowercase letters, digits, _ and -)"
@@ -321,6 +325,20 @@ case "$cmd" in
     valid_id "$to" || die 2 "invalid recipient: $to"
     [ -n "$text" ] || die 2 "empty text"
     append message "$to" "" "$text" ;;
+
+  renew_secretary)
+    # Issue #458: the watcher (org-watch) runs secretary-handover.sh from its own environment once the
+    # secretary is idle, as it types /reload-plugins on org-start's marker. The id makes each request new.
+    [ $# -eq 0 ] || die 2 "usage: renew_secretary"
+    [ "$id" = secretary ] || [ "$id" = "${PADDOCK_SECRETARY_NAME:-secretary}" ] || die 7 "only secretary asks for its renewal"
+    w=$state/watcher; m=$w/renew-secretary
+    { mkdir -p "$w" && printf '%s-%s\n' "$(date +%s%N)" "$$" > "$m.new" && mv "$m.new" "$m"; } || die 5 "cannot write $m"
+    # renew-ready is touched by every pass of a watcher that acts on the marker
+    if [ -n "$(find "$w/renew-ready" -mmin -5 2>/dev/null)" ]; then
+      echo "org: renewal requested; the watcher runs secretary-handover.sh once you are idle: end your turn now"
+    else
+      echo "org: renewal requested, but no watcher that runs it was seen in the last 5 minutes: ask the person to run bash $(cd "$(dirname "$0")/.." && pwd)/skills/secretary-handover/scripts/secretary-handover.sh from their own shell"
+    fi ;;
 
   set_summary)
     [ $# -ge 1 ] && [ -n "$*" ] || die 2 "usage: set_summary <text>"
