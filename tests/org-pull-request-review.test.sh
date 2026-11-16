@@ -25,8 +25,8 @@ for bad in 'a"b' 'a\b' "$(printf 'a\nb')"; do
   : > "$calls"; run --task-id "$bad" >/dev/null; rc=$?
   [ "$rc" -eq 2 ] && [ ! -s "$calls" ] && [ -z "$(git -C "$tmp/origin.git" for-each-ref)" ]; check "task id with a quote, backslash or newline exits 2 before any call" $?
 done
-: > "$calls"; run --task-id t1.a_b-2 >/dev/null; rc=$?
-[ "$rc" -eq 0 ] && grep -q '"task_id":"t1.a_b-2"' "$tmp"/st/events/*/secretary.jsonl; check "a plain task id is recorded as given" $?
+: > "$calls"; run --task-id t1-a_b-2 >/dev/null; rc=$?
+[ "$rc" -eq 0 ] && grep -q '"task_id":"t1-a_b-2"' "$tmp"/st/events/*/secretary.jsonl; check "a plain task id is recorded as given" $?
 
 # Acceptance mode waits for the other required checks of the head instead of refusing while they run
 # (on the --pr rerun, once the watcher recorded CI green for the head: decision 0013).

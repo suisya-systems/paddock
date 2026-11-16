@@ -6,6 +6,7 @@ set -u
 usage() {
   cat <<'USAGE'
 Usage: org-start.sh [-h|--help]
+       org-start.sh --restart-core [--yes]
        org-start.sh --check [--project DIR]...
        org-start.sh --place-only [--from-origin BRANCH]
 
@@ -18,6 +19,13 @@ ${XDG_STATE_HOME:-~/.local/state}/paddock), where its rules are placed as AGENTS
 templates/secretary-rules.md) beside a CLAUDE.md whose only line is @AGENTS.md; the checkout's path is
 recorded in the bin folder (paddock-home) for the template's PADDOCK_HOME.
 A folder-trust dialog on the secretary is answered once (Yes, checked on the screen first).
+
+--restart-core fixes exit 10 (hc is not on the running core's PATH) from a login shell that has hc on PATH:
+it lists the terminals it would end (hc ls), asks y/N (--yes skips the question; no answer is No), then runs
+hc server stop and hc server start (a restart does not replace the holder process, so it would not help) and
+goes on with the ordinary org-start. It ends EVERY terminal of the core, the secretary and workers included
+(decision 0007). A core that already has hc on its PATH, or none that can be read, is left alone. Refused inside
+an agent like org-start itself.
 
 --place-only places the files again (templates, the bin folder, mods, layout) and starts nothing:
 no hc call, no core, no secretary, no watcher, no herdr-app command. It may run inside an agent
@@ -57,18 +65,21 @@ Exit codes: 0 ready (7 also prints the terminal exit code and last line), 2 bad 
 5 core unreachable, 6 files could not be placed, 7 secretary has no status,
 8 herdr-core notes are on (no notes = false in the core config).
 9 claude not found from org-start's shell (the templates need its absolute path).
-10 hc is not on the running core's PATH (restart herdr from a login shell that has it).
+10 hc is not on the running core's PATH (run org-start --restart-core from a login shell that has it).
+11 --restart-core was not confirmed; nothing was ended.
 --place-only: 0 placed, 2 bad argument, 6 files could not be placed (or the fetch failed).
 --check: 0 nothing left for a person, 1 a TODO is printed, 2 bad argument.
 USAGE
 }
 
-check= projects= placeonly= fromorigin=
+check= projects= placeonly= fromorigin= restartcore= yes=
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --check) check=1; shift ;;
     --place-only) placeonly=1; shift ;;
+    --restart-core) restartcore=1; shift ;;
+    --yes) yes=1; shift ;;
     --from-origin) [ $# -ge 2 ] || { echo "org-start: --from-origin needs a value" >&2; exit 2; }
       fromorigin=$2; shift 2 ;;
     --project) [ $# -ge 2 ] || { echo "org-start: --project needs a value" >&2; exit 2; }
@@ -79,6 +90,8 @@ $2"; shift 2 ;;
 done
 [ -z "$projects" ] || [ -n "$check" ] || { echo "org-start: --project only goes with --check" >&2; exit 2; }
 [ -z "$fromorigin" ] || [ -n "$placeonly" ] || { echo "org-start: --from-origin only goes with --place-only" >&2; exit 2; }
+[ -z "$restartcore" ] || { [ -z "$check" ] && [ -z "$placeonly" ]; } || { echo "org-start: --restart-core does not go with --check or --place-only" >&2; exit 2; }
+[ -z "$yes" ] || [ -n "$restartcore" ] || { echo "org-start: --yes only goes with --restart-core" >&2; exit 2; }
 [ -z "$placeonly" ] || [ -z "$check" ] || { echo "org-start: --place-only and --check do not go together" >&2; exit 2; }
 
 die() { code=$1; shift; echo "org-start: $*" >&2; exit "$code"; }
@@ -98,6 +111,9 @@ if [ -z "$check$placeonly" ]; then # place-only calls no hc, so it may run insid
   # ponytail: a core that an agent already started cannot be detected yet (no probe
   # reads the core's own environment); the start rule and the template's env -u cover it.
   v=$(agentvar) && die 4 "$v is set: this shell is inside an agent. Run org-start from your own login shell."
+  # --restart-core ends every terminal of the core, this one too: stop would kill this script before the start.
+  [ -z "$restartcore" ] || [ -z "${HC_TERMINAL_SOCKET:-}" ] \
+    || die 4 "--restart-core: this shell is a terminal of the core (HC_TERMINAL_SOCKET is set), and the restart would end it before the new core starts. Run it from a shell outside herdr (a WSL or system terminal)."
 fi
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
@@ -187,6 +203,30 @@ if [ -z "$placeonly" ]; then
 fr_notes_ok "$coreconf" || die 8 "herdr-core's notes are on: $FR_NOTES_FIX"
 # Decision 0007: hc must be on the running core's PATH. Read from the core's own environment;
 # silent where /proc is not readable (Linux and WSL only) or no core runs yet (the first hc starts one from here).
+# --restart-core (decision 0007, revised): the person's own command ends the core so the next one has hc on its PATH.
+if [ -n "$restartcore" ]; then
+  fr_core_path; case $? in
+    1) terms=$(hc ls 2>&1) || { echo "next: start the core with 'hc server start' from this shell, then run org-start --restart-core again" >&2; die 5 "cannot reach the herdr core (hc ls failed): $terms"; }
+       echo "org-start: --restart-core ends the core and EVERY terminal in it (the secretary and workers too), then starts a new core from this shell. Terminals now:"
+       echo "$terms"
+       if [ -z "$yes" ]; then
+         printf 'End them and restart the core? [y/N] '
+         read -r ans || ans=
+         case "$ans" in y|Y|yes|YES|Yes) ;; *) echo; die 11 "not confirmed; nothing was ended" ;; esac
+       fi
+       hc server stop >/dev/null 2>&1 || { echo "next: run 'hc server stop' yourself, then org-start again" >&2; die 5 "hc server stop failed"; }
+       hc server start >/dev/null 2>&1 || { echo "next: no core runs now; run 'hc server start' from this shell, then org-start" >&2; die 5 "hc server start failed after the stop"; }
+       echo "org-start: the core was restarted from this shell"
+       # kept terminals come back as plain shells after a full stop (architecture.md): remove the
+       # secretary's and the watcher's (hc rm takes only a finished one, so kill it first) so the ordinary start below launches them again. Workers are not
+       # touched here; org-resume brings them back.
+       for t in "${PADDOCK_SECRETARY_NAME:-secretary}" "${PADDOCK_WATCHER_NAME:-watcher}"; do
+         ! hc get "$t" >/dev/null 2>&1 || { hc kill "$t" >/dev/null 2>&1; hc rm "$t" >/dev/null 2>&1; } || { echo "next: run 'hc rm $t', then org-start" >&2; die 5 "hc rm $t failed after the restart"; }
+       done ;;
+    0) echo "org-start: --restart-core: hc is already on the running core's PATH; the core is left alone" ;;
+    *) echo "org-start: --restart-core: $FR_PATH_WHY; the core is left alone" ;;
+  esac
+fi
 fr_core_path || { [ $? -eq 2 ] || die 10 "$FR_PATH_FIX"; }
 fi
 # the org script goes where a worker may read it and may not write (see worker-settings.json).

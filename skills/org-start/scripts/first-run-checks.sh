@@ -44,6 +44,6 @@ fr_core_path() {
   fi
   PATH=$fr_cpath command -v hc >/dev/null 2>&1 && return 0
   fr_hcdir=$(dirname "$(command -v hc)")
-  FR_PATH_FIX="hc is not on the core's PATH (hc is in $fr_hcdir), so its terminals cannot run hc and no approval card appears: stop herdr-core, then start herdr again from a login shell that has that folder on PATH"
+  FR_PATH_FIX="hc is not on the core's PATH (hc is in $fr_hcdir), so its terminals cannot run hc and no approval card appears: from a login shell that has that folder on PATH run 'org-start.sh --restart-core' (it lists the terminals it ends and asks first; or stop herdr-core and start herdr again by hand)"
   return 1
 }

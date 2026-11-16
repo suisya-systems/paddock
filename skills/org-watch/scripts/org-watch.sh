@@ -17,7 +17,7 @@ Polls the core and tells the person (a desktop toast with sound, else a terminal
     changed for N minutes (Q3),
   - when a terminal reported no status N minutes after it was created.
 Each item is told once, and again after N minutes if it is still waiting.
-Decision 0013: worker events (blocked, done with no report, gone, no status) become one line
+Decision 0013: worker events (blocked, done with no report for N minutes, gone, no status) become one line
 each in the secretary's mailbox, written as watcher; a background ci-watch.sh per open
 ci_requested record writes ci_completed or ci_watch_failed and a mailbox line. N minutes after
 a green ci_completed whose task has no card and is still in org-state.work, and N minutes after a
@@ -110,7 +110,7 @@ tell() { # tell <key> <title> <body>: only if due; the key is kept active either
   notify "$2" "$3"; mark "$1"
 }
 
-# approval_lines <org-state doc> [array]: "id<TAB>task_id<TAB>question" per entry of the top-level
+# approval_lines <org-state doc> [array]: "id<TAB>task_id<TAB>question<TAB>show_at" per entry of the top-level
 # approvals array (or of [array], such as work). A scanner that knows strings, escapes and nesting:
 # a word like "approvals" or a brace inside a question or a task is data.
 approval_lines() {
@@ -124,14 +124,14 @@ approval_lines() {
       else if (c ~ /[{}:\[\]]/) { n++; tt[n] = c; tv[n] = c } }
     d = 0; inapp = 0
     for (i = 1; i <= n; i++) { t = tt[i]
-      if (t == "{" || t == "[") { d++; if (inapp && t == "{" && d == 3) { id = ""; tk = ""; qu = "" } }
+      if (t == "{" || t == "[") { d++; if (inapp && t == "{" && d == 3) { id = ""; tk = ""; qu = ""; sa = "" } }
       else if (t == "}" || t == "]") {
-        if (inapp && t == "}" && d == 3) printf "%s\t%s\t%s\n", id, tk, qu
+        if (inapp && t == "}" && d == 3) printf "%s\t%s\t%s\t%s\n", id, tk, qu, sa
         if (inapp && t == "]" && d == 2) inapp = 0
         d-- }
       else if (t == "S" && !inapp && d == 1 && tv[i] == ENVIRON["A"] && tt[i+1] == ":" && tt[i+2] == "[") inapp = 1
       else if (t == "S" && inapp && d == 3 && tt[i+1] == ":" && tt[i+2] == "S") {
-        if (tv[i] == "id") id = tv[i+2]; else if (tv[i] == "task_id") tk = tv[i+2]; else if (tv[i] == "question") qu = tv[i+2] } }
+        if (tv[i] == "id") id = tv[i+2]; else if (tv[i] == "task_id") tk = tv[i+2]; else if (tv[i] == "question") qu = tv[i+2]; else if (tv[i] == "show_at") sa = tv[i+2] } }
   }'
 }
 num() { printf '%s' "$1" | grep -o "\"$2\": *[0-9][0-9]*" | head -1 | sed 's/.*: *//'; }
@@ -338,8 +338,15 @@ pass() {
   # 1. approval cards (org-state.approvals), once per card
   if doc=$("$BASH" "$org" --as watcher doc get org-state 2>/dev/null); then
     cards=$(approval_lines "$doc")
-    while IFS="$tab" read -r id tk qu; do
+    while IFS="$tab" read -r id tk qu sa; do
       [ -n "$id" ] || continue
+      # A proposal of the secretary's own is hidden until its show_at; then the secretary's
+      # sweep decides (show or withdraw), so the watcher only mails it once that time is reached
+      if [ -n "$sa" ]; then
+        [ "$(date -u -d "$sa" +%s 2>/dev/null || echo "$now")" -gt "$now" ] \
+          || mail_once "mail:show:$id" "proposal $id reached its show time: run org-escalation sweep"
+        continue
+      fi
       tell "approval:$id" "Approval waiting: ${tk:-?}" "${qu:0:200}"
     done <<< "$cards"
   else
@@ -382,7 +389,14 @@ pass() {
   done <<< "$terms"
   wc_out=$("$BASH" "$org" --as watcher work_check 2>/dev/null) || wc_out='{"watch_error":""}'
   case "$wc_out" in *'"watch_error"'*|*'"unreadable"'*) prune= ;; esac
-  for tk in $(listed "$wc_out" unreported); do mail_once "mail:unreported:w-$tk" "w-$tk is done and sent no report"; done
+  # A turn ends (done) while a worker waits on a background shell, so done counts only
+  # once the same done (turn, status_ms) has held N minutes: status_ms is when that status began,
+  # and a new turn or status gives a new status_ms, which restarts the wait.
+  for tk in $(listed "$wc_out" unreported); do
+    j=$(term_json "w-$tk") || { prune=; continue; }   # a failed re-read keeps the ledger as it is
+    ms=$(num "$j" status_ms)
+    [ "$(jstate "$j")" = done ] && [ -n "$ms" ] && [ $((now - ms / 1000)) -ge "$limit" ] || continue
+    mail_once "mail:unreported:w-$tk" "w-$tk is done and sent no report"; done
   for tk in $(listed "$wc_out" gone); do mail_once "mail:gone:w-$tk" "w-$tk has no terminal and sent no done report"; done
 
   # 5. CI: one background ci-watch.sh per open ci_requested record
@@ -401,7 +415,7 @@ pass() {
       mail_once "mail:green:$repo#$pr@$sha" "PR #$pr is green and no card asks about it"
     done <<< "$(green_lines)"
     ans=$(answer_lines)
-    while IFS="$tab" read -r id tk qu; do
+    while IFS="$tab" read -r id tk qu _; do
       [ -n "$id" ] || continue
       ts=$(printf '%s\n' "$ans" | awk -F'\t' -v i="$id" '$1 == i { print $2 }')
       [ -n "$ts" ] && older "$ts" || continue
