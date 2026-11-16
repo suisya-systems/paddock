@@ -329,13 +329,16 @@ fi
 # A branch with no required checks makes gh exit 1 with exactly the line
 #   no required checks reported on the '<branch>' branch   (gh 2.x; quotes optional in the match)
 # then the watcher's ci_completed record for this exact head (read in step 3; success, else exit 9
-# above) is the check. Any other failure, an empty or unknown error included, refuses.
+# above) is the check. gh prints the same line when a required check is configured but never
+# reported, so the fallback also needs GitHub's mergeStateStatus CLEAN (BLOCKED while a required
+# check is missing). Any other failure, an empty or unknown error included, refuses.
 cerr=$(gh pr checks "$pr" --repo "$repo" --required --watch 2>&1 >/dev/null); crc=$?
 if [ "$crc" -eq 0 ]; then
   echo "Merge check: the required checks are green on $sha (gh pr checks --required)."
 elif [ "$crc" -eq 1 ] && printf '%s\n' "$cerr" | grep -qxE "no required checks reported on the '?[^ ']+'? branch" \
-     && [ "$(printf '%s\n' "$cerr" | wc -l)" -eq 1 ] && [ "$concl" = success ]; then
-  echo "Merge check: the branch has no required checks; used the watcher's ci_completed record for $sha (success, run $run)."
+     && [ "$(printf '%s\n' "$cerr" | wc -l)" -eq 1 ] && [ "$concl" = success ] \
+     && [ "$(gh pr view "$pr" --repo "$repo" --json mergeStateStatus --jq .mergeStateStatus 2>/dev/null)" = CLEAN ]; then
+  echo "Merge check: the branch has no required checks (merge state CLEAN); used the watcher's ci_completed record for $sha (success, run $run)."
 else
   die 10 "required checks are not all green on $sha; not merged" "$moved"
 fi

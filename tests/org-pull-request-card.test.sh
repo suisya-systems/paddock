@@ -19,7 +19,7 @@ cat > "$stubdir/gh" <<'EOF2'
 echo "gh $*" >> "$STUB/calls"
 case "$1 $2" in
   "pr create") echo "https://github.com/o/r/pull/42" ;;
-  "pr view") case "$*" in *state*) echo "${STUB_STATE:-OPEN}" ;; *) [ -z "${STUB_VIEW_FAIL:-}" ] || exit 1; echo "${STUB_HEAD:-$(cat "$STUB/head")}" ;; esac ;;
+  "pr view") case "$*" in *mergeStateStatus*) echo "${STUB_MERGE_STATE:-CLEAN}" ;; *state*) echo "${STUB_STATE:-OPEN}" ;; *) [ -z "${STUB_VIEW_FAIL:-}" ] || exit 1; echo "${STUB_HEAD:-$(cat "$STUB/head")}" ;; esac ;;
   # gh's own text for a branch with no required checks (gh pr checks --required, exit 1)
   "pr checks") [ -z "${STUB_NO_REQUIRED:-}" ] || { echo "no required checks reported on the 'feat/x' branch" >&2; exit 1; }
     [ -z "${STUB_CHECKS_ERR:-}" ] || echo "$STUB_CHECKS_ERR" >&2; exit "${STUB_CHECKS_RC:-0}" ;;
@@ -113,8 +113,11 @@ out=$(run --pr 42 --approved "$id"); rc=$?
 # The person's yes on a branch with no required checks: the watcher's success for the head is the check.
 green; out=$(run --pr 42); id=$(idof "$out"); say person "ANSWER $id yes"
 out=$(ENVX=STUB_NO_REQUIRED=1 run --pr 42 --approved "$id"); rc=$?
-[ "$rc" -eq 0 ] && merged && grep -q "no required checks; used the watcher's ci_completed record" <<<"$out"
+[ "$rc" -eq 0 ] && merged && grep -q "no required checks (merge state CLEAN); used the watcher's ci_completed record" <<<"$out"
 check "--approved, no required checks + the watcher's success: merged ($out)" $?
+green; out=$(run --pr 42); id=$(idof "$out"); say person "ANSWER $id yes"
+out=$(ENVX="STUB_NO_REQUIRED=1 STUB_MERGE_STATE=BLOCKED" run --pr 42 --approved "$id"); rc=$?
+[ "$rc" -eq 10 ] && ! merged && [ "$(ncards)" -eq 1 ]; check "--approved, no required checks reported but merge state BLOCKED: exit 10, not merged, the yes not consumed" $?
 green; out=$(run --pr 42); id=$(idof "$out"); say person "ANSWER $id yes"
 out=$(ENVX=STUB_CHECKS_RC=1 run --pr 42 --approved "$id"); rc=$?
 [ "$rc" -eq 10 ] && ! merged; check "--approved, required checks failing: exit 10, not merged" $?
