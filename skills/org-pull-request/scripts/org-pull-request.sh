@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # org-pull-request: push a worker's branch, open the PR and record ci_requested; org-watch watches
 # CI and records ci_completed (decision 0013). With --pr, act on that record for the current head:
-# stop (human) or merge (acceptance). Needs bash, git and gh.
+# raise the merge card and merge on its checked yes (human), or merge (acceptance). Needs bash, git and gh.
 # See ../SKILL.md. Run it from the secretary.
 set -u
 
@@ -9,11 +9,15 @@ usage() {
   cat <<'USAGE'
 Usage: org-pull-request.sh --title TITLE (--body-file FILE | --body TEXT) [options]
        org-pull-request.sh --pr N [options]
+       org-pull-request.sh --pr N --approved APPROVAL_ID [--note TEXT] [options]
 
 Pushes the worktree's branch to origin, opens a PR and appends ci_requested for its head:
 org-watch watches CI, records ci_completed (or ci_watch_failed) and mails the secretary
 (decision 0013). With --pr N it reads the watcher's record for the current head and acts by
 approval mode; a head with no request yet, or whose watch failed, is requested (once).
+Human mode: a green head gets one merge card (org-escalation ask), once per head; a card
+raised for an older head is withdrawn. The rerun with --approved merges only after
+org-escalation remove --text yes found the yes in the person's own file.
 
 Options:
   --worktree DIR     the worker's worktree (default: current directory)
@@ -27,6 +31,10 @@ Options:
                      the watcher's CI record for its head
   --recheck          with --pr: request the head again although the watcher recorded a result
                      (CI was rerun on the same commit); never while a request is open
+  --approved ID      with --pr, human mode: the merge card ID was answered yes. Checked against
+                     the person's file (org-escalation remove --id ID --text yes), then merged
+                     with the acceptance guards (same head, required checks green)
+  --note TEXT        with --approved: the note the person's yes carried
   -h, --help         this text
 
 Environment overrides:
@@ -34,13 +42,15 @@ Environment overrides:
                       ${XDG_STATE_HOME:-~/.local/state}/paddock)
   PADDOCK_NOW         fixes the clock (UTC ISO 8601), for the months read
 
-Exit codes: 0 done (no --pr: PR opened, CI requested; --pr, human: CI green, the person
-decides; --pr, acceptance: merged; --pr, PR already merged: landing placed), 2 bad argument,
+Exit codes: 0 done (no --pr: PR opened, CI requested; --pr, human: CI green, the merge card
+is up, or merged on its checked yes; --pr, acceptance: merged; --pr, PR already merged:
+landing placed), 2 bad argument,
 3 gh or git not found, 4 no CI result recorded for the head yet (requested now or still
 watched; the watcher mails it), 5 push failed, 6 PR could not be created, 9 CI failed,
 10 merge refused (head moved or required checks not green), 11 merge failed, 12 the
 ci_requested line could not be written, 13 merged, but the files org-start placed were not
-placed again (a landing in the paddock repository).
+placed again (a landing in the paddock repository), 14 the merge card could not be raised
+or read, 15 --approved: no yes in the person's file (not merged, card kept).
 
 Every exit prints one line "next: <exact action>" (or "next: ask the person: <question>"): do that.
 
@@ -57,16 +67,17 @@ die() { echo "org-pull-request: $2" >&2; echo "next: $3" >&2; exit "$1"; }
 qself=$(printf "%q" "$self")
 fixcall="fix the call (bash $qself --help)"
 
-wt=.; repo=; base=; project=; task=; mode=; pr=; title=; body=; bodyfile=; recheck=
+wt=.; repo=; base=; project=; task=; mode=; pr=; title=; body=; bodyfile=; recheck=; approved=; note=
 while [ $# -gt 0 ]; do
   case $1 in
     -h|--help) usage; exit 0 ;;
     --recheck) recheck=1; shift ;;
-    --worktree|--repo|--project|--base|--task-id|--mode|--pr|--title|--body|--body-file)
+    --worktree|--repo|--project|--base|--task-id|--mode|--pr|--title|--body|--body-file|--approved|--note)
       [ $# -ge 2 ] || die 2 "$1 needs a value" "$fixcall"
       case $1 in
         --worktree) wt=$2 ;; --repo) repo=$2 ;; --project) project=$2 ;; --base) base=$2 ;; --task-id) task=$2 ;;
         --mode) mode=$2 ;; --pr) pr=$2 ;; --title) title=$2 ;; --body) body=$2 ;; --body-file) bodyfile=$2 ;;
+        --approved) approved=$2 ;; --note) note=$2 ;;
       esac
       shift 2 ;;
     *) usage >&2; die 2 "unknown argument: $1" "$fixcall" ;;
@@ -84,6 +95,9 @@ fi
 case $mode in ""|human|acceptance) ;; *) die 2 "--mode must be human or acceptance" "$fixcall" ;; esac
 case $pr in ""|*[!0-9]*) [ -z "$pr" ] || die 2 "--pr must be a number" "$fixcall" ;; esac
 [ -z "$recheck" ] || [ -n "$pr" ] || die 2 "--recheck needs --pr" "$fixcall"
+[ -z "$approved" ] || [ -n "$pr" ] || die 2 "--approved needs --pr" "$fixcall"
+[ -z "$note" ] || [ -n "$approved" ] || die 2 "--note needs --approved" "$fixcall"
+case $approved in -*|*[!A-Za-z0-9_-]*) die 2 "--approved takes the approval id (APPROVAL_ID=...)" "$fixcall" ;; esac
 [ -n "$pr" ] || [ -n "$title" ] || die 2 "--title is required unless --pr is given" "$fixcall"
 [ -n "$pr" ] || [ -n "$body$bodyfile" ] || die 2 "--body-file or --body is required unless --pr is given" "$fixcall"
 [ -z "$bodyfile" ] || [ -f "$bodyfile" ] || die 2 "body file not found: $bodyfile" "$fixcall"
@@ -134,16 +148,19 @@ git -C "$wt" push origin "$branch" >&2 || die 5 "git push origin $branch failed"
 # 1b. the task's last diff-review record in the codex-gate history. Unless it is
 # codex_round_passed (or there is none), the body itself says the review did not run, so a body
 # file written without that still carries it. Needs --task-id; a design review is not this review.
+# gate_rec: that record; gate_text: it as "<kind>: <text>" (also the merge card's background).
+gate_rec() { cat "${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}"/events/*/codex-gate.jsonl 2>/dev/null \
+    | grep "\"task_id\":\"$task\",\"text\":\"diff round " | grep -E '"kind":"codex_round_(passed|failed)"' | tail -1; }
+gate_text() { printf '%s' "$1" | sed 's/.*"kind":"\([^"]*\)".*"text":"\(.*\)"}$/\1: \2/'; }
 if [ -z "$pr" ] && [ -n "$task" ]; then
-  gl=$(cat "${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}"/events/*/codex-gate.jsonl 2>/dev/null \
-    | grep "\"task_id\":\"$task\",\"text\":\"diff round " | grep -E '"kind":"codex_round_(passed|failed)"' | tail -1)
+  gl=$(gate_rec)
   case $gl in
     *'"kind":"codex_round_passed"'*) ;;
     *)
-      note="Second-model review did not run: no passed diff review is recorded for task $task."
-      [ -z "$gl" ] || note="Second-model review did not run. Gate record: $(printf '%s' "$gl" | sed 's/.*"kind":"\([^"]*\)".*"text":"\(.*\)"}$/\1: \2/')"
+      bnote="Second-model review did not run: no passed diff review is recorded for task $task."
+      [ -z "$gl" ] || bnote="Second-model review did not run. Gate record: $(gate_text "$gl")"
       bf=$(mktemp) || die 6 "cannot make a temporary body file" "ask the person: no temporary file can be made (the branch is pushed, no PR yet); is the disk full?"
-      { if [ -n "$bodyfile" ]; then cat "$bodyfile"; else printf '%s\n' "$body"; fi; printf '\n%s\n' "$note"; } > "$bf"
+      { if [ -n "$bodyfile" ]; then cat "$bodyfile"; else printf '%s\n' "$body"; fi; printf '\n%s\n' "$bnote"; } > "$bf"
       bodyfile=$bf; body= ;;
   esac
 fi
@@ -161,14 +178,24 @@ else
   url="https://github.com/$repo/pull/$pr"
 fi
 echo "PR_URL=$url"
-again="bash $qself --pr $pr --worktree $(printf "%q" "$wt") --repo $repo${mode:+ --mode $mode}"   # the rerun the secretary is told to make
 org=$root/scripts/org
+ev=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/events
+# a rerun without --task-id: the task the first run recorded with this PR's ci_requested
+[ -n "$task" ] || task=$(cat "$ev"/*/secretary.jsonl 2>/dev/null | grep '"kind":"ci_requested"' | grep "\"pr\":$pr,\"sha\"" \
+  | grep "\"repo\":\"$repo\"" | sed -n 's/.*"task_id":"\([A-Za-z0-9._-]*\)".*/\1/p' | tail -1)
+again="bash $qself --pr $pr --worktree $(printf "%q" "$wt") --repo $repo${mode:+ --mode $mode}${task:+ --task-id $task}"   # the rerun the secretary is told to make
 targs=(); [ -z "$task" ] || targs=(--task "$task")
+
+# approval mode: argument, else merge_approval_mode in org-config.md (Q14; org config set), else human
+if [ -z "$mode" ]; then
+  m=$(bash "$org" --as secretary config get merge_approval_mode 2>/dev/null)
+  case $m in acceptance) mode=acceptance ;; *) mode=human ;; esac
+fi
+[ -z "$approved" ] || [ "$mode" = human ] || die 2 "--approved is for human mode (the approval mode is $mode)" "$fixcall"
 
 # 3. the head's CI state from the records (this calendar month and the last, as org-watch reads them):
 # the secretary's latest ci_requested for repo, pr and sha, and the watcher's latest ci_completed or
 # ci_watch_failed at or after it. The skill's own old ci_completed lines (from secretary) do not count.
-ev=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/events
 cur=$(printf '%s' "${PADDOCK_NOW:-}" | cut -c1-7); [ -n "$cur" ] || cur=$(date -u +%Y-%m)
 y=${cur%-*}; m=$((10#${cur#*-} - 1)); [ "$m" -gt 0 ] || { m=12; y=$((10#$y - 1)); }
 ci=$(for d in "$ev/$(printf '%04d-%02d' "$((10#$y))" "$m")" "$ev/$cur"; do
@@ -184,6 +211,24 @@ ci=$(for d in "$ev/$(printf '%04d-%02d' "$((10#$y))" "$m")" "$ev/$cur"; do
           else if (dk == "ci_completed") print dc, dr; else print "failed", dw, dt }')
 # --recheck: a recorded result is set aside, so the head is requested again (an open request stays one)
 [ -z "$recheck" ] || case $ci in none|open|failed*) ;; *) ci="failed recheck $(date -u +%Y-%m-%dT%H:%M:%SZ)" ;; esac
+# Human mode: the merge cards of this PR (org-escalation list). Each names its head in the question
+# ("PR #<n> (<repo>, head <sha7>)"): one for the current head is kept (raised once per head), one for an
+# older head is withdrawn (plain remove), and the new head is requested below like any other.
+esc=$root/skills/org-escalation/scripts/org-escalation.sh; qesc=$(printf "%q" "$esc")
+s7=${sha:0:7}; mark="PR #$pr ($repo, head "; card=; listed=
+if [ "$mode" = human ] && { [ -n "$prgiven" ] || [ "${ci%% *}" = success ]; } && cards=$(bash "$esc" list 2>/dev/null); then
+  listed=1
+  while IFS=$'\t' read -r cid _ q; do
+    case $q in *"$mark"*) ;; *) continue ;; esac
+    h=${q#*"$mark"}; h=${h%%)*}
+    if [ "$h" = "$s7" ]; then card=$cid; continue; fi
+    o=$(bash "$esc" remove --id "$cid" 2>&1) || die 14 "the merge card $cid for the old head $h could not be withdrawn: $(printf '%s' "$o" | grep -v '^next:' | tr '\n' ' ')" \
+      "ask the person: the merge card $cid of PR $pr names an old head and could not be withdrawn (output above); never merge on it. How do they want to proceed?"
+    echo "Merge card $cid withdrawn: it was raised for head $h, the head is now $s7. Not merged."
+    [ "$cid" != "$approved" ] || approved=
+  done <<< "$cards"
+fi
+
 case $ci in
   none|failed*)
     # no request for this head, or its watch failed: ask the watcher (once: an open request is not repeated)
@@ -206,27 +251,72 @@ run=${ci#* }; concl=${ci%% *}
 [ "$concl" = success ] || die 9 "CI failed on $sha (conclusion $concl, run $run, recorded by the watcher); PR $url" \
   "send the worker back with this failure; never merge. If CI was rerun on the same commit instead, run: $again --recheck"
 
-# 4. approval mode: argument, else merge_approval_mode in org-config.md (Q14; org config set), else human
-if [ -z "$mode" ]; then
-  m=$(bash "$org" --as secretary config get merge_approval_mode 2>/dev/null)
-  case $m in acceptance) mode=acceptance ;; *) mode=human ;; esac
-fi
-
+# 4. human mode: the person decides on the merge card; the script raises it (once per head) and
+# merges only on the rerun with --approved, once the yes is found in the person's own file.
+nomerge="do not merge. If the person answered no: send their note to the worker, then run: bash $qesc remove --id ${approved:-<card id>} --text no (add --note \"<their note, as written>\" when the answer had one)"
 if [ "$mode" = human ]; then
-  echo "CI green on $sha (run $run). Approval mode human: the person decides. Not merged. PR: $url"
-  echo "next: tell the person the PR URL and the watcher's CI line, then wait; never merge. When they have merged it, run: $again"
-  exit 0
+  echo "CI green on $sha (run $run). Approval mode human: the person decides on the merge card. PR: $url"
+  [ -n "$listed" ] || die 14 "the open cards could not be read (org-escalation list); no merge card raised" \
+    "ask the person: PR $url is green at $s7 (watcher: run $run), but its merge card could not be raised (org-state unreadable); merge it?"
+  if [ -n "$approved" ] && [ "$approved" != "$card" ]; then
+    die 2 "$approved is not the open merge card of PR $pr at head $s7; not merged" \
+      "run: bash $qesc list, then rerun with --approved <the id of the card naming PR #$pr and head $s7>"
+  fi
+  if [ -z "$approved" ]; then
+    if [ -n "$card" ]; then echo "Merge card $card for head $s7 is up already; not raised again. Not merged."
+    elif [ -z "$task" ]; then
+      die 14 "no task id for PR $pr (no --task-id, and its ci_requested records name none); no merge card raised" \
+        "$fixcall: run $again --task-id <the worker's task id>"
+    else
+      lang=$(bash "$org" --as secretary doc get org-state 2>/dev/null | sed -n 's/.*"conversation_lang" *: *"\([A-Za-z-]*\)".*/\1/p' | head -1)
+      ciline="CI success on PR $pr, head $s7, run $run (recorded by the watcher)"
+      gl=$(gate_rec); gok=; case $gl in *'"kind":"codex_round_passed"'*) gok=1 ;; esac
+      if [ -n "$gl" ]; then gate=$(gate_text "$gl" | cut -c1-200); else gate="no diff review recorded for task $task"; fi
+      if [ "$lang" = ja ]; then
+        q="PR #$pr ($repo, head $s7) をマージしますか?"
+        bg="$url / $ciline。第二モデルのレビュー(タスク履歴): $gate"
+        yes="秘書が PR #$pr を head $s7 のまま squash でマージし(head が変わらず必須チェックが緑のときだけ)、ワーカーを閉じます。"
+        no="マージしません。メモはワーカーに送られ、ワーカーがブランチを直します。新しい head には新しいカードが出ます。"
+        if [ -n "$gok" ]; then why="この head で CI が緑で、第二モデルのレビューも通っています。"
+        else why="この head で CI が緑です。第二モデルのレビューは通っていません(背景を参照)。"; fi
+      else
+        q="Merge PR #$pr ($repo, head $s7)?"
+        bg="$url / $ciline. Second-model review (task history): $gate"
+        yes="The secretary merges PR #$pr at head $s7 (squash; only if the head is unchanged and the required checks are green), then closes the worker."
+        no="Not merged. Your note goes to the worker, who changes the branch; the new head gets a new card."
+        if [ -n "$gok" ]; then why="CI is green on this exact head and the second-model review passed."
+        else why="CI is green on this exact head; the second-model review did not pass (see the background)."; fi
+      fi
+      o=$(bash "$esc" ask --task "$task" --question "$q" --background "$bg" --if-yes "$yes" --if-no "$no" \
+            --recommend yes --why "$why" ${lang:+--lang "$lang"} 2>&1) \
+        || die 14 "the merge card could not be raised: $(printf '%s' "$o" | grep -v '^next:' | tr '\n' ' ')" \
+             "ask the person: PR $url is green at $s7 (watcher: run $run), but its merge card could not be raised (output above); merge it?"
+      card=$(printf '%s\n' "$o" | sed -n 's/^APPROVAL_ID=//p')
+      echo "Merge card $card raised for head $s7. Not merged."
+    fi
+    echo "next: tell the person the merge card for PR $url is up, then end the turn. On yes, run: $again --approved $card (add --note \"<their note, as written>\" when the yes had one). On no: send their note to the worker, then run: bash $qesc remove --id $card --text no (with --note likewise)"
+    exit 0
+  fi
 fi
 
-# acceptance: no local gate (Q11 d). The required checks are the repository's CI; here we only
+# 5. acceptance: no local gate (Q11 d). The required checks are the repository's CI; here we only
 # check that they are green on the exact head that was watched, then pin the merge to it.
+# The same guards for a checked yes in human mode (--approved), whose card is withdrawn on a moved head.
 now=$(gh pr view "$pr" --repo "$repo" --json headRefOid --jq .headRefOid 2>/dev/null)
 moved="run once the new head is pushed (it requests that head): $again"
-[ "$now" = "$sha" ] || die 10 "head moved: watched $sha, PR is at ${now:-unknown}; not merged" "$moved"
+if [ "$now" != "$sha" ]; then
+  [ -z "$approved" ] || { bash "$esc" remove --id "$approved" >/dev/null 2>&1 && echo "Merge card $approved withdrawn: the PR head moved."; }
+  die 10 "head moved: watched $sha, PR is at ${now:-unknown}; not merged" "$moved"
+fi
 # --watch: other workflows of the same head may still run; wait for them, do not refuse early.
 gh pr checks "$pr" --repo "$repo" --required --watch >/dev/null 2>&1 \
   || die 10 "required checks are not all green on $sha; not merged" "$moved"
+if [ -n "$approved" ]; then # the person's yes, from their own file (org-escalation's check); the card goes with it
+  o=$(bash "$esc" remove --id "$approved" --text yes ${note:+--note "$note"} 2>&1) \
+    || die 15 "no yes for $approved in the person's file: $(printf '%s' "$o" | grep -v '^next:' | tr '\n' ' ')" "$nomerge"
+  printf '%s\n' "$o"
+fi
 gh pr merge "$pr" --repo "$repo" --squash --match-head-commit "$sha" >&2 \
   || die 11 "the merge call failed" "ask the person: merging PR $pr failed (output above); how do they want to proceed?"
-echo "Merged PR $url at $sha (squash, approval mode acceptance)."
+echo "Merged PR $url at $sha (squash, approval mode $mode${approved:+, card $approved})."
 place_landing "close the worker (org-close skill)"
