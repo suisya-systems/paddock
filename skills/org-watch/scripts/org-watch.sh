@@ -27,6 +27,8 @@ never over typed input, at most once per unread batch per PADDOCK_WATCH_WAKE sec
 wake, skip and mailbox line is logged to watcher/woke.
 When watcher/reload-plugins exists (org-start leaves it after a SKILL.md landing), /reload-plugins
 is typed into the idle secretary once; a Reloaded: line clears it, none in N minutes tells the person.
+When watcher/renew-secretary exists (scripts/org renew_secretary), secretary-handover.sh is run once
+the secretary is idle or done with no typed input; exit 0 or 9 clears it, another exit tells the person.
   --once  one pass, then exit (0 done, 5 core unreachable); without it, loop until killed
 Environment: PADDOCK_WATCH_N (minutes, default 10), PADDOCK_WATCH_INTERVAL (seconds, default 30),
 PADDOCK_SECRETARY_NAME (default secretary), PADDOCK_POWERSHELL (powershell.exe path),
@@ -56,6 +58,7 @@ N=${PADDOCK_WATCH_N:-10}; limit=$((N * 60))
 wdir=${PADDOCK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/paddock}/watcher
 mkdir -p "$wdir" || die 5 "cannot create $wdir"
 told=$wdir/told; seen=$wdir/secretary.seen; reload=$wdir/reload-plugins; woke=$wdir/woke; wakes=$wdir/wake; cidir=$wdir/ci
+renew=$wdir/renew-secretary; hand=$here/../../secretary-handover/scripts/secretary-handover.sh
 WAKE=${PADDOCK_WATCH_WAKE:-60}
 mkdir -p "$cidir" || die 5 "cannot create $cidir"
 tab=$(printf '\t')
@@ -165,30 +168,34 @@ typed() { printf '%s\n' "$1" | bare | grep -Eq '^(â¯|>)[[:space:]]+[^[:space:]â
 # jstate <json>: term_status's state of a get already read (term_json answered from it in a subshell,
 # so the parse stays lib.sh's)
 jstate() { local J=$1; ( term_json() { printf '%s' "$J"; }; term_status - ); }
-# sendline <terminal> <key> <kind> <text>: types <text> into <terminal> only when it is idle or done and
-# its screen shows a prompt line with no typed input; logs the send as <kind> (or the skip) with <key>.
-# 0 when the text was delivered.
-sendline() {
-  local t=$1 key=$2 kind=$3 msg=$4 st line rc j j2 st2
-  j=$(term_json "$t") && st=$(jstate "$j") || st=not_found
-  case "$st" in idle|done) ;; *) wlog skip "$t" "$key" "$st" - -; return 1 ;; esac
-  # a screen that cannot be read is not a screen without input: no send this pass
-  line=$(hc read "$t" 2>/dev/null) || { wlog skip "$t" "$key" "$st" unreadable -; return 1; }
+# ready <terminal> <key>: 0 when <terminal> is idle or done and its screen shows a prompt line with no
+# typed input (rst holds the status read); else the skip is logged with <key>. A done status is read
+# again last: still done, same turn and status_ms as the first read, else skip (moved), retry next pass.
+ready() {
+  local t=$1 key=$2 line j j2 st2
+  j=$(term_json "$t") && rst=$(jstate "$j") || rst=not_found
+  case "$rst" in idle|done) ;; *) wlog skip "$t" "$key" "$rst" - -; return 1 ;; esac
+  # a screen that cannot be read is not a screen without input: nothing this pass
+  line=$(hc read "$t" 2>/dev/null) || { wlog skip "$t" "$key" "$rst" unreadable -; return 1; }
   # no prompt line found is not a prompt without input either
-  line=$(prompt_line "$line"); [ -n "$line" ] || { wlog skip "$t" "$key" "$st" noprompt -; return 1; }
-  if typed "$line"; then wlog skip "$t" "$key" "$st" yes -; return 1; fi
-  # hc has no --if done, so done is a plain send, after a last get: still done, same turn and
-  # status_ms as the first read, else skip (moved) and retry next pass.
-  # ponytail: a turn that starts between this get and the send's paste is still typed into.
-  if [ "$st" = idle ]; then hc send --if idle "$t" "$msg" >/dev/null 2>&1; rc=$?
-  else
-    j2=$(term_json "$t") && st2=$(jstate "$j2") || st2=not_found
-    if [ "$st2" != done ] || [ "$(num "$j2" turn):$(num "$j2" status_ms)" != "$(num "$j" turn):$(num "$j" status_ms)" ]; then
-      wlog skip "$t" "$key" "$st2" moved -; return 1
-    fi
-    hc send "$t" "$msg" >/dev/null 2>&1; rc=$?
+  line=$(prompt_line "$line"); [ -n "$line" ] || { wlog skip "$t" "$key" "$rst" noprompt -; return 1; }
+  if typed "$line"; then wlog skip "$t" "$key" "$rst" yes -; return 1; fi
+  [ "$rst" = done ] || return 0
+  j2=$(term_json "$t") && st2=$(jstate "$j2") || st2=not_found
+  if [ "$st2" != done ] || [ "$(num "$j2" turn):$(num "$j2" status_ms)" != "$(num "$j" turn):$(num "$j" status_ms)" ]; then
+    wlog skip "$t" "$key" "$st2" moved -; return 1
   fi
-  wlog "$kind" "$t" "$key" "$st" no "$rc"
+}
+# sendline <terminal> <key> <kind> <text>: types <text> into <terminal> only when ready; logs the send
+# as <kind> (or the skip) with <key>. 0 when the text was delivered.
+# hc has no --if done, so done is a plain send after ready's last get.
+# ponytail: a turn that starts between that get and the send's paste is still typed into.
+sendline() {
+  local t=$1 key=$2 kind=$3 msg=$4 rc
+  ready "$t" "$key" || return 1
+  if [ "$rst" = idle ]; then hc send --if idle "$t" "$msg" >/dev/null 2>&1; rc=$?
+  else hc send "$t" "$msg" >/dev/null 2>&1; rc=$?; fi
+  wlog "$kind" "$t" "$key" "$rst" no "$rc"
   return "$rc"
 }
 # wake <terminal> <org id>: the one constant line when <org id> has unread mail, by sendline, unless
@@ -233,6 +240,42 @@ reload_pass() {
 "; return 1; }
   tell "reload:$sec" "Plugin reload not confirmed" "/reload-plugins was typed into $sec $N minutes ago and no Reloaded: line shows; type /reload-plugins into it."
   return 1
+}
+# renew_pass: the secretary leaves watcher/renew-secretary (a request id, scripts/org
+# renew_secretary) after writing secretary-handover. When the secretary is ready (as for a wake), the
+# person's script secretary-handover.sh runs here, in the foreground, with this terminal's environment
+# (org-start started it from a login shell; nothing is unset, so the script's own exit-4 check holds).
+# 0: marker gone (a request written during the run is dropped with it). 8 (a turn began, or input was
+# typed, after the read) or 13 (another run holds the claim): kept, tried again, nobody told. 9: no document; cleared, the person and the secretary told. Other: the marker is
+# kept, the id goes to watcher/renew-failed so it is not run again, the person is told (every N minutes
+# while it holds); a new id is a new request. 0 when it ran this pass and the secretary is not woken.
+renew_pass() {
+  local id fid frc fline out rc last
+  # tells scripts/org renew_secretary a watcher that acts on the marker keeps running (not a --once pass)
+  [ -n "$once" ] || : > "$wdir/renew-ready"
+  [ -f "$renew" ] || { rm -f "$renew-failed"; return 1; }
+  id=$(cat "$renew" 2>/dev/null)
+  IFS="$tab" read -r fid frc fline 2>/dev/null < "$renew-failed" || fid=
+  if [ -n "$fid" ] && [ "$fid" = "$id" ]; then
+    tell "renew:$sec" "Secretary renewal failed (exit $frc)" "$fline Rerun it by hand: bash $hand"; return 1
+  fi
+  ready "$sec" renew-secretary || return 1
+  # the script claims the run itself (one at a time, hand runs included) and refuses (13) a request gone meanwhile
+  out=$(PADDOCK_RENEW_ID=$id "$BASH" "$hand" 2>&1); rc=$?
+  printf '%s\n' "$out" >> "$wdir/renew.log"
+  last=$(printf '%s\n' "$out" | tail -1)
+  wlog renew "$sec" renew-secretary "$rst" no "$rc"
+  case "$rc" in
+    0) rm -f "$renew" "$renew-failed"; return 0 ;;
+    8|13) return 1 ;;
+    9) rm -f "$renew" "$renew-failed"
+       notify "Secretary renewal: no handover document" "$last"
+       "$BASH" "$org" --as watcher send_message secretary "renewal not run: no secretary-handover document; write it, then renew_secretary again" >/dev/null 2>&1
+       return 1 ;;
+  esac
+  printf '%s\t%s\t%s\n' "$id" "$rc" "$last" > "$renew-failed"
+  tell "renew:$sec" "Secretary renewal failed (exit $rc)" "$last Rerun it by hand: bash $hand"
+  return 0
 }
 # ci_lines: "open|super<TAB>pr<TAB>sha<TAB>repo<TAB>task" per ci_requested of the secretary with no
 # ci_completed or ci_watch_failed of the watcher at or after it for the same repo, pr and sha (stage 1:
@@ -423,10 +466,11 @@ pass() {
     done <<< "$cards"
   fi
 
-  # 6. /reload-plugins into the secretary after a skill landing; then the wake: the secretary
+  # 6. the secretary's renewal (watcher/renew-secretary), else /reload-plugins after a skill landing; then the wake: the secretary
   # (not in the pass that typed the reload) and each live worker with unread mail
-  : > "$wdir/reload-ready"   # tells org-start this watcher acts on watcher/reload-plugins
-  reload_pass || wake "$sec" secretary
+  # tells org-start a watcher that acts on watcher/reload-plugins keeps running (not a --once pass)
+  [ -n "$once" ] || : > "$wdir/reload-ready"
+  renew_pass || reload_pass || wake "$sec" secretary
   while IFS="$tab" read -r n tk; do
     [ -n "$n" ] || continue
     wake "$n" "w-$tk"

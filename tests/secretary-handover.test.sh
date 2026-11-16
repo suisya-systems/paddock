@@ -35,6 +35,7 @@ case "$cmd" in
        [ -f "$STUB/term-$name" ] || { echo '{"error":{"kind":"not_found"}}'; exit 1; }
        [ -z "${STUB_MULTILINE:-}" ] || { printf '{\n  "name": "%s",\n  "state": "live",\n  "status": {\n    "app": "claude-code",\n    "state": "%s"\n  }\n}\n' "$name" "$(cat "$STUB/state")"; exit 0; }
        echo "{\"name\":\"$name\",\"state\":\"live\",\"status\":{\"app\":\"claude-code\",\"state\":\"$(cat "$STUB/state" 2>/dev/null || echo idle)\"}}"; exit 0 ;;
+  read) [ -z "${STUB_READ_FAIL:-}" ] || exit 1; cat "$STUB/screen" 2>/dev/null || printf 'out\n❯ \n'; exit 0 ;;
   kill) [ -f "$STUB/term-$name" ] || exit 1; echo '{"killed":true}'; exit 0 ;;
   rm) rm -f "$STUB/term-$name"; echo '{"removed":true}'; exit 0 ;;
   run) for a in "$@"; do case "$a" in --name) next=1 ;; *) [ -n "${next:-}" ] && { : > "$STUB/term-$a"; next=; } ;; esac; done
@@ -119,5 +120,29 @@ check "rerun with no old terminal starts one secretary without kill or rm" $?
 echo '{"jsonrpc":"2.0","id":1,"result":{"value":null,"version":4}}' > "$tmp/stub/doc"; : > "$calls"
 out=$(run); rc=$?
 [ "$rc" -eq 9 ] && ! grep -Eq '^(kill|rm|run) ' "$calls"; check "rerun after the document is cleared exits 9, ends nothing" $?
+
+# right before the kill: an empty prompt on a readable screen, one renewal at a time
+reset idle; printf 'out\n❯ half a draft\n' > "$tmp/stub/screen"; out=$(run); rc=$?
+[ "$rc" -eq 8 ] && ! grep -q '^kill' "$tmp/stub/calls"; check "typed input on the prompt: exit 8, nothing ended ($out)" $?
+reset idle; printf 'a dialog, no prompt\n' > "$tmp/stub/screen"; out=$(run); rc=$?
+[ "$rc" -eq 8 ] && ! grep -q '^kill' "$tmp/stub/calls"; check "no prompt line: exit 8, nothing ended" $?
+reset idle; out=$(run STUB_READ_FAIL=1); rc=$?
+[ "$rc" -eq 11 ] && ! grep -q '^kill' "$tmp/stub/calls"; check "an unreadable screen: exit 11, nothing ended" $?
+reset done; out=$(run); rc=$?; [ "$rc" -eq 0 ]; check "a done secretary at an empty prompt is renewed" $?
+reset idle; mkdir -p "$PADDOCK_STATE_DIR/watcher"; echo $$ > "$PADDOCK_STATE_DIR/watcher/renew.claim"; out=$(run); rc=$?
+[ "$rc" -eq 13 ] && ! grep -q '^kill' "$tmp/stub/calls" && [ "$(cat "$PADDOCK_STATE_DIR/watcher/renew.claim")" = $$ ]
+check "another run holds the claim: exit 13, nothing ended, the claim left alone" $?
+bash -c 'exit 0' & dead=$!; wait "$dead"; echo "$dead" > "$PADDOCK_STATE_DIR/watcher/renew.claim"; out=$(run); rc=$?
+[ "$rc" -eq 0 ] && [ ! -e "$PADDOCK_STATE_DIR/watcher/renew.claim" ]; check "a dead holder's claim is broken; the run releases its own" $?
+# breaking a dead claim is guarded: a .break held by another run, or a claim with no pid, is left alone
+reset idle; echo "$dead" > "$PADDOCK_STATE_DIR/watcher/renew.claim"; echo 1 > "$PADDOCK_STATE_DIR/watcher/renew.claim.break"; out=$(run); rc=$?
+[ "$rc" -eq 13 ] && ! grep -q '^kill' "$tmp/stub/calls" && [ "$(cat "$PADDOCK_STATE_DIR/watcher/renew.claim")" = "$dead" ] && grep -q 'renew.claim.break' <<<"$out"
+check "a dead claim whose .break another run holds: exit 13, the claim not removed, the .break named" $?
+rm -f "$PADDOCK_STATE_DIR/watcher/renew.claim.break"; : > "$PADDOCK_STATE_DIR/watcher/renew.claim"; out=$(run); rc=$?
+[ "$rc" -eq 13 ] && [ -e "$PADDOCK_STATE_DIR/watcher/renew.claim" ]; check "a claim with no pid (just taken) is never broken: exit 13" $?
+rm -f "$PADDOCK_STATE_DIR/watcher/renew.claim"
+reset idle; echo other > "$PADDOCK_STATE_DIR/watcher/renew-secretary"; out=$(run PADDOCK_RENEW_ID=mine); rc=$?
+[ "$rc" -eq 13 ] && ! grep -q '^kill' "$tmp/stub/calls"; check "the watcher's request replaced or gone: exit 13, nothing ended" $?
+rm -f "$PADDOCK_STATE_DIR/watcher/renew-secretary"
 
 exit $fail
