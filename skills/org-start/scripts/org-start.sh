@@ -15,7 +15,8 @@ Starts the paddock secretary on the running herdr core (the first hc command
 starts a core if none runs; run this from a login shell, never from an agent).
 Idempotent: a second run starts no second secretary and copies the same files.
 A secretary terminal that has finished is removed (hc rm) before a new one starts; so is a plain shell left
-in it after its claude ended (live, no template, no status: hc kill, then hc rm).
+in it after its claude ended (live, no template, no status: hc kill, then hc rm). A watcher terminal
+(label paddock_role=watcher) that is finished, or live with no org-watch.sh running in it, is replaced too.
 The secretary runs in its own folder, <state>/secretary (state: PADDOCK_STATE_DIR, else
 ${XDG_STATE_HOME:-~/.local/state}/paddock), where its rules are placed as AGENTS.md (from
 templates/secretary-rules.md) beside a CLAUDE.md whose only line is @AGENTS.md; the checkout's path is
@@ -561,6 +562,21 @@ wname=${PADDOCK_WATCHER_NAME:-watcher}
 wj=$(hc get --json "$wname" 2>/dev/null | tr -d '\n')
 if printf '%s' "$wj" | grep -Eq '"state": *"finished"' && printf '%s' "$wj" | grep -Eq '"paddock_role": *"watcher"'; then
   hc rm "$wname" >/dev/null 2>&1 || echo "org-start: warning: hc rm $wname failed (the finished watcher terminal)" >&2
+fi
+# a kept watcher comes back after a core or Windows restart as a live plain shell (label kept, script gone):
+# replace it when neither its process nor a child of it runs org-watch.sh. Without /proc or a pid, it is left.
+wpid=$(printf '%s' "$wj" | sed -n 's/.*"pid": *\([0-9][0-9]*\).*/\1/p')
+if printf '%s' "$wj" | grep -Eq '"state": *"live"' && printf '%s' "$wj" | grep -Eq '"paddock_role": *"watcher"' \
+  && [ -n "$wpid" ] && [ -r "/proc/$wpid/cmdline" ] \
+  && ! for p in "$wpid" $(cat "/proc/$wpid/task/"*/children 2>/dev/null); do tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null; echo; done | grep -q 'org-watch\.sh'; then
+  waddr=$(printf '%s' "$wj" | sed -n 's/.*"address": *"\([^"]*\)".*/\1/p')
+  if [ -n "${HC_TERMINAL_ID:-}" ] && [ "$HC_TERMINAL_ID" = "$waddr" ]; then
+    echo "org-start: warning: this shell is the $wname terminal, a plain shell with no org-watch.sh; run org-start from another shell so it can replace this one" >&2
+  else
+    { hc kill "$wname" >/dev/null 2>&1; hc rm "$wname" >/dev/null 2>&1; } \
+      && echo "org-start: removed the $wname terminal, a plain shell with no org-watch.sh running" \
+      || echo "org-start: warning: hc rm $wname failed (a plain shell left in the watcher terminal); end it with 'hc kill $wname' and 'hc rm $wname', then run org-start again" >&2
+  fi
 fi
 if hc get "$wname" >/dev/null 2>&1; then
   echo "org-start: $wname already exists; not starting another"
