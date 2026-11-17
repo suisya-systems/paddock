@@ -197,6 +197,7 @@ ready() {
 # then goes on, the job logging the late result itself. One send per terminal at a time.
 # ponytail: a turn that starts between ready's last get and the send's paste is still typed into.
 # ponytail: a send that ends just as the grace runs out may be logged twice; a lock if that bites.
+# ponytail: a /reload-plugins that fails within microseconds of the grace ending may leave its record; the person is told after N minutes.
 sendline() {
   local t=$1 key=$2 kind=$3 msg=$4 rc i=0 a=(send) sp
   sp=$wdir/send-${t//\//_}
@@ -209,11 +210,15 @@ sendline() {
   (
     timeout "$SEND_T" hc "${a[@]}" "$t" "$msg" >/dev/null 2>&1 </dev/null; rc=$?
     echo "$rc" > "$sp.rc.new" && mv "$sp.rc.new" "$sp.rc"
+    # a late failed /reload-plugins forgets its send record, so the next pass types it again
+    [ "$rc" -eq 0 ] || [ "$kind" != reload ] || rm -f "$reload-sent"
     [ ! -f "$sp.late" ] || printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%s)" "$kind" "$t" "$key" "$rst" no "$rc" >> "$woke"
   ) >/dev/null 2>&1 </dev/null &
   echo $! > "$sp.pid"
   while [ ! -f "$sp.rc" ] && [ "$i" -lt $((GRACE * 10)) ]; do sleep 0.1; i=$((i + 1)); done
-  if [ ! -f "$sp.rc" ]; then : > "$sp.late"; printf 'org-watch: %s %s %s still sending (late result in watcher/woke)\n' "$kind" "$t" "$key"; return 0; fi
+  # the late marker first, then the result is looked for once more: a result is logged by the job or here, never by neither
+  [ -f "$sp.rc" ] || : > "$sp.late"
+  if [ ! -f "$sp.rc" ]; then printf 'org-watch: %s %s %s still sending (late result in watcher/woke)\n' "$kind" "$t" "$key"; return 0; fi
   rc=$(cat "$sp.rc"); wlog "$kind" "$t" "$key" "$rst" no "$rc"
   return "$rc"
 }
