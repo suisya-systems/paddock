@@ -33,7 +33,9 @@ the secretary is idle or done with no typed input; exit 0 or 9 clears it, anothe
 Environment: PADDOCK_WATCH_N (minutes, default 10), PADDOCK_WATCH_INTERVAL (seconds, default 30),
 PADDOCK_SECRETARY_NAME (default secretary), PADDOCK_POWERSHELL (powershell.exe path),
 PADDOCK_STATE_DIR (the ledger is in its watcher folder), PADDOCK_WATCH_WAKE (seconds between
-wakes for one unread batch, default 60).
+wakes for one unread batch, default 60), PADDOCK_WATCH_SEND_TIMEOUT (seconds a typed line may take,
+default 90: hc send waits for a person's unfinished draft) and PADDOCK_WATCH_SEND_GRACE (seconds a
+pass waits for it before going on, default 3).
 
 Exit codes: 0 done, 2 bad argument, 3 hc not found, 5 core unreachable (--once).
 USAGE
@@ -60,6 +62,7 @@ mkdir -p "$wdir" || die 5 "cannot create $wdir"
 told=$wdir/told; seen=$wdir/secretary.seen; reload=$wdir/reload-plugins; woke=$wdir/woke; wakes=$wdir/wake; cidir=$wdir/ci
 renew=$wdir/renew-secretary; hand=$here/../../secretary-handover/scripts/secretary-handover.sh
 WAKE=${PADDOCK_WATCH_WAKE:-60}
+SEND_T=${PADDOCK_WATCH_SEND_TIMEOUT:-90}; GRACE=${PADDOCK_WATCH_SEND_GRACE:-3}
 mkdir -p "$cidir" || die 5 "cannot create $cidir"
 tab=$(printf '\t')
 
@@ -187,15 +190,37 @@ ready() {
   fi
 }
 # sendline <terminal> <key> <kind> <text>: types <text> into <terminal> only when ready; logs the send
-# as <kind> (or the skip) with <key>. 0 when the text was delivered.
+# as <kind> (or the skip) with <key>. 0 when the text was delivered or is still on its way.
 # hc has no --if done, so done is a plain send after ready's last get.
-# ponytail: a turn that starts between that get and the send's paste is still typed into.
+# hc send waits for a person's unfinished draft (up to 60 s), so it runs in the background under
+# timeout (PADDOCK_WATCH_SEND_TIMEOUT s); the pass waits PADDOCK_WATCH_SEND_GRACE s for its result and
+# then goes on, the job logging the late result itself. One send per terminal at a time.
+# ponytail: a turn that starts between ready's last get and the send's paste is still typed into.
+# ponytail: a send that ends just as the grace runs out may be logged twice; a lock if that bites.
+# ponytail: a /reload-plugins that fails within microseconds of the grace ending may leave its record; the person is told after N minutes.
 sendline() {
-  local t=$1 key=$2 kind=$3 msg=$4 rc
+  local t=$1 key=$2 kind=$3 msg=$4 rc i=0 a=(send) sp
+  sp=$wdir/send-${t//\//_}
+  # pending: the send job still lives (its pid runs this script, as ci_alive checks for a CI watch)
+  if [ -f "$sp.pid" ] && ci_alive "$(cat "$sp.pid" 2>/dev/null)" org-watch; then
+    wlog skip "$t" "$key" - - pending; return 1
+  fi
   ready "$t" "$key" || return 1
-  if [ "$rst" = idle ]; then hc send --if idle "$t" "$msg" >/dev/null 2>&1; rc=$?
-  else hc send "$t" "$msg" >/dev/null 2>&1; rc=$?; fi
-  wlog "$kind" "$t" "$key" "$rst" no "$rc"
+  [ "$rst" != idle ] || a+=(--if idle)
+  rm -f "$sp.rc" "$sp.late"
+  (
+    timeout "$SEND_T" hc "${a[@]}" "$t" "$msg" >/dev/null 2>&1 </dev/null; rc=$?
+    echo "$rc" > "$sp.rc.new" && mv "$sp.rc.new" "$sp.rc"; rm -f "$sp.pid"
+    # a late failed /reload-plugins forgets its send record, so the next pass types it again
+    [ "$rc" -eq 0 ] || [ "$kind" != reload ] || rm -f "$reload-sent"
+    [ ! -f "$sp.late" ] || printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%s)" "$kind" "$t" "$key" "$rst" no "$rc" >> "$woke"
+  ) >/dev/null 2>&1 </dev/null &
+  echo $! > "$sp.pid"
+  while [ ! -f "$sp.rc" ] && [ "$i" -lt $((GRACE * 10)) ]; do sleep 0.1; i=$((i + 1)); done
+  # the late marker first, then the result is looked for once more: a result is logged by the job or here, never by neither
+  [ -f "$sp.rc" ] || : > "$sp.late"
+  if [ ! -f "$sp.rc" ]; then printf 'org-watch: %s %s %s still sending (late result in watcher/woke)\n' "$kind" "$t" "$key"; return 0; fi
+  rc=$(cat "$sp.rc"); wlog "$kind" "$t" "$key" "$rst" no "$rc"
   return "$rc"
 }
 # wake <terminal> <org id>: the one constant line when <org id> has unread mail, by sendline, unless
@@ -326,8 +351,8 @@ answer_lines() {
 }
 # older <iso ts>: that time is N minutes ago or more
 older() { local t; t=$(date -u -d "$1" +%s 2>/dev/null) && [ $((now - t)) -ge "$limit" ]; }
-# ci_alive <pid>: that pid runs ci-watch.sh (after a restart a recorded pid may be another process)
-ci_alive() { kill -0 "$1" 2>/dev/null && tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null | grep -q 'ci-watch\.sh'; }
+# ci_alive <pid> [name]: that pid runs <name>.sh (default ci-watch; after a restart a recorded pid may be another process)
+ci_alive() { kill -0 "$1" 2>/dev/null && tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null | grep -q "${2:-ci-watch}\\.sh"; }
 # ckey <repo> <pr>: the file key of one PR's watch, <owner>_<name>-<pr>
 ckey() { printf '%s-%s' "${1//\//_}" "$2"; }
 ci_run() { # ci_run <bg|fg> <reason|-> <pr> <sha> <repo> <task>: ci-watch.sh, its output in its log

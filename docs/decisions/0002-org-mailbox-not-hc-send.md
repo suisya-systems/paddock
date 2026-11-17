@@ -6,12 +6,14 @@ Status: accepted (2026-11-08)
 
 Agents in paddock need to talk to each other: a worker reports to the secretary, the secretary answers a worker's question.
 
-herdr-core offers `hc send <t> "text"`. Its documentation describes it as pasting text into a terminal and pressing Enter, waiting for a person to pause. It is not a message box: the text becomes whatever the target's input field turns it into. Measured on hc 0.1.18 with Claude Code 2.1.319:
+herdr-core offers `hc send <t> "text"`. Its documentation describes it as pasting text into a terminal and pressing Enter, waiting for a person's unfinished draft (`hc send --help`). It is not a message box: the text becomes whatever the target's input field turns it into. Measured on hc 0.1.18 with Claude Code 2.1.319:
 
 - Sent to an idle agent, the text became its next prompt.
 - Sent while the agent had half-typed input, it was joined to that input with no separator and submitted as one prompt (`half typedMSG-C from child: ...`).
 - It was refused while the target was still starting (exit 5), while it was `blocked` (exit 9), and with `--if idle` while it was working (exit 10). Nothing was queued for later.
 - Delivery to an agent in the middle of a turn was not observed.
+
+Since then hc has changed (per `hc --help` of hc 0.1.20; the release in which it changed was not identified): a send waits for a person's unfinished draft, up to 60 seconds after the person's last key (`draft_wait` in `config.toml`, in seconds; 0 waits only for the usual quiet), and only then pastes. The text is no longer joined to half-typed input, but the call blocks for that long; paddock's own callers that must not stall (the watcher) run it with a time limit ([decision 0013](0013-watcher-wakes-the-secretary.md)).
 
 The predecessor, claude-org-ja, used a peer messaging design with three operations (`send_message`, `check_messages`, `set_summary`). Messages went into a box and the receiver read them when it chose, so a message never interrupted a turn, never mixed with someone's typing, and was not lost because the receiver was busy.
 
