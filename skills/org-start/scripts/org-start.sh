@@ -31,9 +31,9 @@ an agent like org-start itself.
 --setup-wsl (WSL only, once; decision 0016) makes the core that WSL starts after a Windows restart get hc on
 its PATH. herdr-app for Windows reaches WSL with 'wsl.exe -e sh -c', which reads no shell startup file, and
 the core takes the environment of whoever starts it, so it has no ~/.local/bin. This writes one file of its
-own, ${XDG_CONFIG_HOME:-~/.config}/systemd/user/paddock-core.service, a user service that runs
-'hc server start' at WSL boot with this shell's PATH (entries under /mnt and with unusual characters left
-out), enables it (systemctl --user enable) and turns on linger when it is off. It shows the file and the
+own, ~/.config/systemd/user/paddock-core.service, a user service that runs 'hc server start' at WSL
+boot with this shell's PATH (entries under /mnt and with unusual characters left out) and its XDG_* folder
+and PADDOCK_* variables, enables it (systemctl --user enable) and turns on linger when it is off. It shows the file and the
 commands and asks y/N first (--yes skips the question); a rerun with nothing to change asks nothing. It ends
 nothing and starts no core. Refused inside an agent; it refuses a paddock-core.service it did not write.
 
@@ -143,7 +143,13 @@ if [ -n "$setupwsl" ]; then
   wslenv="Environment=WSL_INTEROP=/run/WSL/1_interop"
   [[ ${WSL_DISTRO_NAME:-} =~ ^[A-Za-z0-9._-]+$ ]] && wslenv="$wslenv
 Environment=WSL_DISTRO_NAME=$WSL_DISTRO_NAME"
-  unit=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/paddock-core.service
+  # The folders org-start and the templates read, when this shell moves them (a boot service sees none of it).
+  for v in XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME $(compgen -e | grep '^PADDOCK_' | grep -vx 'PADDOCK_PROC_DIR\|PADDOCK_WIN_C_DIR'); do
+    [[ ${!v:-} =~ ^[A-Za-z0-9/._+=:,-]+$ ]] && wslenv="$wslenv
+Environment=$v=${!v}"
+  done
+  # Always ~/.config: the user manager starts at boot without this shell's XDG_CONFIG_HOME.
+  unit=$HOME/.config/systemd/user/paddock-core.service
   mark="# Written by paddock (org-start.sh --setup-wsl)."
   want=$(cat <<UNIT
 $mark Rerun it to update. To undo: systemctl --user disable paddock-core.service, then delete this file.
