@@ -22,7 +22,7 @@ Usage: org-escalation.sh prompt --task TASK_ID|--curator [--then-send TEXT]
 
   prompt  read the screen of w-<task_id>. A prompt in the policy list is answered here (down,
           read again, enter only with the cursor on the expected line): folder-trust (Claude
-          Code's folder-trust dialog, on a terminal with no status yet) -> "Yes, I trust this
+          Code's folder-trust dialog, on a terminal with no status or a blocked "trust this folder" status) -> "Yes, I trust this
           folder"; auto-mode-setup ("Teach auto mode about your environment?") -> "Don't show
           again". Prints POLICY <entry> w-<task_id>. When org-delegate stopped at the dialog (exit 10) it
           saved the first message and the work entry: they are sent and written here, after the dialog,
@@ -279,12 +279,16 @@ opt() { printf '%s\n' "$1" | grep -Eq "^ *(❯ *)?([0-9]\\. *)?$2 *\$"; }
 # policy_of <screen>: the policy entry the screen shows, or nothing. Never with a "Do you want" question.
 policy_of() {
   ! printf '%s\n' "$1" | grep -q 'Do you want' || return 0
-  # folder-trust: comes before Claude Code reports any status, so a terminal with a status (a tool
-  # prompt is blocked) never matches. No status = hc get answered for the terminal and its status is
+  # folder-trust: Claude Code shows it with no status (older versions) or with a blocked status of kind
+  # permission whose msg is the trust prompt (hc 0.1.20: "trust this folder"). Any other status (a tool
+  # prompt is blocked too) never matches. No status = hc get answered for the terminal and its status is
   # null or absent; a failed lookup is not "no status".
   local j nostatus=
   j=$(hc get --json "$w" 2>/dev/null) || j=
-  case $j in *'"name"'*) printf '%s' "$j" | tr -d '\n' | grep -Eq '"status": *\{' || nostatus=1 ;; esac
+  case $j in *'"name"'*) j=$(printf '%s' "$j" | tr -d '\n')
+    if ! printf '%s' "$j" | grep -Eq '"status": *\{'; then nostatus=1
+    elif printf '%s' "$j" | grep -Eq '"state": *"blocked"' && printf '%s' "$j" | grep -Eq '"kind": *"permission"' \
+         && printf '%s' "$j" | grep -Eqi '"msg": *"[^"]*trust this folder'; then nostatus=1; fi ;; esac
   if [ -n "$nostatus" ] && opt "$1" 'No, exit' && opt "$1" 'Yes, I trust this folder'; then echo folder-trust
   # auto-mode-setup: Claude Code's "Teach auto mode about your environment?" (Yes / Not now /
   # Don't show again), shown once to an auto-mode worker; answered "Don't show again" (owner).
@@ -452,7 +456,7 @@ case $cmd in
       w=w-$wtask
       case $(printf '%s' "$t" | tr 'A-Z' 'a-z' | tr -d ' ') in yes) key=enter ;; no) key=esc ;;
         *) die 2 "entry $id is a worker's prompt: the answer is yes or no; nothing pressed" ;; esac
-      # The folder-trust dialog comes before any status, so it is not "blocked": yes moves the cursor to
+      # The folder-trust dialog has no status or a blocked trust status, not a tool prompt's: yes moves the cursor to
       # "Yes, I trust this folder" as the policy does (the default is "No, exit"), once the person said so.
       scr=$(hc read "$w" 2>/dev/null) || die 10 "cannot read the screen of $w; nothing pressed, entry $id kept"
       policy=$(policy_of "$scr")

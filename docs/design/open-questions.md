@@ -71,7 +71,7 @@ Either way the organization layer (templates, `org` tools, `state.db`, skills) s
 
 - `blocked` carries `kind` (for example `permission`) and `msg`, visible in `hc get` and `hc events`. (Core measurement)
 - `hc send` refuses a blocked terminal without `--force`, so nothing typed by accident answers its dialog. (Core docs; Core measurement)
-- A Claude Code that stops at its startup folder-trust prompt reports no status at all, so it is never `blocked` and herdr-app does not list it. (Mod measurement)
+- A Claude Code that stops at its startup folder-trust prompt reported no status at all in the mod measurement, so it was never `blocked` and herdr-app did not list it. Current Claude Code (hc 0.1.20, measured 2026-11-17) reports `blocked` with `kind` `permission` and `msg` `trust this folder` during the dialog, so a status is not proof that the dialog is gone. (Mod measurement; Issue #471)
 
 **Options.** A fixed time; a time per `kind`; "the secretary's own status has not changed for N minutes while a worker is blocked". A separate rule is needed for terminals that never reported status after launch (decided below).
 

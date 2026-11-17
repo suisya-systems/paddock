@@ -48,7 +48,7 @@ A proposal you make yourself (not a worker's question) stays in chat while the p
 
 ## A worker's prompt
 
-A prompt or dialog is answered only after a fresh read of its screen matched it. Workers run in auto mode, so few appear. When a worker's terminal is `blocked` (or shows no status after its launch), run `prompt --task <task_id>`.
+A prompt or dialog is answered only after a fresh read of its screen matched it. Workers run in auto mode, so few appear. When a worker's terminal is `blocked` (or shows no status after its launch), run `prompt --task <task_id>`. Claude Code's folder-trust dialog shows either no status or, in current versions (hc 0.1.20), a `blocked` status with `kind` `permission` and `msg` `trust this folder`; `prompt` and `answer` recognise both, by the dialog's option lines on a fresh read.
 
 - A prompt in the policy list is answered by the script (exit 0, `POLICY <entry> w-<task_id>`): the folder-trust dialog ("Yes, I trust this folder"; except in a fresh clone from [org-clone](../org-clone/SKILL.md), which is the person's to answer) and the auto mode setup dialog ("Don't show again"). Each is matched by its whole option lines and re-read before every key.
 - Any other prompt: it prints `PROMPT=<text>` and exits 3, nothing pressed. Record it with `ask --task <task_id> --question "<one sentence>" --prompt "<that text>"` and the context, as for a question.
