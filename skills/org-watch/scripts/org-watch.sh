@@ -201,7 +201,8 @@ ready() {
 sendline() {
   local t=$1 key=$2 kind=$3 msg=$4 rc i=0 a=(send) sp
   sp=$wdir/send-${t//\//_}
-  if [ -f "$sp.pid" ] && kill -0 "$(cat "$sp.pid" 2>/dev/null)" 2>/dev/null; then
+  # pending: the send job still lives (its pid runs this script, as ci_alive checks for a CI watch)
+  if [ -f "$sp.pid" ] && ci_alive "$(cat "$sp.pid" 2>/dev/null)" org-watch; then
     wlog skip "$t" "$key" - - pending; return 1
   fi
   ready "$t" "$key" || return 1
@@ -209,7 +210,7 @@ sendline() {
   rm -f "$sp.rc" "$sp.late"
   (
     timeout "$SEND_T" hc "${a[@]}" "$t" "$msg" >/dev/null 2>&1 </dev/null; rc=$?
-    echo "$rc" > "$sp.rc.new" && mv "$sp.rc.new" "$sp.rc"
+    echo "$rc" > "$sp.rc.new" && mv "$sp.rc.new" "$sp.rc"; rm -f "$sp.pid"
     # a late failed /reload-plugins forgets its send record, so the next pass types it again
     [ "$rc" -eq 0 ] || [ "$kind" != reload ] || rm -f "$reload-sent"
     [ ! -f "$sp.late" ] || printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%s)" "$kind" "$t" "$key" "$rst" no "$rc" >> "$woke"
@@ -350,8 +351,8 @@ answer_lines() {
 }
 # older <iso ts>: that time is N minutes ago or more
 older() { local t; t=$(date -u -d "$1" +%s 2>/dev/null) && [ $((now - t)) -ge "$limit" ]; }
-# ci_alive <pid>: that pid runs ci-watch.sh (after a restart a recorded pid may be another process)
-ci_alive() { kill -0 "$1" 2>/dev/null && tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null | grep -q 'ci-watch\.sh'; }
+# ci_alive <pid> [name]: that pid runs <name>.sh (default ci-watch; after a restart a recorded pid may be another process)
+ci_alive() { kill -0 "$1" 2>/dev/null && tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null | grep -q "${2:-ci-watch}\\.sh"; }
 # ckey <repo> <pr>: the file key of one PR's watch, <owner>_<name>-<pr>
 ckey() { printf '%s-%s' "${1//\//_}" "$2"; }
 ci_run() { # ci_run <bg|fg> <reason|-> <pr> <sha> <repo> <task>: ci-watch.sh, its output in its log
