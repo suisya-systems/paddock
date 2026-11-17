@@ -14,7 +14,8 @@ Usage: org-start.sh [-h|--help]
 Starts the paddock secretary on the running herdr core (the first hc command
 starts a core if none runs; run this from a login shell, never from an agent).
 Idempotent: a second run starts no second secretary and copies the same files.
-A secretary terminal that has finished is removed (hc rm) before a new one starts.
+A secretary terminal that has finished is removed (hc rm) before a new one starts; so is a plain shell left
+in it after its claude ended (live, no template, no status: hc kill, then hc rm).
 The secretary runs in its own folder, <state>/secretary (state: PADDOCK_STATE_DIR, else
 ${XDG_STATE_HOME:-~/.local/state}/paddock), where its rules are placed as AGENTS.md (from
 templates/secretary-rules.md) beside a CLAUDE.md whose only line is @AGENTS.md; the checkout's path is
@@ -525,6 +526,17 @@ fi
 if hc get --json "$name" 2>/dev/null | grep -Eq '"state": *"finished"'; then
   hc rm "$name" >/dev/null 2>&1 || die 5 "hc rm $name failed (the finished secretary terminal)"
   echo "org-start: removed the finished $name terminal"
+fi
+# a kept secretary whose claude ended is replaced by a plain shell under the same name (no template, no
+# status): it is no secretary and never reports one, so end it (hc rm takes only a finished one) and start anew.
+sj=$(hc get --json "$name" 2>/dev/null | tr -d '\n')
+if printf '%s' "$sj" | grep -Eq '"state": *"live"' && printf '%s' "$sj" | grep -Eq '"template": *null' \
+  && ! printf '%s' "$sj" | grep -Eq '"status": *\{'; then
+  addr=$(printf '%s' "$sj" | sed -n 's/.*"address": *"\([^"]*\)".*/\1/p')
+  [ -z "${HC_TERMINAL_ID:-}" ] || [ "$HC_TERMINAL_ID" != "$addr" ] \
+    || die 4 "this shell is the $name terminal, a plain shell left after its claude ended; run org-start from another shell (outside herdr, or another terminal) so it can replace this one"
+  { hc kill "$name" >/dev/null 2>&1; hc rm "$name" >/dev/null 2>&1; } || die 5 "hc rm $name failed (a plain shell left in the secretary terminal); end it with 'hc kill $name' and 'hc rm $name', then run org-start again"
+  echo "org-start: removed the $name terminal, a plain shell left after its claude ended"
 fi
 # Q9: unless it is auto, the conversation language (org config) ends the launch task.
 lang=$(bash "$root/scripts/org" --as secretary config get conversation_language 2>/dev/null)
