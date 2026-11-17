@@ -138,6 +138,11 @@ if [ -n "$setupwsl" ]; then
   done
   case ":$upath:" in *":$(dirname "$hcbin"):"*) ;; *) die 3 "--setup-wsl: hc's folder $(dirname "$hcbin") cannot go on the service's PATH (a Windows folder or an unusual name)" ;; esac
   ushell=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f7); [ -n "$ushell" ] || ushell=${SHELL:-/bin/sh}
+  # Windows programs (the watcher's powershell.exe toast) need an interop socket; a boot service gets no
+  # WSL_INTEROP, and /run/WSL/1_interop is the one WSL's init keeps for the whole boot.
+  wslenv="Environment=WSL_INTEROP=/run/WSL/1_interop"
+  [[ ${WSL_DISTRO_NAME:-} =~ ^[A-Za-z0-9._-]+$ ]] && wslenv="$wslenv
+Environment=WSL_DISTRO_NAME=$WSL_DISTRO_NAME"
   unit=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/paddock-core.service
   mark="# Written by paddock (org-start.sh --setup-wsl)."
   want=$(cat <<UNIT
@@ -149,6 +154,7 @@ Description=paddock: start herdr-core at WSL boot with hc on its PATH
 Type=oneshot
 Environment=PATH=$upath
 Environment=SHELL=$ushell
+$wslenv
 ExecStart=$hcbin server start
 
 [Install]

@@ -66,6 +66,7 @@ reset; out=$(run "y
 path_line=$(grep '^Environment=PATH=' "$unit" 2>/dev/null)
 [ "$rc" -eq 0 ] && [ "$path_line" = "Environment=PATH=$tmp/hcdir:$tmp/bin:/usr/bin:/bin" ] \
   && grep -q "^ExecStart=$tmp/hcdir/hc server start$" "$unit" && grep -q '^WantedBy=default.target$' "$unit" \
+  && grep -q '^Environment=WSL_INTEROP=/run/WSL/1_interop$' "$unit" \
   && grep -q '^# Written by paddock (org-start.sh --setup-wsl)' "$unit" \
   && grep -q 'systemctl --user enable paddock-core.service' "$tmp/stub/calls" \
   && grep -q 'loginctl enable-linger' "$tmp/stub/calls" && ! grep -q '^hc' "$tmp/stub/calls" \

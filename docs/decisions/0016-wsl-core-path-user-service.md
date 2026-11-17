@@ -19,7 +19,7 @@ Hence `~/.zshenv`, `~/.bashrc`, `~/.profile` and `~/.config/environment.d/*.conf
 
 ## Decision
 
-`org-start.sh --setup-wsl` (WSL only, typed by the person once) writes one file of its own, `~/.config/systemd/user/paddock-core.service`: a oneshot user service, wanted by `default.target`, that runs `hc server start` with `Environment=PATH=` set to the person's login-shell PATH at setup time (entries under `/mnt` and with characters systemd would read differently are left out) and `SHELL=` their login shell. It enables the service and turns linger on when it is off, so the user manager starts with WSL, before any login. It shows the file and the commands and asks y/N (`--yes` skips the question), is idempotent (identical file, enabled, linger on: nothing to ask), refuses a `paddock-core.service` it did not write, and refuses inside an agent.
+`org-start.sh --setup-wsl` (WSL only, typed by the person once) writes one file of its own, `~/.config/systemd/user/paddock-core.service`: a oneshot user service, wanted by `default.target`, that runs `hc server start` with `Environment=PATH=` set to the person's login-shell PATH at setup time (entries under `/mnt` and with characters systemd would read differently are left out) `SHELL=` their login shell, and `WSL_INTEROP=/run/WSL/1_interop` (the interop socket WSL's init keeps for the whole boot; a boot service gets none) with `WSL_DISTRO_NAME`. It enables the service and turns linger on when it is off, so the user manager starts with WSL, before any login. It shows the file and the commands and asks y/N (`--yes` skips the question), is idempotent (identical file, enabled, linger on: nothing to ask), refuses a `paddock-core.service` it did not write, and refuses inside an agent.
 
 Not chosen: shell startup files and `environment.d` (the facts above show they are not read on this path); changing the `--via` to a login shell (a Windows-side herdr setting, which paddock does not write, and which needs the PATH set in a file a login `sh` reads).
 
@@ -30,7 +30,7 @@ This is the first paddock step that writes a file in the person's own configurat
 ## Unverified
 
 - **The order at boot.** WSL is started by herdr-app's own `wsl.exe` call. Whether the user manager runs the service before that call's `connect` starts a core was not measured. If `connect` wins, the core still lacks the PATH, `--check` still says so, and `--restart-core` still fixes it. The person's one test: `wsl --shutdown` in PowerShell, open herdr-app, then `org-start.sh --check` shows `ok core-path`.
-- **Windows programs from such a core's terminals.** The service's environment has no `WSL_INTEROP` or `WSL_DISTRO_NAME`; whether a terminal can still run `powershell.exe` (the watcher's toast) was not measured.
+- **Windows programs from such a core's terminals.** The service sets `WSL_INTEROP=/run/WSL/1_interop` (on this machine a link to init's socket `/run/WSL/2_interop`, there since boot); that a terminal of such a core can run `powershell.exe` (the watcher's toast) was not measured.
 
 ## Revisit when
 
