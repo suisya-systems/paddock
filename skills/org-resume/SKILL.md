@@ -33,7 +33,7 @@ Workers that are alive are left alone. Unlabelled terminals are never touched. I
 - **The original task** is the `task` field of the worker's `work` entry in `org-state`, copied into the record by `org-suspend` (see its assumptions). A worker without it is reported and not relaunched.
 - **Terminal name** is the one in the record, else `w-<task_id>` (the secretary template's launch line).
 - **"Up" check.** How a wrong resume is detected is left open. This skill checks only that the task reached the worker and a status appears. It does not tell that `--continue` resumed the wrong conversation; the printed git comparison is what a person or the secretary reads. A worktree that is missing is reported and still tried (`hc` decides).
-- Only the worker side is rebuilt. The secretary comes back with [org-start](../org-start/SKILL.md) and its handover.
+- Only the worker side is rebuilt. The secretary and the watcher come back with [org-start](../org-start/SKILL.md) (it replaces a plain shell left in either kept terminal) and the secretary's handover.
 
 ## Exit codes
 
