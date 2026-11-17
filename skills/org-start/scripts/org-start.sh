@@ -7,6 +7,7 @@ usage() {
   cat <<'USAGE'
 Usage: org-start.sh [-h|--help]
        org-start.sh --restart-core [--yes]
+       org-start.sh --setup-wsl [--yes]
        org-start.sh --check [--project DIR]...
        org-start.sh --place-only [--from-origin BRANCH]
 
@@ -26,6 +27,15 @@ hc server stop and hc server start (a restart does not replace the holder proces
 goes on with the ordinary org-start. It ends EVERY terminal of the core, the secretary and workers included
 (decision 0007). A core that already has hc on its PATH, or none that can be read, is left alone. Refused inside
 an agent like org-start itself.
+
+--setup-wsl (WSL only, once; decision 0016) makes the core that WSL starts after a Windows restart get hc on
+its PATH. herdr-app for Windows reaches WSL with 'wsl.exe -e sh -c', which reads no shell startup file, and
+the core takes the environment of whoever starts it, so it has no ~/.local/bin. This writes one file of its
+own, ${XDG_CONFIG_HOME:-~/.config}/systemd/user/paddock-core.service, a user service that runs
+'hc server start' at WSL boot with this shell's PATH (entries under /mnt and with unusual characters left
+out), enables it (systemctl --user enable) and turns on linger when it is off. It shows the file and the
+commands and asks y/N first (--yes skips the question); a rerun with nothing to change asks nothing. It ends
+nothing and starts no core. Refused inside an agent; it refuses a paddock-core.service it did not write.
 
 --place-only places the files again (templates, the bin folder, mods, layout) and starts nothing:
 no hc call, no core, no secretary, no watcher, no herdr-app command. It may run inside an agent
@@ -67,18 +77,21 @@ Exit codes: 0 ready (7 also prints the terminal exit code and last line), 2 bad 
 9 claude not found from org-start's shell (the templates need its absolute path).
 10 hc is not on the running core's PATH (run org-start --restart-core from a login shell that has it).
 11 --restart-core was not confirmed; nothing was ended.
+--setup-wsl: 0 set up (or nothing to change), 2 bad argument, 3 hc not found, 4 inside an agent,
+6 the file could not be written or a systemctl/loginctl command failed, 11 not confirmed (nothing written), 12 not WSL.
 --place-only: 0 placed, 2 bad argument, 6 files could not be placed (or the fetch failed).
 --check: 0 nothing left for a person, 1 a TODO is printed, 2 bad argument.
 USAGE
 }
 
-check= projects= placeonly= fromorigin= restartcore= yes=
+check= projects= placeonly= fromorigin= restartcore= setupwsl= yes=
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --check) check=1; shift ;;
     --place-only) placeonly=1; shift ;;
     --restart-core) restartcore=1; shift ;;
+    --setup-wsl) setupwsl=1; shift ;;
     --yes) yes=1; shift ;;
     --from-origin) [ $# -ge 2 ] || { echo "org-start: --from-origin needs a value" >&2; exit 2; }
       fromorigin=$2; shift 2 ;;
@@ -91,7 +104,8 @@ done
 [ -z "$projects" ] || [ -n "$check" ] || { echo "org-start: --project only goes with --check" >&2; exit 2; }
 [ -z "$fromorigin" ] || [ -n "$placeonly" ] || { echo "org-start: --from-origin only goes with --place-only" >&2; exit 2; }
 [ -z "$restartcore" ] || { [ -z "$check" ] && [ -z "$placeonly" ]; } || { echo "org-start: --restart-core does not go with --check or --place-only" >&2; exit 2; }
-[ -z "$yes" ] || [ -n "$restartcore" ] || { echo "org-start: --yes only goes with --restart-core" >&2; exit 2; }
+[ -z "$setupwsl" ] || [ -z "$check$placeonly$restartcore$projects" ] || { echo "org-start: --setup-wsl goes only with --yes" >&2; exit 2; }
+[ -z "$yes" ] || [ -n "$restartcore$setupwsl" ] || { echo "org-start: --yes only goes with --restart-core or --setup-wsl" >&2; exit 2; }
 [ -z "$placeonly" ] || [ -z "$check" ] || { echo "org-start: --place-only and --check do not go together" >&2; exit 2; }
 
 die() { code=$1; shift; echo "org-start: $*" >&2; exit "$code"; }
@@ -103,6 +117,80 @@ agentvar() { # the first agent session variable set in this environment
   done
   return 1
 }
+
+# --setup-wsl (decision 0016): a user service that starts the core at WSL boot with this shell's PATH.
+# The core's environment is its launcher's (hc writes it to the systemd-run unit's EnvironmentFile), so
+# shell startup files and environment.d do not reach a core that 'wsl.exe -e sh -c' starts.
+if [ -n "$setupwsl" ]; then
+  v=$(agentvar) && die 4 "$v is set: this shell is inside an agent. Run --setup-wsl from your own login shell (it writes your own files)."
+  proc=${PADDOCK_PROC_DIR:-/proc}
+  { [ -n "${WSL_DISTRO_NAME:-}" ] || [ -e "$proc/sys/fs/binfmt_misc/WSLInterop" ] || grep -qi microsoft "$proc/version" 2>/dev/null; } \
+    || die 12 "--setup-wsl: this is not WSL; it is only for herdr-app for Windows with the core in WSL. Nothing was written."
+  hcbin=$(command -v hc) || die 3 "--setup-wsl: hc not found on PATH; run it from a login shell where hc works"
+  case $hcbin in /*) ;; *) die 3 "--setup-wsl: hc is '$hcbin', not a file on PATH" ;; esac
+  upath= # this shell's PATH for a systemd Environment= line: no Windows folders, no spaces, %, quotes
+  IFS=: read -r -a dirs <<<"$PATH"
+  for d in "${dirs[@]}"; do
+    case $d in /mnt/*|'') continue ;; esac
+    [[ $d =~ ^/[A-Za-z0-9/._+-]*$ ]] || continue
+    case ":$upath:" in *":$d:"*) continue ;; esac
+    upath=${upath:+$upath:}$d
+  done
+  case ":$upath:" in *":$(dirname "$hcbin"):"*) ;; *) die 3 "--setup-wsl: hc's folder $(dirname "$hcbin") cannot go on the service's PATH (a Windows folder or an unusual name)" ;; esac
+  ushell=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f7); [ -n "$ushell" ] || ushell=${SHELL:-/bin/sh}
+  unit=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/paddock-core.service
+  mark="# Written by paddock (org-start.sh --setup-wsl)."
+  want=$(cat <<UNIT
+$mark Rerun it to update. To undo: systemctl --user disable paddock-core.service, then delete this file.
+[Unit]
+Description=paddock: start herdr-core at WSL boot with hc on its PATH
+
+[Service]
+Type=oneshot
+Environment=PATH=$upath
+Environment=SHELL=$ushell
+ExecStart=$hcbin server start
+
+[Install]
+WantedBy=default.target
+UNIT
+)
+  if [ -e "$unit" ] && [ "$(head -n 1 "$unit" | cut -c1-${#mark})" != "$mark" ]; then
+    die 6 "--setup-wsl: $unit exists and was not written by paddock; nothing was changed (move it away and run again)"
+  fi
+  same=; [ -e "$unit" ] && [ "$(cat "$unit")" = "$want" ] && same=1
+  enabled=; [ "$(systemctl --user is-enabled paddock-core.service 2>/dev/null)" = enabled ] && enabled=1
+  linger=; [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" = yes ] && linger=1
+  if [ "$same$enabled$linger" = 111 ]; then
+    echo "org-start: --setup-wsl: already set up ($unit, enabled, linger on); nothing to change"; exit 0
+  fi
+  echo "org-start: --setup-wsl will:"
+  if [ -z "$same" ]; then echo "  write $unit (only this file):"; printf '%s\n' "$want" | sed 's/^/    | /'; fi
+  [ "$same$enabled" = 11 ] || echo "  run: systemctl --user daemon-reload && systemctl --user enable paddock-core.service"
+  [ -n "$linger" ] || echo "  run: loginctl enable-linger $(id -un)   (so your services start when WSL starts, before any login)"
+  echo "  It ends nothing and starts no core now; the service runs at the next WSL start."
+  if [ -z "$yes" ]; then
+    printf 'org-start: go ahead? [y/N] '; ans=; read -r ans || ans=
+    case $ans in y|Y|yes|YES|Yes) ;; *) die 11 "--setup-wsl: not confirmed; nothing was written" ;; esac
+  fi
+  if [ -z "$same" ]; then
+    mkdir -p "$(dirname "$unit")" && printf '%s\n' "$want" > "$unit.tmp" && mv "$unit.tmp" "$unit" \
+      || die 6 "--setup-wsl: could not write $unit"
+  fi
+  if [ "$same$enabled" != 11 ]; then
+    systemctl --user daemon-reload && systemctl --user enable paddock-core.service \
+      || die 6 "--setup-wsl: systemctl --user failed (is systemd on in /etc/wsl.conf, [boot] systemd=true?)"
+  fi
+  [ -n "$linger" ] || loginctl enable-linger "$(id -un)" || die 6 "--setup-wsl: loginctl enable-linger failed; run 'sudo loginctl enable-linger $(id -un)'"
+  cat <<DONE
+org-start: --setup-wsl: done. To check it once (this ends every terminal, so do it when nothing is running):
+  1. In PowerShell: wsl --shutdown
+  2. Open herdr-app again.
+  3. In a herdr terminal: bash $(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/org-start.sh --check
+     The line should read 'ok core-path: hc is on the running core's PATH'.
+DONE
+  exit 0
+fi
 
 if [ -z "$check$placeonly" ]; then # place-only calls no hc, so it may run inside an agent
   command -v hc >/dev/null 2>&1 || die 3 "hc not found on PATH (install herdr-core)"

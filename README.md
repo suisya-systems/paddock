@@ -62,6 +62,18 @@ Normally that is all. Two cases need one more action:
 - **The window still shows another layout** (org-start printed `org-start: warning: layout.switch failed`, or no `org-start: switched the screen to the paddock layout` line): in WSL, run the command org-start printed on the line that starts with `org-start: to open the screen:` (everything after that colon; it starts with the path of `herdr-app.exe`). Or click the herdr-app window and press `ctrl-shift-l`, again if needed, until the paddock screen shows.
 - **org-start printed `org-start: warning: WSL, but the Windows user folder was not found`** (or `WSL, but several Windows users have a herdr-app folder`): it could not tell which Windows folder herdr-app reads. In WSL, set both `PADDOCK_APP_MODS_DIR` to the Windows herdr-app's mods folder (as a WSL path, for example `/mnt/c/Users/<you>/.config/herdr-app/mods`) and `PADDOCK_APP_MACHINE` to the machine name from step 1 (`wsl` unless you chose another), then run org-start again.
 
+### After a Windows restart (WSL)
+
+After Windows restarts, herdr-app often starts herdr-core in WSL by itself, and that core cannot find `hc` or `claude`: the screen says `hc unreachable` and `org-start --check` prints a `TODO core-path` line. `--restart-core` (in [Troubleshooting](#troubleshooting)) fixes it until the next restart. To fix it for good, do this once, in a WSL terminal where `hc --version` works:
+
+```sh
+bash skills/org-start/scripts/org-start.sh --setup-wsl
+```
+
+It shows the one file it will write (`~/.config/systemd/user/paddock-core.service`, a small service that starts herdr-core when WSL starts, with your PATH) and the commands it will run, and asks y/N. Answer `y`. Running it again changes nothing. It stops nothing that is running now.
+
+To check it, when no work is running: in PowerShell run `wsl --shutdown`, open herdr-app again, and in a herdr terminal run `bash skills/org-start/scripts/org-start.sh --check`. The `core-path` line should start with `ok`. If it still says `TODO`, run `--restart-core` as before and tell us: the service did not start before herdr-app. To undo: `systemctl --user disable paddock-core.service`, then delete that file. This is the only step of paddock that writes a file in your own settings, and only when you run it ([decision 0016](docs/decisions/0016-wsl-core-path-user-service.md)).
+
 ### Switching screens
 
 The secretary and the workers keep running while the window shows another layout.
