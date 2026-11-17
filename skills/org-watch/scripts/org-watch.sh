@@ -33,7 +33,9 @@ the secretary is idle or done with no typed input; exit 0 or 9 clears it, anothe
 Environment: PADDOCK_WATCH_N (minutes, default 10), PADDOCK_WATCH_INTERVAL (seconds, default 30),
 PADDOCK_SECRETARY_NAME (default secretary), PADDOCK_POWERSHELL (powershell.exe path),
 PADDOCK_STATE_DIR (the ledger is in its watcher folder), PADDOCK_WATCH_WAKE (seconds between
-wakes for one unread batch, default 60).
+wakes for one unread batch, default 60), PADDOCK_WATCH_SEND_TIMEOUT (seconds a typed line may take,
+default 90: hc send waits for a person's unfinished draft) and PADDOCK_WATCH_SEND_GRACE (seconds a
+pass waits for it before going on, default 3).
 
 Exit codes: 0 done, 2 bad argument, 3 hc not found, 5 core unreachable (--once).
 USAGE
@@ -60,6 +62,7 @@ mkdir -p "$wdir" || die 5 "cannot create $wdir"
 told=$wdir/told; seen=$wdir/secretary.seen; reload=$wdir/reload-plugins; woke=$wdir/woke; wakes=$wdir/wake; cidir=$wdir/ci
 renew=$wdir/renew-secretary; hand=$here/../../secretary-handover/scripts/secretary-handover.sh
 WAKE=${PADDOCK_WATCH_WAKE:-60}
+SEND_T=${PADDOCK_WATCH_SEND_TIMEOUT:-90}; GRACE=${PADDOCK_WATCH_SEND_GRACE:-3}
 mkdir -p "$cidir" || die 5 "cannot create $cidir"
 tab=$(printf '\t')
 
@@ -187,15 +190,31 @@ ready() {
   fi
 }
 # sendline <terminal> <key> <kind> <text>: types <text> into <terminal> only when ready; logs the send
-# as <kind> (or the skip) with <key>. 0 when the text was delivered.
+# as <kind> (or the skip) with <key>. 0 when the text was delivered or is still on its way.
 # hc has no --if done, so done is a plain send after ready's last get.
-# ponytail: a turn that starts between that get and the send's paste is still typed into.
+# hc send waits for a person's unfinished draft (up to 60 s), so it runs in the background under
+# timeout (PADDOCK_WATCH_SEND_TIMEOUT s); the pass waits PADDOCK_WATCH_SEND_GRACE s for its result and
+# then goes on, the job logging the late result itself. One send per terminal at a time.
+# ponytail: a turn that starts between ready's last get and the send's paste is still typed into.
+# ponytail: a send that ends just as the grace runs out may be logged twice; a lock if that bites.
 sendline() {
-  local t=$1 key=$2 kind=$3 msg=$4 rc
+  local t=$1 key=$2 kind=$3 msg=$4 rc i=0 a=(send) sp
+  sp=$wdir/send-${t//\//_}
+  if [ -f "$sp.pid" ] && kill -0 "$(cat "$sp.pid" 2>/dev/null)" 2>/dev/null; then
+    wlog skip "$t" "$key" - - pending; return 1
+  fi
   ready "$t" "$key" || return 1
-  if [ "$rst" = idle ]; then hc send --if idle "$t" "$msg" >/dev/null 2>&1; rc=$?
-  else hc send "$t" "$msg" >/dev/null 2>&1; rc=$?; fi
-  wlog "$kind" "$t" "$key" "$rst" no "$rc"
+  [ "$rst" != idle ] || a+=(--if idle)
+  rm -f "$sp.rc" "$sp.late"
+  (
+    timeout "$SEND_T" hc "${a[@]}" "$t" "$msg" >/dev/null 2>&1 </dev/null; rc=$?
+    echo "$rc" > "$sp.rc.new" && mv "$sp.rc.new" "$sp.rc"
+    [ ! -f "$sp.late" ] || printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%s)" "$kind" "$t" "$key" "$rst" no "$rc" >> "$woke"
+  ) >/dev/null 2>&1 </dev/null &
+  echo $! > "$sp.pid"
+  while [ ! -f "$sp.rc" ] && [ "$i" -lt $((GRACE * 10)) ]; do sleep 0.1; i=$((i + 1)); done
+  if [ ! -f "$sp.rc" ]; then : > "$sp.late"; printf 'org-watch: %s %s %s still sending (late result in watcher/woke)\n' "$kind" "$t" "$key"; return 0; fi
+  rc=$(cat "$sp.rc"); wlog "$kind" "$t" "$key" "$rst" no "$rc"
   return "$rc"
 }
 # wake <terminal> <org id>: the one constant line when <org id> has unread mail, by sendline, unless
