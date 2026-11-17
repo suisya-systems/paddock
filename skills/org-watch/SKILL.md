@@ -26,7 +26,7 @@ A shell loop that tells the person what the window cannot, because the window is
 bash <paddock folder>/skills/org-watch/scripts/org-watch.sh [--once]   # the folder: echo "$PADDOCK_HOME"
 ```
 
-org-start runs it as `hc run --bg --keep --name watcher`, and on a rerun replaces a `watcher` terminal (with the `paddock_role=watcher` label) that has finished or is a plain shell with no org-watch.sh in it, as a kept terminal is after a core or Windows restart; the person runs it by hand with `--once` to see one pass.
+org-start runs it as `hc run --bg --keep --name watcher`; the person runs it by hand with `--once` to see one pass.
 
 ## What it tells
 
