@@ -458,7 +458,7 @@ else
 fi
 
 # 4. Readiness: hc get shows a status object.
-# a new folder shows Claude Code's folder-trust dialog and no status. Q13 (a) allows
+# a new folder shows Claude Code's folder-trust dialog (no status, or a blocked "trust this folder" one). Q13 (a) allows
 # answering it once for the secretary's own folder (never for a worktree; trust-dialog.sh). The first
 # message did not arrive: hc sends the template body plus a blank line and the task, so both are sent
 # again. Only for a secretary this run started in $sdir: an existing one may sit in another folder.
