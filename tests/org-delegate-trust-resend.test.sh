@@ -26,7 +26,9 @@ case "$cmd" in
   ls) echo '[]'; exit 0 ;;
   get) name=; for a in "$@"; do case "$a" in --*) ;; *) name=$a ;; esac; done
        [ -f "$STUB/term-$name" ] || { echo '{"error":{"kind":"not_found"}}'; exit 1; }
-       if [ "$(cat "$STUB/state")" = none ]; then printf '{\n  "name": "%s",\n  "status": null\n}\n' "$name"
+       if [ "$(cat "$STUB/state")" = none ] && [ -e "$STUB/trust-blocked" ]; then
+         printf '{\n  "name": "%s",\n  "status": {"app":"claude-code","kind":"permission","msg":"trust this folder","state":"blocked"}\n}\n' "$name"
+       elif [ "$(cat "$STUB/state")" = none ]; then printf '{\n  "name": "%s",\n  "status": null\n}\n' "$name"
        else printf '{\n  "name": "%s",\n  "status": {"app":"claude-code","state":"%s"}\n}\n' "$name" "$(cat "$STUB/state")"; fi
        exit 0 ;;
   file) shift; path=; for a in "$@"; do case "$a" in --*) ;; *) path=$a ;; esac; done
@@ -78,7 +80,7 @@ envrun() { # envrun <script> <args...>
       bash "$s" "$@" 2>"$STUB/err"
 }
 fresh() { # fresh: org-state empty, marker present, no terminal, no calls
-  command rm -f "$STUB"/term-* "$STUB/noidle" "$STUB/sent-text"; command rm -f "$STUB"/docver-*; : > "$STUB/calls"
+  command rm -f "$STUB"/term-* "$STUB/noidle" "$STUB/trust-blocked" "$STUB/sent-text"; command rm -f "$STUB"/docver-*; : > "$STUB/calls"
   printf '{"work":[],"approvals":[]}\n' > "$STUB/docval-org-state"
   : > "$marker"
 }
@@ -148,4 +150,16 @@ envrun "$resend" t4 >/dev/null; rc=$?
 envrun "$resend" t4 >/dev/null; rc=$?
 [ "$rc" -ne 0 ] && [ "$(grep -c '^send' "$STUB/calls")" = 1 ]; check "resend.sh twice sends nothing more ($rc)" $?
 cleanup t4
+# 5. Issue #471: current Claude Code reports a blocked status (kind permission, msg "trust this folder") during the dialog;
+# the single answer yes still presses it, resends the first message and clears the marker.
+fresh; : > "$STUB/trust-blocked"
+envrun "$delegate" --project "$proj" --task-id t5 --title "Blocked trust" --task "Do epsilon." >/dev/null
+id=$(card t5); [ -n "$id" ]; check "blocked status: the trust card is recorded" $?
+: > "$STUB/calls"
+envrun "$escalation" answer --from-conversation "test: the person typed it" --id "$id" --text yes >/dev/null; rc=$?
+[ "$rc" -eq 0 ]; check "blocked status: answer yes exits 0 ($rc)" $?
+[ "$(grep -c '^keys w-t5 enter' "$STUB/calls")" = 1 ]; check "blocked status: the dialog is pressed once" $?
+[ "$(cat "$STUB/sent-text" 2>/dev/null)" = "$(expected t5 'Do epsilon.')" ]; check "blocked status: the first message is resent" $?
+[ ! -e "$marker" ]; check "blocked status: the marker is cleared" $?
+cleanup t5
 exit $fail

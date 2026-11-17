@@ -20,6 +20,10 @@ case $1 in
           elif [ -f "$STUB/screen.down" ]; then cp "$STUB/screen.down" "$STUB/screen"; fi
         fi ;;
   get) [ "$(cat "$STUB/state")" != broken ] || exit 1
+       case $(cat "$STUB/state") in
+         trust) echo '{"name":"w-t1","status":{"app":"claude-code","kind":"permission","msg":"trust this folder","state":"blocked"}}'; exit 0 ;;
+         perm) echo '{"name":"w-t1","status":{"app":"claude-code","kind":"permission","msg":"approve Bash: ls","state":"blocked"}}'; exit 0 ;;
+       esac
        if [ "$(cat "$STUB/state")" = none ]; then echo '{"name":"w-t1","status":null}'; else echo "{\"name\":\"w-t1\",\"status\":{\"state\":\"$(cat "$STUB/state")\"}}"; fi ;;
   connect)
     read -r req
@@ -90,6 +94,20 @@ cp "$STUB/screen.down" "$tmp/up"; mv "$tmp/down" "$STUB/screen.down"
 PATH="$tmp/bin:$PATH" bash "$script" prompt --task t1 >/dev/null 2>&1; rc=$?
 [ $rc -eq 0 ] && grep -q '^keys w-t1 down' "$STUB/calls" && grep -q '^keys w-t1 enter' "$STUB/calls"
 check "the trust dialog without numbered choices: down, enter ($rc)" $?
+rm -f "$STUB/screen.down"
+
+# Issue #471: current Claude Code reports blocked / permission / "trust this folder" during the dialog.
+printf '%s\n' '────────' ' Quick safety check: Is this a project you created or one you trust?' \
+  ' ❯ No, exit' '   Yes, I trust this folder' ' Enter to confirm · Esc to cancel' > "$STUB/screen.down"
+sed 's/^ ❯ No, exit$/   No, exit/; s/^   Yes, I trust/ ❯ Yes, I trust/' "$STUB/screen.down" > "$tmp/down"
+cp "$STUB/screen.down" "$tmp/up"; mv "$tmp/down" "$STUB/screen.down"
+: > "$STUB/calls"; cp "$tmp/up" "$STUB/screen"; echo trust > "$STUB/state"
+PATH="$tmp/bin:$PATH" bash "$script" prompt --task t1 >/dev/null 2>&1; rc=$?
+[ $rc -eq 0 ] && grep -q '^keys w-t1 down' "$STUB/calls" && grep -q '^keys w-t1 enter' "$STUB/calls"
+check "the trust dialog with a blocked trust status: down, enter ($rc)" $?
+: > "$STUB/calls"; cp "$tmp/up" "$STUB/screen"; echo perm > "$STUB/state"
+PATH="$tmp/bin:$PATH" bash "$script" prompt --task t1 >/dev/null 2>&1; rc=$?
+[ $rc -eq 3 ] && ! grep -q '^keys' "$STUB/calls"; check "a blocked permission status that is not the trust prompt is not the dialog: exit 3, no key ($rc)" $?
 rm -f "$STUB/screen.down"
 
 ans2() { # like ans, but the transcript above the dialog's rule line changes before the answer
