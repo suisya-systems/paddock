@@ -45,5 +45,10 @@ fr_core_path() {
   PATH=$fr_cpath command -v hc >/dev/null 2>&1 && return 0
   fr_hcdir=$(dirname "$(command -v hc)")
   FR_PATH_FIX="hc is not on the core's PATH (hc is in $fr_hcdir), so its terminals cannot run hc and no approval card appears: from a login shell that has that folder on PATH run 'org-start.sh --restart-core' (it lists the terminals it ends and asks first; or stop herdr-core and start herdr again by hand)"
+  # WSL: herdr-app for Windows starts the core after a Windows restart without a login shell (decision 0016).
+  if [ -n "${WSL_DISTRO_NAME:-}" ] || [ -e "${PADDOCK_PROC_DIR:-/proc}/sys/fs/binfmt_misc/WSLInterop" ] \
+     || grep -qi microsoft "${PADDOCK_PROC_DIR:-/proc}/version" 2>/dev/null; then
+    FR_PATH_FIX="$FR_PATH_FIX; so that a core WSL starts after a Windows restart has it too, run 'org-start.sh --setup-wsl' once"
+  fi
   return 1
 }
