@@ -33,7 +33,7 @@ its PATH. herdr-app for Windows reaches WSL with 'wsl.exe -e sh -c', which reads
 the core takes the environment of whoever starts it, so it has no ~/.local/bin. This writes one file of its
 own, ~/.config/systemd/user/paddock-core.service, a user service that runs 'hc server start' at WSL
 boot with this shell's PATH (entries under /mnt and with unusual characters left out) and its XDG_* folder
-and PADDOCK_* variables, enables it (systemctl --user enable) and turns on linger when it is off. It shows the file and the
+and paddock *_DIR folder variables (never a runtime one such as PADDOCK_ORG_ID), enables it (systemctl --user enable) and turns on linger when it is off. It shows the file and the
 commands and asks y/N first (--yes skips the question); a rerun with nothing to change asks nothing. It ends
 nothing and starts no core. Refused inside an agent; it refuses a paddock-core.service it did not write.
 
@@ -144,7 +144,8 @@ if [ -n "$setupwsl" ]; then
   [[ ${WSL_DISTRO_NAME:-} =~ ^[A-Za-z0-9._-]+$ ]] && wslenv="$wslenv
 Environment=WSL_DISTRO_NAME=$WSL_DISTRO_NAME"
   # The folders org-start and the templates read, when this shell moves them (a boot service sees none of it).
-  for v in XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME $(compgen -e | grep '^PADDOCK_' | grep -vx 'PADDOCK_PROC_DIR\|PADDOCK_WIN_C_DIR'); do
+  for v in XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME PADDOCK_STATE_DIR PADDOCK_WORKERS_DIR PADDOCK_BIN_DIR \
+           PADDOCK_PROJECTS_DIR PADDOCK_LOCAL_DIR PADDOCK_CORE_TEMPLATES_DIR PADDOCK_CORE_CONFIG_DIR; do # folders only
     [[ ${!v:-} =~ ^[A-Za-z0-9/._+=:,-]+$ ]] && wslenv="$wslenv
 Environment=$v=${!v}"
   done

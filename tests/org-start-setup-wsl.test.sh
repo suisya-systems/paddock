@@ -97,10 +97,10 @@ reset; out=$(envx="STUB_ENABLE_FAIL=1" run "" --yes); rc=$?
 
 # 9. This shell's XDG_CONFIG_HOME does not move the unit (the boot-time manager looks in ~/.config), and the
 #    folder variables org-start and the templates read go into it.
-reset; out=$(envx="XDG_CONFIG_HOME=$tmp/xdg PADDOCK_BIN_DIR=/opt/paddock/bin" run "" --yes); rc=$?
+reset; out=$(envx="XDG_CONFIG_HOME=$tmp/xdg PADDOCK_BIN_DIR=/opt/paddock/bin PADDOCK_ORG_ID=w-x" run "" --yes); rc=$?
 [ "$rc" -eq 0 ] && [ ! -e "$tmp/xdg/systemd" ] && grep -qx "Environment=XDG_CONFIG_HOME=$tmp/xdg" "$unit" \
-  && grep -qx 'Environment=PADDOCK_BIN_DIR=/opt/paddock/bin' "$unit" && ! grep -q PADDOCK_PROC_DIR "$unit"
-check "XDG_CONFIG_HOME: unit still in ~/.config; XDG and PADDOCK_ folders carried, test-only ones not" $?
+  && grep -qx 'Environment=PADDOCK_BIN_DIR=/opt/paddock/bin' "$unit" && ! grep -qE 'PADDOCK_PROC_DIR|PADDOCK_ORG' "$unit"
+check "XDG_CONFIG_HOME: unit still in ~/.config; XDG and PADDOCK_ folders carried, runtime ones (PADDOCK_ORG*) and test-only ones not" $?
 
 # 10. Arguments: --setup-wsl with --check is refused; --yes alone is refused.
 out=$(env -u CLAUDECODE bash "$script" --setup-wsl --check 2>&1); [ $? -eq 2 ]; check "--setup-wsl --check: exit 2" $?
