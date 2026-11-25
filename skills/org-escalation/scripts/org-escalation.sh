@@ -27,7 +27,7 @@ Usage: org-escalation.sh prompt --task TASK_ID|--curator [--then-send TEXT]
           again". Prints POLICY <entry> w-<task_id>. When org-delegate stopped at the dialog (exit 10) it
           saved the first message and the work entry: they are sent and written here, after the dialog,
           without --then-send (and so are they after answer yes). With
-          --then-send, once the terminal reports a status, TEXT is sent with hc send (the first
+          --then-send, once the terminal reports a status other than the trust one, TEXT is sent with hc send (the first
           message the dialog stopped). Any other screen: prints PROMPT=<the dialog> and
           exits 3, nothing pressed; record it with ask --prompt
           --curator: the same for the terminal curator instead of w-<task_id> (org-curate start
@@ -210,6 +210,7 @@ die() { code=$1; shift; echo "org-escalation: $*" >&2; [ -n "${quiet:-}" ] || ec
 
 self=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+. "$root/skills/org-start/scripts/trust-dialog.sh"
 org=$root/scripts/org
 secretary() { bash "$org" --as secretary "$@"; }
 
@@ -287,8 +288,7 @@ policy_of() {
   j=$(hc get --json "$w" 2>/dev/null) || j=
   case $j in *'"name"'*) j=$(printf '%s' "$j" | tr -d '\n')
     if ! printf '%s' "$j" | grep -Eq '"status": *\{'; then nostatus=1
-    elif printf '%s' "$j" | grep -Eq '"state": *"blocked"' && printf '%s' "$j" | grep -Eq '"kind": *"permission"' \
-         && printf '%s' "$j" | grep -Eqi '"msg": *"[^"]*trust this folder'; then nostatus=1; fi ;; esac
+    elif td_trust_status "$j"; then nostatus=1; fi ;; esac
   if [ -n "$nostatus" ] && opt "$1" 'No, exit' && opt "$1" 'Yes, I trust this folder'; then echo folder-trust
   # auto-mode-setup: Claude Code's "Teach auto mode about your environment?" (Yes / Not now /
   # Don't show again), shown once to an auto-mode worker; answered "Don't show again" (owner).
@@ -316,11 +316,11 @@ trust_marker() {
   local c; c=$(git -C "${PADDOCK_WORKERS_DIR:-$HOME/paddock-workers}/$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
   [ -e "$c/paddock-trust-pending" ] && printf '%s\n' "$c/paddock-trust-pending"
 }
-# send_first: once $w reports a status, send --then-send text (the first message the dialog stopped).
+# send_first: once $w reports a status that is not the folder-trust one, send --then-send text (the first message the dialog stopped).
 send_first() {
   local i=0
-  until hc get --json "$w" 2>/dev/null | tr -d '\n' | grep -Eq '"status": *\{'; do
-    i=$((i + 1)); [ "$i" -lt "${PADDOCK_PROMPT_TRIES:-30}" ] || die 12 "$w reports no status after the dialog; the first message was not sent"
+  until td_started "$w"; do
+    i=$((i + 1)); [ "$i" -lt "${PADDOCK_PROMPT_TRIES:-30}" ] || die 12 "$w reports no status, or still waits on folder trust, after the dialog; the first message was not sent"
     sleep 1
   done
   hc send "$w" "$then_send" >/dev/null 2>&1 || die 12 "hc send to $w failed; the first message was not sent"
