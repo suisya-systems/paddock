@@ -74,7 +74,7 @@ Environment overrides:
   PADDOCK_WIN_C_DIR           replaces /mnt/c when the Windows user folder is looked for (tests)
 
 Exit codes: 0 ready (7 also prints the terminal exit code and last line), 2 bad argument, 3 hc not found, 4 run inside an agent,
-5 core unreachable, 6 files could not be placed, 7 secretary has no status,
+5 core unreachable, 6 files could not be placed, 7 secretary has no status (or waits on folder trust),
 8 herdr-core notes are on (no notes = false in the core config).
 9 claude not found from org-start's shell (the templates need its absolute path).
 10 hc is not on the running core's PATH (run org-start --restart-core from a login shell that has it).
@@ -586,7 +586,7 @@ else
   echo "org-start: warning: hc run failed for $wname; nobody will be told outside the window" >&2
 fi
 
-# 4. Readiness: hc get shows a status object.
+# 4. Readiness: hc get shows a status object that is not the folder-trust one (td_started).
 # a new folder shows Claude Code's folder-trust dialog (no status, or a blocked "trust this folder" one). Q13 (a) allows
 # answering it once for the secretary's own folder (never for a worktree; trust-dialog.sh). The first
 # message did not arrive: hc sends the template body plus a blank line and the task, so both are sent
@@ -594,7 +594,7 @@ fi
 . "$(dirname "${BASH_SOURCE[0]}")/trust-dialog.sh"
 trusted=; i=0
 while [ "$i" -lt "$tries" ]; do
-  if hc get --json "$name" 2>/dev/null | grep -Eq '"status": *\{'; then
+  if td_started "$name"; then
     if [ -n "$trusted" ]; then
       body=$(awk 'n >= 2 { print; next } /^---$/ { n++ }' "$templates/secretary.md")
       [ -n "$body" ] && hc send "$name" "$body${task:+
@@ -624,4 +624,4 @@ if [ -n "$last" ]; then why="$why Its last line: $last"; fi
 if [ "$code" = 127 ] || printf '%s' "$last" | grep -qi 'claude.*not found'; then
   why="$why. claude was not found: the secretary template (secretary.md in $templates) starts claude, and it is not on the PATH of the core's terminals; install it or fix that PATH"
 fi
-die 7 "secretary has no status after ${tries}s.$why Look at 'hc get $name' and 'hc read $name'"
+die 7 "secretary has no status, or still waits on folder trust, after ${tries}s.$why Look at 'hc get $name' and 'hc read $name'"
