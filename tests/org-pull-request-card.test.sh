@@ -19,7 +19,7 @@ cat > "$stubdir/gh" <<'EOF2'
 echo "gh $*" >> "$STUB/calls"
 case "$1 $2" in
   "pr create") echo "https://github.com/o/r/pull/42" ;;
-  "pr view") case "$*" in *mergeStateStatus*) echo "${STUB_MERGE_STATE:-CLEAN}" ;; *state*) echo "${STUB_STATE:-OPEN}" ;; *) [ -z "${STUB_VIEW_FAIL:-}" ] || exit 1; echo "${STUB_HEAD:-$(cat "$STUB/head")}" ;; esac ;;
+  "pr view") case "$*" in *mergeStateStatus*) echo "${STUB_MERGE_STATE:-CLEAN}" ;; *baseRefName*) echo main ;; *state*) echo "${STUB_STATE:-OPEN}" ;; *) [ -z "${STUB_VIEW_FAIL:-}" ] || exit 1; echo "${STUB_HEAD:-$(cat "$STUB/head")}" ;; esac ;;
   # gh's own text for a branch with no required checks (gh pr checks --required, exit 1)
   "pr checks") [ -z "${STUB_NO_REQUIRED:-}" ] || { echo "no required checks reported on the 'feat/x' branch" >&2; exit 1; }
     [ -z "${STUB_CHECKS_ERR:-}" ] || echo "$STUB_CHECKS_ERR" >&2; exit "${STUB_CHECKS_RC:-0}" ;;
@@ -138,6 +138,23 @@ green; out=$(run --pr 42); id=$(idof "$out")
 out=$(ENVX=STUB_STATE=MERGED run --pr 42); rc=$?
 [ "$rc" -eq 0 ] && [ "$(ncards)" -eq 0 ] && grep -q "Merge card $id withdrawn" <<<"$out" && ! merged
 check "merged by hand: the rerun withdraws the open merge card ($out)" $?
+
+# Issue #469: a head that is BEHIND its base gets no card and no merge (GitHub would refuse it).
+behind_next() { grep -q '^next: .*org-update-branch\.sh --worktree .* --base main.*then .*org-pull-request\.sh --pr 42' <<<"$out"; }
+green; out=$(ENVX=STUB_MERGE_STATE=BEHIND run --pr 42); rc=$?
+[ "$rc" -eq 10 ] && ! merged && [ "$(ncards)" -eq 0 ] && grep -q 'main moved under the branch' <<<"$out" && behind_next
+check "BEHIND at card time: no card, next: names org-update-branch then the --pr rerun ($out)" $?
+green; out=$(run --pr 42); id=$(idof "$out")
+out=$(ENVX=STUB_MERGE_STATE=BEHIND run --pr 42); rc=$?
+[ "$rc" -eq 10 ] && ! merged && [ "$(ncards)" -eq 0 ] && grep -q "Merge card $id withdrawn" <<<"$out" && behind_next
+check "a card up for a head that became BEHIND is withdrawn ($out)" $?
+green; out=$(run --pr 42); id=$(idof "$out"); say person "ANSWER $id yes"
+out=$(ENVX=STUB_MERGE_STATE=BEHIND run --pr 42 --approved "$id"); rc=$?
+[ "$rc" -eq 10 ] && ! merged && [ "$(ncards)" -eq 0 ] && grep -q 'not merged' <<<"$out" && behind_next
+check "BEHIND at --approved: no merge call, card withdrawn, says so ($out)" $?
+green; out=$(ENVX=STUB_MERGE_STATE=CLEAN run --pr 42); id=$(idof "$out"); say person "ANSWER $id yes"
+out=$(ENVX=STUB_MERGE_STATE=CLEAN run --pr 42 --approved "$id"); rc=$?
+[ "$rc" -eq 0 ] && merged; check "CLEAN: card raised and merged as before ($out)" $?
 
 # The conversation language from org-state (org-escalation lang).
 DOC='{"conversation_lang":"ja"}' green; out=$(run --pr 42)

@@ -16,7 +16,9 @@ org-watch watches CI, records ci_completed (or ci_watch_failed) and mails the se
 (decision 0013). With --pr N it reads the watcher's record for the current head and acts by
 approval mode; a head with no request yet, or whose watch failed, is requested (once).
 Human mode: a green head gets one merge card (org-escalation ask), once per head; a card
-raised for an older head is withdrawn. The rerun with --approved merges only after
+raised for an older head is withdrawn. A head that is BEHIND its base gets no card and no merge
+(its card is withdrawn): update the branch with org-update-branch, then rerun with --pr.
+The rerun with --approved merges only after
 org-escalation remove --text yes found the yes in the person's own file.
 
 Options:
@@ -47,7 +49,7 @@ is up, or merged on its checked yes; --pr, acceptance: merged; --pr, PR already 
 landing placed), 2 bad argument,
 3 gh or git not found, 4 no CI result recorded for the head yet (requested now or still
 watched; the watcher mails it), 5 push failed, 6 PR could not be created, 9 CI failed,
-10 merge refused (head moved, or required checks not green; with none configured, the watcher's record of the head is the check), 11 merge failed, 12 the
+10 merge refused (head moved, or required checks not green; with none configured, the watcher's record of the head is the check; human mode: also a head BEHIND its base), 11 merge failed, 12 the
 ci_requested line could not be written, 13 merged, but the files org-start placed were not
 placed again (a landing in the paddock repository), 14 the merge card could not be raised
 or read, 15 --approved: no yes in the person's file (not merged, card kept).
@@ -268,6 +270,17 @@ run=${ci#* }; concl=${ci%% *}
 [ "$concl" = success ] || die 9 "CI failed on $sha (conclusion $concl, run $run, recorded by the watcher); PR $url" \
   "send the worker back with this failure; never merge. If CI was rerun on the same commit instead, run: $again --recheck"
 
+# A head that is BEHIND its base (branch protection: up to date required) is refused by GitHub at the
+# merge call: no card and no merge; a card up for this head is withdrawn. Any other
+# answer, a failed lookup included, changes nothing.
+stop_if_behind() {
+  [ "$(gh pr view "$pr" --repo "$repo" --json mergeStateStatus --jq .mergeStateStatus 2>/dev/null)" = BEHIND ] || return 0
+  local b; b=$(gh pr view "$pr" --repo "$repo" --json baseRefName --jq .baseRefName 2>/dev/null); b=${b:-$base}
+  scan_cards "" "$b moved under head %s"
+  die 10 "$b moved under the branch: PR $pr is behind it at head $s7; not merged" \
+    "run the org-update-branch skill (its org-update-branch.sh --worktree $(printf "%q" "$wt") --base $b), then run: $again"
+}
+
 # 4. human mode: the person decides on the merge card; the script raises it (once per head) and
 # merges only on the rerun with --approved, once the yes is found in the person's own file.
 nomerge="do not merge. If the person answered no: send their note to the worker, then run: bash $qesc remove --id ${approved:-<card id>} --text no (add --note \"<their note, as written>\" when the answer had one)"
@@ -281,6 +294,7 @@ if [ "$mode" = human ]; then
     die 2 "$approved is not the open merge card of PR $pr at head $s7; not merged" \
       "run: bash $qesc list, then rerun with --approved <the id of the card naming PR #$pr and head $s7>"
   fi
+  stop_if_behind
   if [ -z "$approved" ]; then
     if [ -n "$card" ]; then echo "Merge card $card for head $s7 is up already; not raised again. Not merged."
     else
@@ -342,6 +356,7 @@ elif [ "$crc" -eq 1 ] && printf '%s\n' "$cerr" | grep -qxE "no required checks r
 else
   die 10 "required checks are not all green on $sha; not merged" "$moved"
 fi
+[ -z "$approved" ] || stop_if_behind   # again: the base may have moved while the checks were watched
 if [ -n "$approved" ]; then # the person's yes, from their own file (org-escalation's check); the card goes with it
   o=$(bash "$esc" remove --id "$approved" --text yes ${note:+--note "$note"} 2>&1) \
     || die 15 "no yes for $approved in the person's file: $(printf '%s' "$o" | grep -v '^next:' | tr '\n' ' ')" "$nomerge"
