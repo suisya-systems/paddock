@@ -20,7 +20,7 @@ Environment overrides:
   PADDOCK_SECRETARY_NAME  terminal name (default secretary; same as org-start)
   PADDOCK_STATE_DIR       state folder; the secretary runs in its secretary/ (default
                           ${XDG_STATE_HOME:-~/.local/state}/paddock; same as org-start)
-  PADDOCK_READY_TRIES     seconds to wait for a status after the trust dialog (default 15)
+  PADDOCK_READY_TRIES     seconds to wait after the trust dialog for a status that is not its own (default 15)
   PADDOCK_RENEW_ID        (the watcher) the request id it runs for; refuses (13) when
                           watcher/renew-secretary no longer holds it
 
@@ -131,8 +131,8 @@ if ! printf '%s' "$out" | grep -Eq '"sent": *true'; then
   esac
   echo "secretary-handover: accepted the folder-trust dialog for $sdir on $name"
   i=0; tries=${PADDOCK_READY_TRIES:-15}
-  until hc get --json "$name" 2>/dev/null | grep -Eq '"status": *\{'; do
-    i=$((i + 1)); [ "$i" -lt "$tries" ] || die 10 "$name has no status ${tries}s after the folder-trust dialog. Read it with 'hc read $name'"
+  until td_started "$name"; do
+    i=$((i + 1)); [ "$i" -lt "$tries" ] || die 10 "$name has no status, or still waits on folder trust, ${tries}s after the folder-trust dialog. Read it with 'hc read $name'"
     sleep 1
   done
   body=$(awk 'n >= 2 { print; next } /^---$/ { n++ }' "$root/templates/secretary.md")
